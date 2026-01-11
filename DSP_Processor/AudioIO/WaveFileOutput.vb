@@ -7,10 +7,12 @@ Namespace AudioIO
 
     Public Class WavFileOutput
         Implements IOutputSink
+        Implements IDisposable
 
         Private stream As FileStream
         Private writer As BinaryWriter
         Private dataLength As Integer = 0
+        Private disposed As Boolean = False
 
 
 
@@ -47,19 +49,46 @@ Namespace AudioIO
         End Sub
 
         Public Sub Write(samples() As Byte, count As Integer) Implements IOutputSink.Write
+            If disposed Then Throw New ObjectDisposedException("WavFileOutput")
             writer.Write(samples, 0, count)
             dataLength += count
         End Sub
 
         Public Sub CloseSink() Implements IOutputSink.CloseSink
-            writer.Seek(4, SeekOrigin.Begin)
-            writer.Write(36 + dataLength)
+            If disposed Then Return
 
-            writer.Seek(40, SeekOrigin.Begin)
-            writer.Write(dataLength)
+            Try
+                ' Update header with actual sizes
+                writer.Seek(4, SeekOrigin.Begin)
+                writer.Write(36 + dataLength)
 
-            writer.Close()
-            stream.Close()
+                writer.Seek(40, SeekOrigin.Begin)
+                writer.Write(dataLength)
+
+                writer.Flush()
+            Finally
+                ' Always close streams
+                writer?.Close()
+                stream?.Close()
+                disposed = True
+            End Try
         End Sub
+
+        ' IDisposable implementation
+        Protected Overridable Sub Dispose(disposing As Boolean)
+            If Not disposed Then
+                If disposing Then
+                    ' Dispose managed resources
+                    CloseSink()
+                End If
+                disposed = True
+            End If
+        End Sub
+
+        Public Sub Dispose() Implements IDisposable.Dispose
+            Dispose(True)
+            GC.SuppressFinalize(Me)
+        End Sub
+
     End Class
 End Namespace
