@@ -94,6 +94,9 @@ Partial Public Class MainForm
         ' Initialize Recording Options Tab
         InitializeRecordingOptionsTab()
 
+        ' Apply dark theme to visualization tabs
+        DarkTheme.ApplyToControl(visualizationTabs)
+
         Logger.Instance.Info("DSP Processor started", "MainForm")
     End Sub
 
@@ -388,13 +391,6 @@ Partial Public Class MainForm
         Dim fullPath = Path.Combine(Application.StartupPath, "Recordings", fileName)
 
         Try
-            ' Check if file is currently being recorded
-            If recorder IsNot Nothing AndAlso recorder.IsRecording Then
-                Services.LoggingServiceAdapter.Instance.LogWarning("Cannot play file while recording is active")
-                MessageBox.Show("Cannot play file while recording is in progress.", "Recording Active", MessageBoxButtons.OK, MessageBoxIcon.Warning)
-                Return
-            End If
-            
             ' Extra safety: ensure file exists and is not locked
             If Not File.Exists(fullPath) Then
                 Services.LoggingServiceAdapter.Instance.LogError($"File not found: {fileName}")
@@ -403,16 +399,32 @@ Partial Public Class MainForm
                 Return
             End If
             
-            ' Try to open file exclusively to check if it's locked
-            Try
-                Using fs As New FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read)
-                    ' File is accessible
-                End Using
-            Catch ex As IOException
+            ' Try to open file to check if it's locked (with retry for recently stopped recordings)
+            Dim maxRetries As Integer = 3
+            Dim retryDelay As Integer = 100 ' ms
+            Dim fileAccessible As Boolean = False
+            
+            For attempt = 1 To maxRetries
+                Try
+                    Using fs As New FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read)
+                        ' File is accessible
+                        fileAccessible = True
+                        Exit For
+                    End Using
+                Catch ex As IOException
+                    ' File might still be closing from recording
+                    If attempt < maxRetries Then
+                        Services.LoggingServiceAdapter.Instance.LogDebug($"File temporarily locked, retrying... (attempt {attempt}/{maxRetries})")
+                        System.Threading.Thread.Sleep(retryDelay)
+                    End If
+                End Try
+            Next
+            
+            If Not fileAccessible Then
                 Services.LoggingServiceAdapter.Instance.LogWarning($"File is locked or in use: {fileName}")
-                MessageBox.Show($"File is currently in use or locked. Please wait a moment and try again.", "File Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                MessageBox.Show($"File is currently in use. Please wait a moment and try again.", "File Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning)
                 Return
-            End Try
+            End If
 
             Services.LoggingServiceAdapter.Instance.LogInfo($"Loading file for playback: {fileName}")
 

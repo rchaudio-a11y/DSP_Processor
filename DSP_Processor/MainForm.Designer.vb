@@ -65,6 +65,11 @@ Partial Class MainForm
         chkAutoScroll = New CheckBox()
         cmbLogLevel = New ComboBox()
         lblLogLevel = New Label()
+        visualizationTabs = New TabControl()
+        tabWaveform = New TabPage()
+        tabSpectrum = New TabPage()
+        tabPhase = New TabPage()
+        tabMeters = New TabPage()
         CType(picWaveform, ComponentModel.ISupportInitialize).BeginInit()
         CType(trackVolume, ComponentModel.ISupportInitialize).BeginInit()
         CType(splitWaveformArea, ComponentModel.ISupportInitialize).BeginInit()
@@ -76,6 +81,7 @@ Partial Class MainForm
         tabProgram.SuspendLayout()
         CType(trackInputVolume, ComponentModel.ISupportInitialize).BeginInit()
         tabLogs.SuspendLayout()
+        visualizationTabs.SuspendLayout()
         SuspendLayout()
         ' 
         ' TimerAudio
@@ -515,11 +521,66 @@ Partial Class MainForm
         lblLogLevel.TabIndex = 5
         lblLogLevel.Text = "Log Level:"
         ' 
+        ' visualizationTabs
+        ' 
+        visualizationTabs.Anchor = AnchorStyles.Top Or AnchorStyles.Bottom Or AnchorStyles.Left Or AnchorStyles.Right
+        visualizationTabs.Controls.Add(tabWaveform)
+        visualizationTabs.Controls.Add(tabSpectrum)
+        visualizationTabs.Controls.Add(tabPhase)
+        visualizationTabs.Controls.Add(tabMeters)
+        visualizationTabs.Location = New Point(448, 536)
+        visualizationTabs.Multiline = True
+        visualizationTabs.Name = "visualizationTabs"
+        visualizationTabs.SelectedIndex = 0
+        visualizationTabs.Size = New Size(1334, 505)
+        visualizationTabs.TabIndex = 9
+        ' 
+        ' tabWaveform
+        ' 
+        tabWaveform.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabWaveform.Location = New Point(4, 29)
+        tabWaveform.Name = "tabWaveform"
+        tabWaveform.Padding = New Padding(3)
+        tabWaveform.Size = New Size(1326, 472)
+        tabWaveform.TabIndex = 0
+        tabWaveform.Text = "📈 Waveform"
+        ' 
+        ' tabSpectrum
+        ' 
+        tabSpectrum.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabSpectrum.Location = New Point(4, 29)
+        tabSpectrum.Name = "tabSpectrum"
+        tabSpectrum.Padding = New Padding(3)
+        tabSpectrum.Size = New Size(1326, 472)
+        tabSpectrum.TabIndex = 1
+        tabSpectrum.Text = "🌈 Spectrum"
+        ' 
+        ' tabPhase
+        ' 
+        tabPhase.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabPhase.Location = New Point(4, 29)
+        tabPhase.Name = "tabPhase"
+        tabPhase.Padding = New Padding(3)
+        tabPhase.Size = New Size(1326, 472)
+        tabPhase.TabIndex = 2
+        tabPhase.Text = "🔄 Phase"
+        ' 
+        ' tabMeters
+        ' 
+        tabMeters.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabMeters.Location = New Point(4, 29)
+        tabMeters.Name = "tabMeters"
+        tabMeters.Padding = New Padding(3)
+        tabMeters.Size = New Size(1326, 472)
+        tabMeters.TabIndex = 3
+        tabMeters.Text = "📊 Meters"
+        ' 
         ' MainForm
         ' 
         AutoScaleDimensions = New SizeF(8.0F, 20.0F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1782, 1053)
+        Controls.Add(visualizationTabs)
         Controls.Add(mainTabs)
         Controls.Add(splitWaveformArea)
         Controls.Add(transportControl)
@@ -540,6 +601,7 @@ Partial Class MainForm
         CType(trackInputVolume, ComponentModel.ISupportInitialize).EndInit()
         tabLogs.ResumeLayout(False)
         tabLogs.PerformLayout()
+        visualizationTabs.ResumeLayout(False)
         ResumeLayout(False)
         PerformLayout()
     End Sub
@@ -586,5 +648,10 @@ Partial Class MainForm
     Friend WithEvents lblLogLevel As Label
     Friend WithEvents trackInputVolume As TrackBar
     Friend WithEvents lblInputVolume As Label
+    Friend WithEvents visualizationTabs As TabControl
+    Friend WithEvents tabWaveform As TabPage
+    Friend WithEvents tabSpectrum As TabPage
+    Friend WithEvents tabPhase As TabPage
+    Friend WithEvents tabMeters As TabPage
 
 End Class
