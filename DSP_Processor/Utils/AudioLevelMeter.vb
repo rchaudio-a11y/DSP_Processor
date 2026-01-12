@@ -8,16 +8,16 @@ Namespace Utils
     Public Structure LevelData
         ''' <summary>Peak level in dB (-60 to 0)</summary>
         Public PeakDB As Single
-        
+
         ''' <summary>RMS (average) level in dB (-60 to 0)</summary>
         Public RMSDB As Single
-        
+
         ''' <summary>True if signal is clipping (>-0.3dB)</summary>
         Public IsClipping As Boolean
-        
+
         ''' <summary>Left channel peak in dB</summary>
         Public PeakLeftDB As Single
-        
+
         ''' <summary>Right channel peak in dB</summary>
         Public PeakRightDB As Single
     End Structure

@@ -13,6 +13,7 @@ Namespace AudioIO
         Private sampleRateValue As Integer
         Private channelsValue As Integer
         Private bitsValue As Integer
+        Private volumeValue As Single = 1.0F ' 0.0 to 1.0 (0% to 100%)
 
         Public Sub New(sampleRate As Integer, channels As String, bits As Integer, Optional deviceIndex As Integer = 0, Optional BufferMill As Integer = 20)
             sampleRateValue = sampleRate
@@ -52,8 +53,60 @@ Namespace AudioIO
                 ' Copy the buffer so NAudio can reuse its internal one
                 Dim copy(e.BytesRecorded - 1) As Byte
                 Buffer.BlockCopy(e.Buffer, 0, copy, 0, e.BytesRecorded)
+                
+                ' Apply volume adjustment if not 100%
+                If Math.Abs(volumeValue - 1.0F) > 0.001F Then
+                    ApplyVolume(copy, bitsValue)
+                End If
+                
                 bufferQueue.Enqueue(copy)
             End If
+        End Sub
+
+        Private Sub ApplyVolume(buffer() As Byte, bitDepth As Integer)
+            Select Case bitDepth
+                Case 16
+                    ' 16-bit signed samples
+                    For i As Integer = 0 To buffer.Length - 1 Step 2
+                        Dim sample As Short = BitConverter.ToInt16(buffer, i)
+                        Dim adjusted As Integer = CInt(sample * volumeValue)
+                        ' Clamp to prevent overflow
+                        adjusted = Math.Max(Short.MinValue, Math.Min(Short.MaxValue, adjusted))
+                        Dim bytes = BitConverter.GetBytes(CShort(adjusted))
+                        buffer(i) = bytes(0)
+                        buffer(i + 1) = bytes(1)
+                    Next
+                    
+                Case 24
+                    ' 24-bit samples (3 bytes per sample)
+                    For i As Integer = 0 To buffer.Length - 1 Step 3
+                        ' Read 24-bit sample (little-endian)
+                        Dim sample As Integer = buffer(i) Or (buffer(i + 1) << 8) Or (buffer(i + 2) << 16)
+                        ' Sign extend
+                        If (sample And &H800000) <> 0 Then
+                            sample = sample Or &HFF000000
+                        End If
+                        ' Apply volume
+                        Dim adjusted As Integer = CInt(sample * volumeValue)
+                        ' Clamp
+                        adjusted = Math.Max(&HFF800000, Math.Min(&H7FFFFF, adjusted))
+                        ' Write back
+                        buffer(i) = CByte(adjusted And &HFF)
+                        buffer(i + 1) = CByte((adjusted >> 8) And &HFF)
+                        buffer(i + 2) = CByte((adjusted >> 16) And &HFF)
+                    Next
+                    
+                Case 32
+                    ' 32-bit float samples
+                    For i As Integer = 0 To buffer.Length - 1 Step 4
+                        Dim sample As Single = BitConverter.ToSingle(buffer, i)
+                        Dim adjusted As Single = sample * volumeValue
+                        ' Clamp to prevent distortion
+                        adjusted = Math.Max(-1.0F, Math.Min(1.0F, adjusted))
+                        Dim bytes = BitConverter.GetBytes(adjusted)
+                        System.Buffer.BlockCopy(bytes, 0, buffer, i, 4)
+                    Next
+            End Select
         End Sub
 
         Public ReadOnly Property SampleRate As Integer Implements IInputSource.SampleRate
@@ -72,6 +125,16 @@ Namespace AudioIO
             Get
                 Return bitsValue
             End Get
+        End Property
+
+        Public Property Volume As Single
+            Get
+                Return volumeValue
+            End Get
+            Set(value As Single)
+                ' Clamp between 0.0 and 2.0 (allow up to 200% boost)
+                volumeValue = Math.Max(0.0F, Math.Min(2.0F, value))
+            End Set
         End Property
 
         Public Function Read(buffer() As Byte, offset As Integer, count As Integer) As Integer Implements IInputSource.Read

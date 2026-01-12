@@ -71,6 +71,7 @@ Namespace Visualization
         ''' </summary>
         Public Sub ClearCache() Implements IRenderer.ClearCache
             If cachedBitmap IsNot Nothing Then
+                Utils.Logger.Instance.Debug($"Disposing cached waveform bitmap: {cachedFilePath}", "WaveformRenderer")
                 cachedBitmap.Dispose()
                 cachedBitmap = Nothing
             End If
@@ -87,8 +88,11 @@ Namespace Visualization
                cachedFilePath = path AndAlso
                cachedWidth = width AndAlso
                cachedHeight = height Then
+                Utils.Logger.Instance.Debug($"Using cached waveform bitmap: {path}", "WaveformRenderer")
                 Return cachedBitmap
             End If
+
+            Utils.Logger.Instance.Debug($"Rendering waveform bitmap: {path} ({width}x{height})", "WaveformRenderer")
 
             ' Clear old cache
             ClearCache()
@@ -99,6 +103,7 @@ Namespace Visualization
             ' Use Using block to ensure file is closed properly
             Using reader As New AudioFileReader(path)
                 Dim channels = reader.WaveFormat.Channels
+                Utils.Logger.Instance.Debug($"Audio format: {channels}ch, {reader.WaveFormat.SampleRate}Hz, {reader.WaveFormat.BitsPerSample}-bit", "WaveformRenderer")
 
                 If channels >= 2 Then
                     bmp = RenderStereo(reader, width, height)
@@ -106,6 +111,8 @@ Namespace Visualization
                     bmp = RenderMono(reader, width, height)
                 End If
             End Using ' File is closed here
+            
+            Utils.Logger.Instance.Debug($"AudioFileReader disposed, file handle released: {path}", "WaveformRenderer")
             
             ' Force garbage collection to release file handle
             GC.Collect()
@@ -117,11 +124,15 @@ Namespace Visualization
             cachedWidth = width
             cachedHeight = height
 
+            Utils.Logger.Instance.Debug($"Waveform bitmap created and cached: {path}", "WaveformRenderer")
+
             Return bmp
         End Function
 
         Private Function RenderMono(reader As AudioFileReader, width As Integer, height As Integer) As Bitmap
+            Utils.Logger.Instance.Debug($"Rendering mono waveform: {width}x{height}", "WaveformRenderer")
             Dim bmp As New Bitmap(width, height)
+            Dim pixelsDrawn As Integer = 0
 
             Using g = Graphics.FromImage(bmp)
                 g.Clear(BackgroundColor)
@@ -168,13 +179,21 @@ Namespace Visualization
                     g.DrawLine(New Pen(ForegroundColor), x, yMax, x, yMin)
                     x += 1
                 End While
+                
+                pixelsDrawn = x
             End Using
+
+            Utils.Logger.Instance.Debug($"Mono waveform rendering complete: {pixelsDrawn} pixels drawn", "WaveformRenderer")
 
             Return bmp
         End Function
 
         Private Function RenderStereo(reader As AudioFileReader, width As Integer, height As Integer) As Bitmap
+            Utils.Logger.Instance.Debug($"Rendering stereo waveform: {width}x{height}", "WaveformRenderer")
             Dim bmp As New Bitmap(width, height)
+            Dim pixelsDrawn As Integer = 0
+            Dim peakL As Single = 0
+            Dim peakR As Single = 0
 
             Using g = Graphics.FromImage(bmp)
                 g.Clear(BackgroundColor)
@@ -243,7 +262,13 @@ Namespace Visualization
 
                     x += 1
                 End While
+                
+                pixelsDrawn = x
+                peakL = maxL
+                peakR = maxR
             End Using
+
+            Utils.Logger.Instance.Debug($"Stereo waveform rendering complete: {pixelsDrawn} pixels drawn (L:{peakL:F6}, R:{peakR:F6})", "WaveformRenderer")
 
             Return bmp
         End Function

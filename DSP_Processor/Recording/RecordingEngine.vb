@@ -18,7 +18,7 @@ Namespace Recording
         Private wavOut As WavFileOutput
         Private stopwatch As Stopwatch
         Private currentIndex As Integer = 1
-        Private isRecording As Boolean = False
+        Private recordingActive As Boolean = False
         Private lastProcessedBuffer As Byte() = Nothing
 
         ''' <summary>
@@ -31,11 +31,20 @@ Namespace Recording
         End Property
 
         ''' <summary>
+        ''' Gets whether recording is currently active
+        ''' </summary>
+        Public ReadOnly Property IsRecording As Boolean
+            Get
+                Return recordingActive
+            End Get
+        End Property
+
+        ''' <summary>
         ''' Gets the current recording duration
         ''' </summary>
         Public ReadOnly Property RecordingDuration As TimeSpan
             Get
-                If isRecording AndAlso stopwatch IsNot Nothing Then
+                If recordingActive AndAlso stopwatch IsNot Nothing Then
                     Return stopwatch.Elapsed
                 End If
                 Return TimeSpan.Zero
@@ -73,7 +82,7 @@ Namespace Recording
             wavOut = New WavFileOutput(fullPath, InputSource.SampleRate, InputSource.Channels, InputSource.BitsPerSample)
 
             stopwatch = Stopwatch.StartNew()
-            isRecording = True
+            recordingActive = True
 
             ' Immediately flush initial audio buffers in a tight loop
             ' Process 10 times with minimal delay to capture startup audio
@@ -83,7 +92,7 @@ Namespace Recording
         End Sub
 
         Public Sub StopRecording()
-            isRecording = False
+            recordingActive = False
             stopwatch?.Stop()
 
             Try
@@ -108,7 +117,7 @@ Namespace Recording
         End Sub
 
         Public Sub Process()
-            If Not isRecording Then Exit Sub
+            If Not recordingActive Then Exit Sub
 
             Dim buffer(4095) As Byte
             Dim read = InputSource.Read(buffer, 0, buffer.Length)

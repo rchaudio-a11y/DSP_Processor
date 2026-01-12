@@ -107,8 +107,11 @@ Namespace AudioIO
         Public Sub Load(filepath As String)
             ' Validate file exists
             If Not File.Exists(filepath) Then
+                Utils.Logger.Instance.Error($"Audio file not found: {filepath}", Nothing, "PlaybackEngine")
                 Throw New FileNotFoundException("Audio file not found", filepath)
             End If
+
+            Utils.Logger.Instance.Debug($"Loading audio file for playback: {Path.GetFileName(filepath)}", "PlaybackEngine")
 
             ' Clean up previous playback
             StopAndCleanup()
@@ -116,13 +119,17 @@ Namespace AudioIO
             ' Load new file - NO SAMPLE MONITORING, direct playback
             Try
                 _playbackReader = New AudioFileReader(filepath)
+                Utils.Logger.Instance.Debug($"AudioFileReader created: {_playbackReader.WaveFormat.SampleRate}Hz, {_playbackReader.WaveFormat.Channels}ch", "PlaybackEngine")
+                
                 _playbackOutput = New WaveOutEvent()
                 _playbackOutput.Init(_playbackReader)
+                Utils.Logger.Instance.Debug("WaveOutEvent initialized", "PlaybackEngine")
 
                 ' Subscribe to stop event
                 AddHandler _playbackOutput.PlaybackStopped, AddressOf OnPlaybackStoppedInternal
 
             Catch ex As Exception
+                Utils.Logger.Instance.Error($"Failed to load audio file: {ex.Message}", ex, "PlaybackEngine")
                 ' Clean up on error
                 StopAndCleanup()
                 Throw New ArgumentException("Failed to load audio file: " & ex.Message, ex)
@@ -191,6 +198,7 @@ Namespace AudioIO
         Private Sub StopAndCleanup()
             ' Stop playback
             If _playbackOutput IsNot Nothing Then
+                Utils.Logger.Instance.Debug("Stopping and disposing WaveOutEvent", "PlaybackEngine")
                 RemoveHandler _playbackOutput.PlaybackStopped, AddressOf OnPlaybackStoppedInternal
                 _playbackOutput.Stop()
                 _playbackOutput.Dispose()
@@ -199,6 +207,7 @@ Namespace AudioIO
 
             ' Close reader
             If _playbackReader IsNot Nothing Then
+                Utils.Logger.Instance.Debug("Disposing AudioFileReader", "PlaybackEngine")
                 _playbackReader.Dispose()
                 _playbackReader = Nothing
             End If
