@@ -55,6 +55,7 @@ Partial Class MainForm
         tabProgram = New TabPage()
         trackInputVolume = New TrackBar()
         lblInputVolume = New Label()
+        tabInput = New TabPage()
         tabRecording = New TabPage()
         tabAnalysis = New TabPage()
         tabLogs = New TabPage()
@@ -331,6 +332,7 @@ Partial Class MainForm
         mainTabs.Anchor = AnchorStyles.Top Or AnchorStyles.Bottom Or AnchorStyles.Left
         mainTabs.Controls.Add(tabFiles)
         mainTabs.Controls.Add(tabProgram)
+        mainTabs.Controls.Add(tabInput)
         mainTabs.Controls.Add(tabRecording)
         mainTabs.Controls.Add(tabAnalysis)
         mainTabs.Controls.Add(tabLogs)
@@ -338,7 +340,7 @@ Partial Class MainForm
         mainTabs.Multiline = True
         mainTabs.Name = "mainTabs"
         mainTabs.SelectedIndex = 0
-        mainTabs.Size = New Size(350, 505)
+        mainTabs.Size = New Size(442, 505)
         mainTabs.TabIndex = 8
         ' 
         ' tabFiles
@@ -351,7 +353,7 @@ Partial Class MainForm
         tabFiles.Location = New Point(4, 54)
         tabFiles.Name = "tabFiles"
         tabFiles.Padding = New Padding(3)
-        tabFiles.Size = New Size(342, 447)
+        tabFiles.Size = New Size(434, 447)
         tabFiles.TabIndex = 0
         tabFiles.Text = "📁 Files"
         ' 
@@ -373,7 +375,7 @@ Partial Class MainForm
         tabProgram.Location = New Point(4, 54)
         tabProgram.Name = "tabProgram"
         tabProgram.Padding = New Padding(3)
-        tabProgram.Size = New Size(342, 508)
+        tabProgram.Size = New Size(434, 447)
         tabProgram.TabIndex = 1
         tabProgram.Text = "⚙️ Program"
         ' 
@@ -396,13 +398,23 @@ Partial Class MainForm
         lblInputVolume.TabIndex = 21
         lblInputVolume.Text = "Input Volume: 100%"
         ' 
+        ' tabInput
+        ' 
+        tabInput.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabInput.Location = New Point(4, 54)
+        tabInput.Name = "tabInput"
+        tabInput.Padding = New Padding(3)
+        tabInput.Size = New Size(434, 447)
+        tabInput.TabIndex = 5
+        tabInput.Text = "🎚️ Input"
+        ' 
         ' tabRecording
         ' 
         tabRecording.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabRecording.Location = New Point(4, 54)
         tabRecording.Name = "tabRecording"
         tabRecording.Padding = New Padding(3)
-        tabRecording.Size = New Size(342, 359)
+        tabRecording.Size = New Size(342, 447)
         tabRecording.TabIndex = 2
         tabRecording.Text = "🎛️ Recording"
         ' 
@@ -412,7 +424,7 @@ Partial Class MainForm
         tabAnalysis.Location = New Point(4, 54)
         tabAnalysis.Name = "tabAnalysis"
         tabAnalysis.Padding = New Padding(3)
-        tabAnalysis.Size = New Size(342, 508)
+        tabAnalysis.Size = New Size(342, 447)
         tabAnalysis.TabIndex = 3
         tabAnalysis.Text = "📊 Analysis"
         ' 
@@ -429,7 +441,7 @@ Partial Class MainForm
         tabLogs.Name = "tabLogs"
         tabLogs.Padding = New Padding(3)
         tabLogs.Size = New Size(342, 447)
-        tabLogs.TabIndex = 4
+        tabLogs.TabIndex = 5
         tabLogs.Text = "📜 Logs"
         ' 
         ' txtLogViewer
@@ -564,6 +576,7 @@ Partial Class MainForm
     Friend WithEvents tabProgram As TabPage
     Friend WithEvents tabRecording As TabPage
     Friend WithEvents tabAnalysis As TabPage
+    Friend WithEvents tabInput As TabPage
     Friend WithEvents tabLogs As TabPage
     Friend WithEvents txtLogViewer As RichTextBox
     Friend WithEvents btnClearLogs As Button

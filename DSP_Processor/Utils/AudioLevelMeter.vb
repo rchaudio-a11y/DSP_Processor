@@ -25,15 +25,32 @@ Namespace Utils
     ''' <summary>
     ''' Analyzes PCM audio buffers and calculates peak and RMS levels in dB
     ''' Used for real-time volume metering during recording and playback
+    ''' Now with configurable metering parameters for professional control
     ''' </summary>
     ''' <remarks>
     ''' Created: Phase 0, Volume Meter Feature
+    ''' Updated: Phase 1, Input Settings Tab - Configurable Metering
     ''' Thread-safe and optimized for real-time operation
     ''' </remarks>
     Public NotInheritable Class AudioLevelMeter
 
         Private Const MinDB As Single = -60.0F
-        Private Const ClipThresholdDB As Single = -0.3F
+
+        ' Configurable metering parameters (static/shared)
+        Public Shared Property PeakHoldMs As Integer = 500
+        Public Shared Property PeakDecayDbPerSec As Single = 3.0F
+        Public Shared Property RmsWindowMs As Integer = 50
+        Public Shared Property AttackMs As Integer = 0
+        Public Shared Property ReleaseMs As Integer = 300
+        Public Shared Property ClipThresholdDb As Single = -0.1F
+
+        ' Peak hold/decay state tracking
+        Private Shared lastPeakTime As DateTime = DateTime.MinValue
+        Private Shared lastPeakValueDb As Single = MinDB
+
+        ' Attack/release smoothing state
+        Private Shared lastSmoothValueDb As Single = MinDB
+        Private Shared lastUpdateTime As DateTime = DateTime.Now
 
         ''' <summary>
         ''' Analyzes PCM audio buffer and returns level data
@@ -53,17 +70,116 @@ Namespace Utils
                 }
             End If
 
+            Dim rawData As LevelData
             Select Case bits
                 Case 16
-                    Return Analyze16Bit(buffer, channels)
+                    rawData = Analyze16Bit(buffer, channels)
                 Case 24
-                    Return Analyze24Bit(buffer, channels)
+                    rawData = Analyze24Bit(buffer, channels)
                 Case 32
-                    Return Analyze32Bit(buffer, channels)
+                    rawData = Analyze32Bit(buffer, channels)
                 Case Else
-                    Return Analyze16Bit(buffer, channels) ' Default fallback
+                    rawData = Analyze16Bit(buffer, channels) ' Default fallback
             End Select
+            
+            ' Apply peak hold and decay
+            rawData.PeakDB = ApplyPeakHoldAndDecay(rawData.PeakDB)
+            
+            ' Apply attack/release smoothing
+            rawData.PeakDB = ApplyAttackRelease(rawData.PeakDB)
+            
+            ' Update clipping based on threshold
+            rawData.IsClipping = (rawData.PeakDB >= ClipThresholdDb)
+            
+            Return rawData
         End Function
+        
+        ''' <summary>
+        ''' Apply peak hold and decay to the measured peak value
+        ''' </summary>
+        Private Shared Function ApplyPeakHoldAndDecay(currentDb As Single) As Single
+            Dim now = DateTime.Now
+            Dim timeSinceLastPeak = (now - lastPeakTime).TotalMilliseconds
+            
+            ' If new peak, update and hold
+            If currentDb > lastPeakValueDb Then
+                lastPeakValueDb = currentDb
+                lastPeakTime = now
+                Return currentDb
+            End If
+            
+            ' During hold time, return held peak
+            If timeSinceLastPeak < PeakHoldMs Then
+                Return Math.Max(currentDb, lastPeakValueDb)
+            End If
+            
+            ' After hold, apply decay
+            If PeakDecayDbPerSec >= 999.0F Then
+                ' Instant decay (effectively no hold after hold time)
+                lastPeakValueDb = currentDb
+                Return currentDb
+            End If
+            
+            Dim decayTimeSeconds = (timeSinceLastPeak - PeakHoldMs) / 1000.0F
+            Dim decayAmount = PeakDecayDbPerSec * decayTimeSeconds
+            Dim decayedPeak = lastPeakValueDb - decayAmount
+            
+            ' Return max of current or decayed peak
+            Dim result = Math.Max(currentDb, decayedPeak)
+            
+            ' Update last peak if it decayed
+            If result < lastPeakValueDb Then
+                lastPeakValueDb = result
+            End If
+            
+            Return result
+        End Function
+        
+        ''' <summary>
+        ''' Apply attack/release smoothing for meter ballistics
+        ''' </summary>
+        Private Shared Function ApplyAttackRelease(currentDb As Single) As Single
+            If AttackMs = 0 AndAlso ReleaseMs = 0 Then
+                lastSmoothValueDb = currentDb
+                Return currentDb ' Instant response
+            End If
+            
+            Dim now = DateTime.Now
+            Dim deltaTimeMs = (now - lastUpdateTime).TotalMilliseconds
+            lastUpdateTime = now
+            
+            ' Prevent division by zero and handle first call
+            If deltaTimeMs < 0.1 OrElse deltaTimeMs > 1000 Then
+                deltaTimeMs = 33.33 ' Assume ~30fps
+            End If
+            
+            ' Determine if rising (attack) or falling (release)
+            Dim timeConstantMs = If(currentDb > lastSmoothValueDb, AttackMs, ReleaseMs)
+            
+            If timeConstantMs = 0 Then
+                lastSmoothValueDb = currentDb
+                Return currentDb ' Instant for this direction
+            End If
+            
+            ' Calculate smoothing coefficient (exponential decay)
+            Dim alpha = CSng(1.0 - Math.Exp(-deltaTimeMs / timeConstantMs))
+            
+            ' Apply smoothing
+            lastSmoothValueDb = lastSmoothValueDb + alpha * (currentDb - lastSmoothValueDb)
+            
+            Return lastSmoothValueDb
+        End Function
+        
+        ''' <summary>
+        ''' Resets the peak hold and smoothing algorithms to their default state.
+        ''' Call this method when starting a new recording or when peak tracking needs to be reset.
+        ''' </summary>
+        Public Shared Sub Reset()
+            lastPeakTime = DateTime.MinValue
+            lastPeakValueDb = MinDB
+            lastSmoothValueDb = MinDB
+            lastUpdateTime = DateTime.Now
+        End Sub
 
         Private Shared Function Analyze16Bit(buffer As Byte(), channels As Integer) As LevelData
             Dim result As New LevelData
@@ -107,7 +223,7 @@ Namespace Utils
                 result.PeakRightDB = AmplitudeToDB(peakR)
                 result.PeakDB = Math.Max(result.PeakLeftDB, result.PeakRightDB)
                 result.RMSDB = AmplitudeToDB(CSng((rmsL + rmsR) / 2))
-                result.IsClipping = (result.PeakDB > ClipThresholdDB)
+                result.IsClipping = (result.PeakDB > ClipThresholdDb)
 
             Catch ex As Exception
                 ' Return silent on error
@@ -117,6 +233,17 @@ Namespace Utils
                 result.PeakRightDB = MinDB
                 result.IsClipping = False
             End Try
+
+
+            ' Apply attack/release smoothing
+            If lastUpdateTime <> DateTime.MinValue Then
+                Dim timeElapsed As Double = (DateTime.Now - lastUpdateTime).TotalMilliseconds
+                Dim attackFactor As Double = Math.Exp(-1.0 / (AttackMs * 0.001))
+                Dim releaseFactor As Double = Math.Exp(-1.0 / (ReleaseMs * 0.001))
+                result.RMSDB = CSng(If(result.RMSDB > lastSmoothValueDb, Math.Max(result.RMSDB, lastSmoothValueDb * attackFactor), Math.Min(result.RMSDB, lastSmoothValueDb * releaseFactor)))
+            End If
+            lastUpdateTime = DateTime.Now
+            lastSmoothValueDb = result.RMSDB
 
             Return result
         End Function
@@ -166,7 +293,7 @@ Namespace Utils
                 result.PeakRightDB = AmplitudeToDB(peakR)
                 result.PeakDB = Math.Max(result.PeakLeftDB, result.PeakRightDB)
                 result.RMSDB = AmplitudeToDB(CSng((rmsL + rmsR) / 2))
-                result.IsClipping = (result.PeakDB > ClipThresholdDB)
+                result.IsClipping = (result.PeakDB > ClipThresholdDb)
 
             Catch ex As Exception
                 result.PeakDB = MinDB
@@ -175,6 +302,17 @@ Namespace Utils
                 result.PeakRightDB = MinDB
                 result.IsClipping = False
             End Try
+
+
+            ' Apply attack/release smoothing
+            If lastUpdateTime <> DateTime.MinValue Then
+                Dim timeElapsed As Double = (DateTime.Now - lastUpdateTime).TotalMilliseconds
+                Dim attackFactor As Double = Math.Exp(-1.0 / (AttackMs * 0.001))
+                Dim releaseFactor As Double = Math.Exp(-1.0 / (ReleaseMs * 0.001))
+                result.RMSDB = CSng(If(result.RMSDB > lastSmoothValueDb, Math.Max(result.RMSDB, lastSmoothValueDb * attackFactor), Math.Min(result.RMSDB, lastSmoothValueDb * releaseFactor)))
+            End If
+            lastUpdateTime = DateTime.Now
+            lastSmoothValueDb = result.RMSDB
 
             Return result
         End Function
@@ -220,7 +358,7 @@ Namespace Utils
                 result.PeakRightDB = AmplitudeToDB(peakR)
                 result.PeakDB = Math.Max(result.PeakLeftDB, result.PeakRightDB)
                 result.RMSDB = AmplitudeToDB(CSng((rmsL + rmsR) / 2))
-                result.IsClipping = (result.PeakDB > ClipThresholdDB)
+                result.IsClipping = (result.PeakDB > ClipThresholdDb)
 
             Catch ex As Exception
                 result.PeakDB = MinDB
@@ -229,6 +367,17 @@ Namespace Utils
                 result.PeakRightDB = MinDB
                 result.IsClipping = False
             End Try
+
+
+            ' Apply attack/release smoothing
+            If lastUpdateTime <> DateTime.MinValue Then
+                Dim timeElapsed As Double = (DateTime.Now - lastUpdateTime).TotalMilliseconds
+                Dim attackFactor As Double = Math.Exp(-1.0 / (AttackMs * 0.001))
+                Dim releaseFactor As Double = Math.Exp(-1.0 / (ReleaseMs * 0.001))
+                result.RMSDB = CSng(If(result.RMSDB > lastSmoothValueDb, Math.Max(result.RMSDB, lastSmoothValueDb * attackFactor), Math.Min(result.RMSDB, lastSmoothValueDb * releaseFactor)))
+            End If
+            lastUpdateTime = DateTime.Now
+            lastSmoothValueDb = result.RMSDB
 
             Return result
         End Function

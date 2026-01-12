@@ -88,7 +88,188 @@ Partial Public Class MainForm
         Services.LoggingServiceAdapter.Instance.LogInfo("DSP Processor started successfully")
         Services.LoggingServiceAdapter.Instance.LogInfo($"Audio devices: {WaveIn.DeviceCount} input device(s) found")
 
+        ' Initialize Input Settings Tab
+        InitializeInputSettingsTab()
+
+        ' Initialize Recording Options Tab
+        InitializeRecordingOptionsTab()
+
         Logger.Instance.Info("DSP Processor started", "MainForm")
+    End Sub
+
+    Private inputTabPanel As UI.TabPanels.InputTabPanel
+    Private currentMeterSettings As Models.MeterSettings
+    
+    Private recordingOptionsPanel As UI.TabPanels.RecordingOptionsPanel
+    Private currentRecordingOptions As Models.RecordingOptions
+    
+    Private Sub InitializeInputSettingsTab()
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo("Initializing Input Settings tab...")
+
+            ' Create Input tab panel
+            inputTabPanel = New UI.TabPanels.InputTabPanel()
+            tabInput.Controls.Add(inputTabPanel)
+            inputTabPanel.Dock = DockStyle.Fill
+
+            ' Wire up events
+            AddHandler inputTabPanel.SettingsChanged, AddressOf OnMeterSettingsChanged
+
+            ' Load saved settings
+            currentMeterSettings = LoadMeterSettings()
+            inputTabPanel.LoadSettings(currentMeterSettings)
+            ApplyMeterSettings(currentMeterSettings)
+
+            Services.LoggingServiceAdapter.Instance.LogInfo("Input Settings tab initialized successfully")
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to initialize Input Settings tab: {ex.Message}", ex)
+            Logger.Instance.Error("Failed to initialize Input Settings tab", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Sub OnMeterSettingsChanged(sender As Object, settings As Models.MeterSettings)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Meter settings changed")
+
+        ' Apply to audio system
+        ApplyMeterSettings(settings)
+
+        ' Save settings
+        SaveMeterSettings(settings)
+        currentMeterSettings = settings
+    End Sub
+
+    Private Sub ApplyMeterSettings(settings As Models.MeterSettings)
+        Try
+            ' Apply to MicInputSource (volume)
+            If mic IsNot Nothing Then
+                mic.Volume = settings.InputVolumePercent / 100.0F
+                ' Update the UI slider too
+                trackInputVolume.Value = settings.InputVolumePercent
+                lblInputVolume.Text = $"Input Volume: {settings.InputVolumePercent}%"
+            End If
+
+            ' Apply to AudioLevelMeter (static properties)
+            AudioLevelMeter.PeakHoldMs = settings.PeakHoldMs
+            AudioLevelMeter.PeakDecayDbPerSec = settings.PeakDecayDbPerSec
+            AudioLevelMeter.RmsWindowMs = settings.RmsWindowMs
+            AudioLevelMeter.AttackMs = settings.AttackMs
+            AudioLevelMeter.ReleaseMs = settings.ReleaseMs
+            AudioLevelMeter.ClipThresholdDb = settings.ClipThresholdDb
+
+            ' Reset peak tracking when settings change
+            ' TODO: Add AudioLevelMeter.ResetPeakTracking() method
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Meter settings applied: Peak={settings.PeakHoldMs}ms, Decay={settings.PeakDecayDbPerSec}dB/s, RMS={settings.RmsWindowMs}ms")
+            Logger.Instance.Debug($"Meter settings: Peak={settings.PeakHoldMs}ms, Decay={settings.PeakDecayDbPerSec}dB/s", "MainForm")
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to apply meter settings: {ex.Message}", ex)
+            Logger.Instance.Error("Failed to apply meter settings", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Function LoadMeterSettings() As Models.MeterSettings
+        Dim settingsFile = Path.Combine(Application.StartupPath, "meter_settings.json")
+        If File.Exists(settingsFile) Then
+            Try
+                Dim json = File.ReadAllText(settingsFile)
+                Dim settings = Models.MeterSettings.FromJson(json)
+                Services.LoggingServiceAdapter.Instance.LogInfo("Meter settings loaded from file")
+                Return settings
+            Catch ex As Exception
+                Services.LoggingServiceAdapter.Instance.LogWarning($"Failed to load meter settings: {ex.Message}")
+                Logger.Instance.Warning("Failed to load meter settings, using defaults", "MainForm")
+            End Try
+        End If
+        Return New Models.MeterSettings() ' Defaults
+    End Function
+
+    Private Sub SaveMeterSettings(settings As Models.MeterSettings)
+        Dim settingsFile = Path.Combine(Application.StartupPath, "meter_settings.json")
+        Try
+            File.WriteAllText(settingsFile, settings.ToJson())
+            Services.LoggingServiceAdapter.Instance.LogInfo("Meter settings saved to file")
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to save meter settings: {ex.Message}", ex)
+            Logger.Instance.Error("Failed to save meter settings", ex, "MainForm")
+        End Try
+    End Sub
+    
+    Private Sub InitializeRecordingOptionsTab()
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo("Initializing Recording Options tab...")
+            
+            ' Create Recording Options panel
+            recordingOptionsPanel = New UI.TabPanels.RecordingOptionsPanel()
+            tabRecording.Controls.Add(recordingOptionsPanel)
+            recordingOptionsPanel.Dock = DockStyle.Fill
+            
+            ' Wire up events
+            AddHandler recordingOptionsPanel.OptionsChanged, AddressOf OnRecordingOptionsChanged
+            
+            ' Load saved options
+            currentRecordingOptions = LoadRecordingOptions()
+            recordingOptionsPanel.LoadOptions(currentRecordingOptions)
+            ApplyRecordingOptions(currentRecordingOptions)
+            
+            Services.LoggingServiceAdapter.Instance.LogInfo("Recording Options tab initialized successfully")
+            
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to initialize Recording Options tab: {ex.Message}", ex)
+            Logger.Instance.Error("Failed to initialize Recording Options tab", ex, "MainForm")
+        End Try
+    End Sub
+    
+    Private Sub OnRecordingOptionsChanged(sender As Object, options As Models.RecordingOptions)
+        Services.LoggingServiceAdapter.Instance.LogInfo($"Recording options changed: {options.Mode} mode")
+        
+        ' Apply to recorder
+        ApplyRecordingOptions(options)
+        
+        ' Save options
+        SaveRecordingOptions(options)
+        currentRecordingOptions = options
+    End Sub
+    
+    Private Sub ApplyRecordingOptions(options As Models.RecordingOptions)
+        Try
+            If recorder IsNot Nothing Then
+                recorder.Options = options
+                Services.LoggingServiceAdapter.Instance.LogInfo($"Recording mode: {options.GetDescription()}")
+                Logger.Instance.Info($"Recording options applied: {options.Mode}", "MainForm")
+            End If
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to apply recording options: {ex.Message}", ex)
+            Logger.Instance.Error("Failed to apply recording options", ex, "MainForm")
+        End Try
+    End Sub
+    
+    Private Function LoadRecordingOptions() As Models.RecordingOptions
+        Dim settingsFile = Path.Combine(Application.StartupPath, "recording_options.json")
+        If File.Exists(settingsFile) Then
+            Try
+                Dim json = File.ReadAllText(settingsFile)
+                Dim options = Models.RecordingOptions.FromJson(json)
+                Services.LoggingServiceAdapter.Instance.LogInfo("Recording options loaded from file")
+                Return options
+            Catch ex As Exception
+                Services.LoggingServiceAdapter.Instance.LogWarning($"Failed to load recording options: {ex.Message}")
+                Logger.Instance.Warning("Failed to load recording options, using defaults", "MainForm")
+            End Try
+        End If
+        Return New Models.RecordingOptions() ' Defaults
+    End Function
+    
+    Private Sub SaveRecordingOptions(options As Models.RecordingOptions)
+        Dim settingsFile = Path.Combine(Application.StartupPath, "recording_options.json")
+        Try
+            File.WriteAllText(settingsFile, options.ToJson())
+            Services.LoggingServiceAdapter.Instance.LogInfo("Recording options saved to file")
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to save recording options: {ex.Message}", ex)
+            Logger.Instance.Error("Failed to save recording options", ex, "MainForm")
+        End Try
     End Sub
 
     ''' <summary>
@@ -207,6 +388,32 @@ Partial Public Class MainForm
         Dim fullPath = Path.Combine(Application.StartupPath, "Recordings", fileName)
 
         Try
+            ' Check if file is currently being recorded
+            If recorder IsNot Nothing AndAlso recorder.IsRecording Then
+                Services.LoggingServiceAdapter.Instance.LogWarning("Cannot play file while recording is active")
+                MessageBox.Show("Cannot play file while recording is in progress.", "Recording Active", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                Return
+            End If
+            
+            ' Extra safety: ensure file exists and is not locked
+            If Not File.Exists(fullPath) Then
+                Services.LoggingServiceAdapter.Instance.LogError($"File not found: {fileName}")
+                MessageBox.Show($"File not found: {fileName}", "File Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+                RefreshRecordingList() ' Refresh to remove stale entries
+                Return
+            End If
+            
+            ' Try to open file exclusively to check if it's locked
+            Try
+                Using fs As New FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read)
+                    ' File is accessible
+                End Using
+            Catch ex As IOException
+                Services.LoggingServiceAdapter.Instance.LogWarning($"File is locked or in use: {fileName}")
+                MessageBox.Show($"File is currently in use or locked. Please wait a moment and try again.", "File Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                Return
+            End Try
+
             Services.LoggingServiceAdapter.Instance.LogInfo($"Loading file for playback: {fileName}")
 
             playbackEngine.Load(fullPath)
@@ -316,7 +523,7 @@ Partial Public Class MainForm
                         picWaveform.Image = Nothing
                         oldImage.Dispose()
                     End If
-                    
+
                     ' Clear renderer cache
                     Services.LoggingServiceAdapter.Instance.LogDebug("Clearing waveform renderer cache")
                     waveformRenderer.ClearCache()
@@ -399,7 +606,27 @@ Partial Public Class MainForm
 
         Try
             Services.LoggingServiceAdapter.Instance.LogInfo($"Rendering waveform for: {fileName}")
+
+            ' Check if file exists and is accessible
+            If Not File.Exists(fullPath) Then
+                Services.LoggingServiceAdapter.Instance.LogWarning($"File not found: {fileName}")
+                Return
+            End If
             
+            ' Check file size - if it's tiny, it's probably empty/corrupt
+            Dim fileInfo As New FileInfo(fullPath)
+            If fileInfo.Length < 100 Then
+                Services.LoggingServiceAdapter.Instance.LogWarning($"File too small to render waveform: {fileName} ({fileInfo.Length} bytes)")
+                ' Clear the picture box and show message
+                If picWaveform.Image IsNot Nothing Then
+                    Dim oldImage = picWaveform.Image
+                    picWaveform.Image = Nothing
+                    oldImage.Dispose()
+                End If
+                ' You could create a "No Waveform" placeholder image here if desired
+                Return
+            End If
+
             ' Dispose of old image before rendering new one
             If picWaveform.Image IsNot Nothing Then
                 Services.LoggingServiceAdapter.Instance.LogDebug("Disposing old waveform image before rendering new one")
@@ -407,13 +634,29 @@ Partial Public Class MainForm
                 picWaveform.Image = Nothing
                 oldImage.Dispose()
             End If
-            
+
             Using timer = Logger.Instance.StartTimer("Waveform Rendering")
                 Dim waveform = waveformRenderer.Render(fullPath, picWaveform.Width, picWaveform.Height)
-                picWaveform.Image = waveform
+                
+                ' Validate the bitmap before assigning
+                If waveform IsNot Nothing AndAlso waveform.Width > 0 AndAlso waveform.Height > 0 Then
+                    picWaveform.Image = waveform
+                Else
+                    Services.LoggingServiceAdapter.Instance.LogWarning($"Invalid waveform bitmap created for: {fileName}")
+                    waveform?.Dispose()
+                End If
             End Using
-            
+
             Services.LoggingServiceAdapter.Instance.LogInfo($"Waveform rendered successfully: {fileName}")
+        Catch ex As ArgumentException When ex.Message.Contains("Parameter is not valid")
+            ' This specific error happens with invalid bitmaps
+            Services.LoggingServiceAdapter.Instance.LogWarning($"Cannot render waveform for '{fileName}': Invalid or corrupt audio file")
+            ' Clear the picture box
+            If picWaveform.Image IsNot Nothing Then
+                Dim oldImage = picWaveform.Image
+                picWaveform.Image = Nothing
+                oldImage.Dispose()
+            End If
         Catch ex As Exception
             Services.LoggingServiceAdapter.Instance.LogError($"Failed to render waveform for '{fileName}': {ex.Message}", ex)
             Logger.Instance.Error("Failed to render waveform", ex, "MainForm")
@@ -526,7 +769,18 @@ Partial Public Class MainForm
 
             ' Start recording - mic is already capturing, now we write to file!
             recorder.InputSource = mic
-            recorder.StartRecording()
+            
+            ' Check recording mode and start appropriately
+            Select Case recorder.Options.Mode
+                Case Models.RecordingMode.LoopMode
+                    ' Start loop recording
+                    recorder.StartLoopRecording()
+                    Services.LoggingServiceAdapter.Instance.LogInfo($"Loop recording started: {recorder.Options.LoopCount} takes")
+                    
+                Case Else
+                    ' Manual or Timed mode
+                    recorder.StartRecording()
+            End Select
 
             ' Verify recording actually started
             If Not recorder.IsRecording Then
@@ -536,7 +790,7 @@ Partial Public Class MainForm
             ' Update transport control
             transportControl.State = UI.TransportControl.TransportState.Recording
 
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Recording started successfully (IsRecording={recorder.IsRecording})")
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Recording started successfully (Mode={recorder.Options.Mode}, IsRecording={recorder.IsRecording})")
             Logger.Instance.Info($"Recording started (mic was already armed), IsRecording={recorder.IsRecording}", "MainForm")
 
         Catch ex As Exception
@@ -562,8 +816,16 @@ Partial Public Class MainForm
             Services.LoggingServiceAdapter.Instance.LogInfo("Playback stopped")
         ElseIf recorder.IsRecording Then
             Services.LoggingServiceAdapter.Instance.LogInfo("Stopping recording...")
-            ' Stop recording
-            recorder.StopRecording()
+            
+            ' Check if in loop mode
+            If recorder.Options.Mode = Models.RecordingMode.LoopMode Then
+                recorder.CancelLoopRecording()
+                Services.LoggingServiceAdapter.Instance.LogInfo("Loop recording cancelled")
+            Else
+                ' Normal stop
+                recorder.StopRecording()
+            End If
+            
             RefreshRecordingList()
 
             ' Reset recording meter
@@ -621,9 +883,19 @@ Partial Public Class MainForm
 
     Private Sub TimerAudio_Tick(sender As Object, e As EventArgs) Handles TimerAudio.Tick
         Try
+            ' Track if we were recording before Process() call
+            Dim wasRecording = recorder IsNot Nothing AndAlso recorder.IsRecording
+            
             ' If we're recording, let the recorder handle everything
             If recorder IsNot Nothing AndAlso recorder.InputSource IsNot Nothing Then
                 recorder.Process()
+                
+                ' Check if recording just stopped (loop take completed)
+                Dim isRecording = recorder.IsRecording
+                If wasRecording AndAlso Not isRecording AndAlso recorder.Options.Mode = Models.RecordingMode.LoopMode Then
+                    ' Loop take just completed, refresh file list
+                    RefreshRecordingList()
+                End If
 
                 ' Update recording timer
                 Dim duration = recorder.RecordingDuration
