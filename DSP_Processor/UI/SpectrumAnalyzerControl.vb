@@ -111,7 +111,7 @@ Namespace UI
 
             ' Handle resize to keep splitter centered
             AddHandler Me.Resize, AddressOf OnControlResize
-            
+
             ' Set initial splitter position when control is first laid out
             AddHandler Me.Layout, Sub(s, ev)
                                       If splitSpectrum.Width > 0 Then

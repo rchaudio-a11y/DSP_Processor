@@ -12,17 +12,10 @@ Partial Public Class MainForm
     Private settingsManager As SettingsManager
     Private fileManager As FileManager
     Private recordingManager As RecordingManager
-    
-    ' Existing components (not yet refactored)
-    Private playbackEngine As PlaybackEngine
-    Private waveformRenderer As WaveformRenderer
+    Private playbackManager As PlaybackManager
 
     ' FFT processing for spectrum display
     Private fftProcessor As DSP.FFT.FFTProcessor
-
-    ' UI Panels
-    Private inputTabPanel As UI.TabPanels.InputTabPanel
-    Private recordingOptionsPanel As UI.TabPanels.RecordingOptionsPanel
 
     Private Sub MainForm_Load(sender As Object, e As EventArgs) Handles MyBase.Load
 
@@ -33,13 +26,9 @@ Partial Public Class MainForm
         ' Create managers
         InitializeManagers()
 
-        ' Create playback/rendering components BEFORE wiring events
-        playbackEngine = New PlaybackEngine()
-        waveformRenderer = New WaveformRenderer() With {
-            .BackgroundColor = Color.Black,
-            .ForegroundColor = Color.Lime,
-            .RightChannelColor = Color.Cyan
-        }
+        ' Create playback manager BEFORE wiring events
+        playbackManager = New PlaybackManager()
+        playbackManager.Initialize()
 
         ' Create FFT processor for spectrum analysis
         fftProcessor = New DSP.FFT.FFTProcessor(4096) With {
@@ -49,19 +38,21 @@ Partial Public Class MainForm
 
         ' NOW wire up events (all objects exist!)
         WireManagerEvents()
-        WirePlaybackEvents()      ' ✅ Safe now - playbackEngine exists
-        WireTransportEvents()     ' ✅ Safe - transportControl from designer
+        WirePlaybackEvents()
+        WireTransportEvents()
         WireUIEvents()
+        WireAudioSettingsPanel()
+        WireInputTabPanel()
 
         ' Load all settings (this will trigger OnSettingsLoaded event)
         settingsManager.LoadAll()
 
-        ' Populate UI controls with current settings
-        PopulateUIControls()
+        ' Apply settings to AudioSettingsPanel and InputTabPanel
+        AudioSettingsPanel1.LoadSettings(settingsManager.AudioSettings)
+        InputTabPanel1.LoadSettings(settingsManager.MeterSettings)
 
-        ' Initialize UI tabs
-        InitializeInputSettingsTab()
-        InitializeRecordingOptionsTab()
+        ' Apply meter settings
+        ApplyMeterSettings(settingsManager.MeterSettings)
 
         ' Apply dark theme to visualization tabs
         DarkTheme.ApplyToControl(visualizationTabs)
@@ -75,6 +66,10 @@ Partial Public Class MainForm
         trackMaxFreq.Value = 12000
         lblMinFreqValue.Text = "20 Hz"
         lblMaxFreqValue.Text = "12000 Hz"
+
+        ' Initialize volume controls
+        trackVolume.Value = 100
+        lblVolume.Text = "100%"
 
         ' NOTE: Microphone will be armed after settings are loaded (in OnSettingsLoaded)
 
@@ -101,46 +96,6 @@ Partial Public Class MainForm
         Logger.Instance.Info("RecordingManager created", "MainForm")
     End Sub
 
-    Private Sub PopulateUIControls()
-        ' Populate dropdowns
-        PopulateInputDevices()
-        PopulateSampleRates()
-        PopulateBitDepths()
-        PopulateChannelModes()
-        PopulateBufferSizes()
-
-        ' Set defaults from settings
-        SetUIFromSettings(settingsManager.AudioSettings)
-
-        ' Initialize volume controls
-        trackVolume.Value = 100
-        lblVolume.Text = "100%"
-        trackInputVolume.Value = settingsManager.MeterSettings.InputVolumePercent
-        lblInputVolume.Text = $"Input Volume: {trackInputVolume.Value}%"
-    End Sub
-
-    Private Sub SetUIFromSettings(settings As AudioDeviceSettings)
-        ' Set combo box selections from saved settings
-        If settings.InputDeviceIndex < cmbInputDevices.Items.Count Then
-            cmbInputDevices.SelectedIndex = settings.InputDeviceIndex
-        End If
-
-        ' Set sample rate
-        Dim rateIndex = Array.IndexOf({8000, 11025, 16000, 22050, 32000, 44100, 48000, 96000}, settings.SampleRate)
-        If rateIndex >= 0 Then cmbSampleRates.SelectedIndex = rateIndex
-
-        ' Set bit depth
-        Dim depthIndex = Array.IndexOf({8, 16, 24, 32}, settings.BitDepth)
-        If depthIndex >= 0 Then cmbBitDepths.SelectedIndex = depthIndex
-
-        ' Set channels
-        cmbChannelMode.SelectedIndex = If(settings.Channels = 1, 0, 1)
-
-        ' Set buffer size
-        Dim bufferIndex = Array.IndexOf({10, 20, 30, 50, 100, 200}, settings.BufferMilliseconds)
-        If bufferIndex >= 0 Then cmbBufferSize.SelectedIndex = bufferIndex
-    End Sub
-
     Private Sub WireManagerEvents()
         ' SettingsManager events
         AddHandler settingsManager.SettingsLoaded, AddressOf OnSettingsLoaded
@@ -160,8 +115,9 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub WirePlaybackEvents()
-        AddHandler playbackEngine.PlaybackStopped, AddressOf OnPlaybackStopped
-        AddHandler playbackEngine.PositionChanged, AddressOf OnPositionChanged
+        AddHandler playbackManager.PlaybackStarted, AddressOf OnPlaybackStarted
+        AddHandler playbackManager.PlaybackStopped, AddressOf OnPlaybackStopped
+        AddHandler playbackManager.PositionChanged, AddressOf OnPositionChanged
     End Sub
 
     Private Sub WireTransportEvents()
@@ -177,6 +133,18 @@ Partial Public Class MainForm
         AddHandler Services.LoggingServiceAdapter.Instance.LogMessageReceived, AddressOf OnLogMessage
     End Sub
 
+    Private Sub WireAudioSettingsPanel()
+        ' Wire up AudioSettingsPanel event
+        AddHandler AudioSettingsPanel1.SettingsChanged, AddressOf OnAudioSettingsChanged
+        Logger.Instance.Info("AudioSettingsPanel wired", "MainForm")
+    End Sub
+
+    Private Sub WireInputTabPanel()
+        ' Wire up InputTabPanel event
+        AddHandler InputTabPanel1.SettingsChanged, AddressOf OnMeterSettingsChanged
+        Logger.Instance.Info("InputTabPanel wired", "MainForm")
+    End Sub
+
 #End Region
 
 #Region "Manager Event Handlers"
@@ -186,6 +154,13 @@ Partial Public Class MainForm
 
         ' Initialize recording manager with settings
         recordingManager.Initialize(settingsManager.AudioSettings, settingsManager.RecordingOptions)
+
+        ' Load options into RecordingOptionsPanel
+        RecordingOptionsPanel1.LoadOptions(settingsManager.RecordingOptions)
+        recordingManager.Options = settingsManager.RecordingOptions
+
+        ' Wire up RecordingOptionsPanel event
+        AddHandler RecordingOptionsPanel1.OptionsChanged, AddressOf OnRecordingOptionsChanged
 
         ' Now arm the microphone
         Try
@@ -253,10 +228,6 @@ Partial Public Class MainForm
         ' Reset meter
         meterRecording.Reset()
 
-        ' Clear spectrum displays (optional - comment out to keep last frame visible)
-        ' SpectrumAnalyzerControl1.InputDisplay.Clear()
-        ' SpectrumAnalyzerControl1.OutputDisplay.Clear()
-
         ' Refresh file list
         fileManager.RefreshFileList()
 
@@ -288,7 +259,6 @@ Partial Public Class MainForm
             If spectrum IsNot Nothing AndAlso spectrum.Length > 0 Then
                 ' Feed live audio to INPUT display (PRE - before processing)
                 SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrum, e.SampleRate, fftProcessor.FFTSize)
-                ' OUTPUT display (POST) would show processed audio if DSP was applied
             End If
         Catch
             ' Ignore metering/FFT errors
@@ -309,28 +279,27 @@ Partial Public Class MainForm
 
 #End Region
 
-    Private Sub InitializeInputSettingsTab()
-        Try
-            Services.LoggingServiceAdapter.Instance.LogInfo("Initializing Input Settings tab...")
+#Region "UserControl Event Handlers"
 
-            ' Create Input tab panel
-            inputTabPanel = New UI.TabPanels.InputTabPanel()
-            tabInput.Controls.Add(inputTabPanel)
-            inputTabPanel.Dock = DockStyle.Fill
+    ''' <summary>Handles audio settings changes from AudioSettingsPanel</summary>
+    Private Sub OnAudioSettingsChanged(sender As Object, settings As Managers.AudioDeviceSettings)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Audio settings changed via AudioSettingsPanel")
 
-            ' Wire up events
-            AddHandler inputTabPanel.SettingsChanged, AddressOf OnMeterSettingsChanged
+        ' Update settings manager
+        settingsManager.AudioSettings = settings
 
-            ' Load settings and apply
-            inputTabPanel.LoadSettings(settingsManager.MeterSettings)
-            ApplyMeterSettings(settingsManager.MeterSettings)
+        ' Apply to recording manager (will re-arm mic with new settings)
+        If recordingManager IsNot Nothing Then
+            recordingManager.Initialize(settings, settingsManager.RecordingOptions)
+            Try
+                recordingManager.ArmMicrophone()
+            Catch ex As Exception
+                Services.LoggingServiceAdapter.Instance.LogError($"Failed to re-arm microphone with new settings: {ex.Message}", ex)
+            End Try
+        End If
 
-            Services.LoggingServiceAdapter.Instance.LogInfo("Input Settings tab initialized successfully")
-
-        Catch ex As Exception
-            Services.LoggingServiceAdapter.Instance.LogError($"Failed to initialize Input Settings tab: {ex.Message}", ex)
-            Logger.Instance.Error("Failed to initialize Input Settings tab", ex, "MainForm")
-        End Try
+        ' Save settings
+        settingsManager.SaveAll()
     End Sub
 
     Private Sub OnMeterSettingsChanged(sender As Object, settings As Models.MeterSettings)
@@ -351,10 +320,6 @@ Partial Public Class MainForm
             ' Apply to RecordingManager
             recordingManager.InputVolume = settings.InputVolumePercent / 100.0F
 
-            ' Update UI
-            trackInputVolume.Value = settings.InputVolumePercent
-            lblInputVolume.Text = $"Input Volume: {settings.InputVolumePercent}%"
-
             ' Apply to AudioLevelMeter (static properties)
             AudioLevelMeter.PeakHoldMs = settings.PeakHoldMs
             AudioLevelMeter.PeakDecayDbPerSec = settings.PeakDecayDbPerSec
@@ -371,30 +336,6 @@ Partial Public Class MainForm
         End Try
     End Sub
 
-    Private Sub InitializeRecordingOptionsTab()
-        Try
-            Services.LoggingServiceAdapter.Instance.LogInfo("Initializing Recording Options tab...")
-
-            ' Create Recording Options panel
-            recordingOptionsPanel = New UI.TabPanels.RecordingOptionsPanel()
-            tabRecording.Controls.Add(recordingOptionsPanel)
-            recordingOptionsPanel.Dock = DockStyle.Fill
-
-            ' Wire up events
-            AddHandler recordingOptionsPanel.OptionsChanged, AddressOf OnRecordingOptionsChanged
-
-            ' Load options and apply
-            recordingOptionsPanel.LoadOptions(settingsManager.RecordingOptions)
-            recordingManager.Options = settingsManager.RecordingOptions
-
-            Services.LoggingServiceAdapter.Instance.LogInfo("Recording Options tab initialized successfully")
-
-        Catch ex As Exception
-            Services.LoggingServiceAdapter.Instance.LogError($"Failed to initialize Recording Options tab: {ex.Message}", ex)
-            Logger.Instance.Error("Failed to initialize Recording Options tab", ex, "MainForm")
-        End Try
-    End Sub
-
     Private Sub OnRecordingOptionsChanged(sender As Object, options As Models.RecordingOptions)
         Services.LoggingServiceAdapter.Instance.LogInfo($"Recording options changed: {options.Mode} mode")
 
@@ -408,110 +349,9 @@ Partial Public Class MainForm
         settingsManager.SaveAll()
     End Sub
 
-    Private Sub PopulateInputDevices()
-        cmbInputDevices.Items.Clear()
-        For i = 0 To WaveIn.DeviceCount - 1
-            Dim caps = WaveIn.GetCapabilities(i)
-            cmbInputDevices.Items.Add($"{i}: {caps.ProductName}")
-        Next
-        If cmbInputDevices.Items.Count > 0 Then
-            cmbInputDevices.SelectedIndex = 0
-        End If
-    End Sub
+#End Region
 
-    Private Sub PopulateSampleRates()
-        cmbSampleRates.Items.Clear()
-        Dim rates = New Integer() {8000, 11025, 16000, 22050, 32000, 44100, 48000, 96000}
-        Dim Rate As Integer
-        For Each Rate In rates
-            cmbSampleRates.Items.Add(Rate.ToString())
-        Next
-        cmbSampleRates.SelectedIndex = 5 ' Default to 44100 Hz
-    End Sub
-
-    Private Sub PopulateBitDepths()
-        cmbBitDepths.Items.Clear()
-        Dim depths = New Integer() {8, 16, 24, 32}
-        Dim Depth As Integer
-        For Each Depth In depths
-            cmbBitDepths.Items.Add(Depth.ToString())
-        Next
-        cmbBitDepths.SelectedIndex = 1 ' Default to 16-bit
-    End Sub
-
-    Private Sub PopulateChannelModes()
-        cmbChannelMode.Items.Clear()
-        cmbChannelMode.Items.Add("Mono (1)")
-        cmbChannelMode.Items.Add("Stereo (2)")
-        cmbChannelMode.SelectedIndex = 1 ' Default to Stereo
-    End Sub
-
-    Private Sub RefreshRecordingList()
-        Dim folder = Path.Combine(Application.StartupPath, "Recordings")
-        lstRecordings.Items.Clear()
-
-        If Directory.Exists(folder) Then
-            Dim fileCount = 0
-            For Each file In Directory.GetFiles(folder, "*.wav")
-                lstRecordings.Items.Add(Path.GetFileName(file))
-                fileCount += 1
-            Next
-
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Recording list refreshed: {fileCount} file(s) found")
-        Else
-            Services.LoggingServiceAdapter.Instance.LogWarning($"Recordings folder not found: {folder}")
-        End If
-    End Sub
-
-    Private Sub PopulateBufferSizes()
-        cmbBufferSize.Items.Clear()
-        ' These are buffer sizes in MILLISECONDS for NAudio
-        Dim sizes = New Integer() {10, 20, 30, 50, 100, 200}
-        Dim Size As Integer
-        For Each Size In sizes
-            cmbBufferSize.Items.Add(Size.ToString())
-        Next
-        cmbBufferSize.SelectedIndex = 1 ' Default to 20ms
-    End Sub
-
-    ''' <summary>
-    ''' Pre-warms NAudio drivers by briefly initializing and releasing audio device.
-    ''' This eliminates the "cold start" delay on first recording.
-    ''' </summary>
-    Private Sub PreWarmAudioDrivers()
-        Try
-            Services.LoggingServiceAdapter.Instance.LogInfo("Pre-warming audio drivers...")
-
-            Dim deviceIndex = cmbInputDevices.SelectedIndex
-            If deviceIndex < 0 Then
-                Services.LoggingServiceAdapter.Instance.LogWarning("No audio device selected for pre-warming")
-                Return
-            End If
-
-            Dim sampleRate = 44100
-            Dim bits = 16
-            Dim channels = 2
-
-            Logger.Instance.Debug("Pre-warming audio drivers...", "MainForm")
-
-            Using tempWaveIn As New WaveInEvent() With {
-                .DeviceNumber = deviceIndex,
-                .WaveFormat = New WaveFormat(sampleRate, bits, channels),
-                .BufferMilliseconds = 20
-            }
-                tempWaveIn.StartRecording()
-                System.Threading.Thread.Sleep(50)
-                tempWaveIn.StopRecording()
-            End Using
-
-            Services.LoggingServiceAdapter.Instance.LogInfo("Audio drivers pre-warmed successfully")
-            Logger.Instance.Debug("Audio drivers pre-warmed successfully", "MainForm")
-
-        Catch ex As Exception
-            Services.LoggingServiceAdapter.Instance.LogWarning($"Failed to pre-warm audio drivers: {ex.Message}")
-            Logger.Instance.Warning($"Failed to pre-warm audio drivers: {ex.Message}", "MainForm")
-        End Try
-    End Sub
+#Region "File Operations"
 
     Private Sub lstRecordings_DoubleClick(sender As Object, e As EventArgs) Handles lstRecordings.DoubleClick
         If lstRecordings.SelectedItem Is Nothing Then Return
@@ -520,50 +360,11 @@ Partial Public Class MainForm
         Dim fullPath = Path.Combine(Application.StartupPath, "Recordings", fileName)
 
         Try
-            ' Extra safety: ensure file exists and is not locked
-            If Not File.Exists(fullPath) Then
-                Services.LoggingServiceAdapter.Instance.LogError($"File not found: {fileName}")
-                MessageBox.Show($"File not found: {fileName}", "File Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
-                RefreshRecordingList() ' Refresh to remove stale entries
-                Return
-            End If
-
-            ' Try to open file to check if it's locked (with retry for recently stopped recordings)
-            Dim maxRetries As Integer = 3
-            Dim retryDelay As Integer = 100 ' ms
-            Dim fileAccessible As Boolean = False
-
-            For attempt = 1 To maxRetries
-                Try
-                    Using fs As New FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read)
-                        ' File is accessible
-                        fileAccessible = True
-                        Exit For
-                    End Using
-                Catch ex As IOException
-                    ' File might still be closing from recording
-                    If attempt < maxRetries Then
-                        Services.LoggingServiceAdapter.Instance.LogDebug($"File temporarily locked, retrying... (attempt {attempt}/{maxRetries})")
-                        System.Threading.Thread.Sleep(retryDelay)
-                    End If
-                End Try
-            Next
-
-            If Not fileAccessible Then
-                Services.LoggingServiceAdapter.Instance.LogWarning($"File is locked or in use: {fileName}")
-                MessageBox.Show($"File is currently in use. Please wait a moment and try again.", "File Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning)
-                Return
-            End If
-
             Services.LoggingServiceAdapter.Instance.LogInfo($"Loading file for playback: {fileName}")
 
-            playbackEngine.Load(fullPath)
-
-            ' Apply current volume from slider BEFORE starting playback
-            Dim volumePercent = trackVolume.Value
-            playbackEngine.Volume = volumePercent / 100.0F
-
-            playbackEngine.Play()
+            ' Use PlaybackManager to handle everything
+            playbackManager.Volume = trackVolume.Value / 100.0F
+            playbackManager.LoadAndPlay(fullPath)
 
             panelLED.BackColor = Color.RoyalBlue
             lblStatus.Text = $"Status: Playing {fileName}"
@@ -573,65 +374,11 @@ Partial Public Class MainForm
             ' Enable stop button
             btnStopPlayback.Enabled = True
 
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Playback started: {fileName} (Volume: {volumePercent}%)")
-
         Catch ex As Exception
             Services.LoggingServiceAdapter.Instance.LogError($"Failed to play file '{fileName}': {ex.Message}", ex)
             MessageBox.Show($"Failed to play file: {ex.Message}", "Playback Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
         End Try
     End Sub
-
-    Private Sub btnStopPlayback_Click(sender As Object, e As EventArgs) Handles btnStopPlayback.Click
-        ' Stop playback
-        If playbackEngine IsNot Nothing Then
-            playbackEngine.Stop()
-        End If
-
-        ' Update UI
-        panelLED.BackColor = DarkTheme.SuccessGreen
-        lblStatus.Text = "Status: Ready (Mic Armed)"
-        TimerPlayback.Stop()
-        progressPlayback.Value = 0
-        btnStopPlayback.Enabled = False
-    End Sub
-
-    Private Sub trackVolume_Scroll(sender As Object, e As EventArgs) Handles trackVolume.Scroll
-        ' Update playback volume
-        If playbackEngine IsNot Nothing Then
-            Dim volumePercent = trackVolume.Value
-            playbackEngine.Volume = volumePercent / 100.0F
-            lblVolume.Text = $"{volumePercent}%"
-
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Playback volume changed: {volumePercent}%")
-        End If
-    End Sub
-
-    Private Sub trackInputVolume_Scroll(sender As Object, e As EventArgs) Handles trackInputVolume.Scroll
-        Dim volumePercent = trackInputVolume.Value
-
-        ' Update RecordingManager
-        recordingManager.InputVolume = volumePercent / 100.0F
-
-        ' Update UI
-        lblInputVolume.Text = $"Input Volume: {volumePercent}%"
-
-        ' Color warning
-        If volumePercent > 150 Then
-            lblInputVolume.ForeColor = Color.Orange
-        ElseIf volumePercent > 100 Then
-            lblInputVolume.ForeColor = Color.Yellow
-        Else
-            lblInputVolume.ForeColor = DarkTheme.TextColor
-        End If
-
-        ' Update and save settings
-        settingsManager.MeterSettings.InputVolumePercent = volumePercent
-        settingsManager.SaveAll()
-
-        Services.LoggingServiceAdapter.Instance.LogInfo($"Input volume changed: {volumePercent}%")
-    End Sub
-
-#Region "File Operations"
 
     Private Sub lstRecordings_SelectedIndexChanged(sender As Object, e As EventArgs) Handles lstRecordings.SelectedIndexChanged
         If lstRecordings.SelectedItem Is Nothing Then Return
@@ -648,23 +395,8 @@ Partial Public Class MainForm
         Try
             Services.LoggingServiceAdapter.Instance.LogInfo($"Rendering waveform for: {fileName}")
 
-            ' Dispose of old image
-            If picWaveform.Image IsNot Nothing Then
-                Dim oldImage = picWaveform.Image
-                picWaveform.Image = Nothing
-                oldImage.Dispose()
-            End If
-
-            ' Render waveform
-            Using timer = Logger.Instance.StartTimer("Waveform Rendering")
-                Dim waveform = waveformRenderer.Render(fullPath, picWaveform.Width, picWaveform.Height)
-
-                If waveform IsNot Nothing AndAlso waveform.Width > 0 AndAlso waveform.Height > 0 Then
-                    picWaveform.Image = waveform
-                Else
-                    waveform?.Dispose()
-                End If
-            End Using
+            ' Use WaveformDisplayControl instead of manual rendering
+            WaveformDisplayControl1.LoadFile(fullPath)
 
             Services.LoggingServiceAdapter.Instance.LogInfo($"Waveform rendered successfully: {fileName}")
 
@@ -695,16 +427,12 @@ Partial Public Class MainForm
         If result = DialogResult.Yes Then
             ' Clear selection and waveform
             lstRecordings.ClearSelected()
-            If picWaveform.Image IsNot Nothing Then
-                Dim oldImage = picWaveform.Image
-                picWaveform.Image = Nothing
-                oldImage.Dispose()
-            End If
-            waveformRenderer.ClearCache()
+            WaveformDisplayControl1.Clear()
+            WaveformDisplayControl1.ClearCache()
 
             ' Stop playback if playing this file
-            If playbackEngine IsNot Nothing AndAlso playbackEngine.IsPlaying Then
-                playbackEngine.Stop()
+            If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
+                playbackManager.Stop()
                 System.Threading.Thread.Sleep(100)
             End If
 
@@ -729,7 +457,7 @@ Partial Public Class MainForm
         Try
             Services.LoggingServiceAdapter.Instance.LogInfo("Starting recording...")
             lstRecordings.ClearSelected()
-            waveformRenderer.ClearCache()
+            WaveformDisplayControl1.ClearCache()
             GC.Collect()
             GC.WaitForPendingFinalizers()
             recordingManager.StartRecording()
@@ -741,9 +469,9 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnTransportStop(sender As Object, e As EventArgs)
-        If playbackEngine IsNot Nothing AndAlso playbackEngine.IsPlaying Then
+        If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
             Services.LoggingServiceAdapter.Instance.LogInfo("Stopping playback...")
-            playbackEngine.Stop()
+            playbackManager.Stop()
             TimerPlayback.Stop()
             progressPlayback.Value = 0
             btnStopPlayback.Enabled = False
@@ -769,12 +497,41 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnTransportPositionChanged(sender As Object, position As TimeSpan)
-        If playbackEngine IsNot Nothing AndAlso playbackEngine.IsPlaying Then
+        If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
             Logger.Instance.Debug($"Seek requested to: {position}", "MainForm")
         End If
     End Sub
 
 #End Region
+
+#Region "Playback Event Handlers"
+
+    Private Sub btnStopPlayback_Click(sender As Object, e As EventArgs) Handles btnStopPlayback.Click
+        ' Stop playback via PlaybackManager
+        playbackManager?.Stop()
+
+        ' Update UI
+        panelLED.BackColor = DarkTheme.SuccessGreen
+        lblStatus.Text = "Status: Ready (Mic Armed)"
+        TimerPlayback.Stop()
+        progressPlayback.Value = 0
+        btnStopPlayback.Enabled = False
+    End Sub
+
+    Private Sub trackVolume_Scroll(sender As Object, e As EventArgs) Handles trackVolume.Scroll
+        ' Update playback volume via PlaybackManager
+        Dim volumePercent = trackVolume.Value
+        playbackManager.Volume = volumePercent / 100.0F
+        lblVolume.Text = $"{volumePercent}%"
+
+        Services.LoggingServiceAdapter.Instance.LogInfo($"Playback volume changed: {volumePercent}%")
+    End Sub
+
+    Private Sub OnPlaybackStarted(sender As Object, filepath As String)
+        ' Update UI
+        panelLED.BackColor = Color.RoyalBlue
+        lblStatus.Text = $"Status: Playing {Path.GetFileName(filepath)}"
+    End Sub
 
     Private Sub OnPlaybackStopped(sender As Object, e As NAudio.Wave.StoppedEventArgs)
         panelLED.BackColor = DarkTheme.SuccessGreen
@@ -786,14 +543,14 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub TimerPlayback_Tick(sender As Object, e As EventArgs) Handles TimerPlayback.Tick
-        playbackEngine.UpdatePosition()
-        transportControl.TrackPosition = playbackEngine.CurrentPosition
-        transportControl.TrackDuration = playbackEngine.TotalDuration
+        playbackManager.UpdatePosition()
+        transportControl.TrackPosition = playbackManager.CurrentPosition
+        transportControl.TrackDuration = playbackManager.TotalDuration
         UpdateTransportState()
     End Sub
 
     Private Sub OnPositionChanged(sender As Object, position As TimeSpan)
-        Dim total = playbackEngine.TotalDuration
+        Dim total = playbackManager.TotalDuration
         If total.TotalMilliseconds > 0 Then
             Dim pct = CInt((position.TotalMilliseconds / total.TotalMilliseconds) * 1000)
             progressPlayback.Value = Math.Min(1000, Math.Max(0, pct))
@@ -804,14 +561,18 @@ Partial Public Class MainForm
         If recordingManager IsNot Nothing AndAlso recordingManager.IsRecording Then
             transportControl.State = UI.TransportControl.TransportState.Recording
             transportControl.RecordingTime = recordingManager.RecordingDuration
-        ElseIf playbackEngine IsNot Nothing AndAlso playbackEngine.IsPlaying Then
+        ElseIf playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
             transportControl.State = UI.TransportControl.TransportState.Playing
-            transportControl.TrackPosition = playbackEngine.CurrentPosition
-            transportControl.TrackDuration = playbackEngine.TotalDuration
+            transportControl.TrackPosition = playbackManager.CurrentPosition
+            transportControl.TrackDuration = playbackManager.TotalDuration
         Else
             transportControl.State = UI.TransportControl.TransportState.Stopped
         End If
     End Sub
+
+#End Region
+
+#Region "Logging"
 
     Private Sub OnLogMessage(sender As Object, e As Services.Interfaces.LogMessageEventArgs)
         ' Thread-safe UI update
@@ -895,74 +656,9 @@ Partial Public Class MainForm
         Services.LoggingServiceAdapter.Instance.LogInfo($"Log filter changed to: {cmbLogLevel.SelectedItem}")
     End Sub
 
-#Region "Settings Change Handlers"
-
-    Private Sub cmbInputDevices_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbInputDevices.SelectedIndexChanged
-        If cmbInputDevices.SelectedIndex >= 0 Then
-            settingsManager.AudioSettings.InputDeviceIndex = cmbInputDevices.SelectedIndex
-            settingsManager.SaveAll()
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Input device changed: {cmbInputDevices.SelectedItem}")
-        End If
-    End Sub
-
-    Private Sub cmbSampleRates_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbSampleRates.SelectedIndexChanged
-        If cmbSampleRates.SelectedItem IsNot Nothing Then
-            settingsManager.AudioSettings.SampleRate = Integer.Parse(cmbSampleRates.SelectedItem.ToString())
-            settingsManager.SaveAll()
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Sample rate changed: {cmbSampleRates.SelectedItem} Hz")
-        End If
-    End Sub
-
-    Private Sub cmbBitDepths_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbBitDepths.SelectedIndexChanged
-        If cmbBitDepths.SelectedItem IsNot Nothing Then
-            settingsManager.AudioSettings.BitDepth = CInt(cmbBitDepths.SelectedItem)
-            settingsManager.SaveAll()
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Bit depth changed: {cmbBitDepths.SelectedItem}-bit")
-        End If
-    End Sub
-
-    Private Sub cmbChannelMode_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbChannelMode.SelectedIndexChanged
-        If cmbChannelMode.SelectedItem IsNot Nothing Then
-            settingsManager.AudioSettings.Channels = If(cmbChannelMode.SelectedIndex = 0, 1, 2)
-            settingsManager.SaveAll()
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Channel mode changed: {cmbChannelMode.SelectedItem}")
-        End If
-    End Sub
-
-    Private Sub cmbBufferSize_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbBufferSize.SelectedIndexChanged
-        If cmbBufferSize.SelectedItem IsNot Nothing Then
-            settingsManager.AudioSettings.BufferMilliseconds = CInt(cmbBufferSize.SelectedItem)
-            settingsManager.SaveAll()
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Buffer size changed: {cmbBufferSize.SelectedItem} ms")
-        End If
-    End Sub
-
 #End Region
 
-    Protected Overrides Sub OnFormClosing(e As FormClosingEventArgs)
-        ' Unsubscribe from events
-        RemoveHandler Services.LoggingServiceAdapter.Instance.LogMessageReceived, AddressOf OnLogMessage
-
-        ' Log shutdown
-        Services.LoggingServiceAdapter.Instance.LogInfo("DSP Processor shutting down")
-
-        ' Dispose managers
-        recordingManager?.Dispose()
-        ' Note: SettingsManager and FileManager don't need disposal
-
-        ' Cleanup existing modules
-        playbackEngine?.Dispose()
-        waveformRenderer?.ClearCache()
-        fftProcessor?.Clear()
-        ' NOTE: SpectrumDisplayControl1 from designer handles its own disposal
-
-        ' Close logger
-        Logger.Instance.Close()
-
-        MyBase.OnFormClosing(e)
-    End Sub
-
-#Region "Spectrum Analyzer Event Handlers - Wire to SpectrumDisplayControl1 properties"
+#Region "Spectrum Analyzer Event Handlers"
 
     Private Sub cmbFFTSize_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbFFTSize.SelectedIndexChanged
         If cmbFFTSize.SelectedItem IsNot Nothing Then
@@ -1028,5 +724,26 @@ Partial Public Class MainForm
     End Sub
 
 #End Region
+
+    Protected Overrides Sub OnFormClosing(e As FormClosingEventArgs)
+        ' Unsubscribe from events
+        RemoveHandler Services.LoggingServiceAdapter.Instance.LogMessageReceived, AddressOf OnLogMessage
+
+        ' Log shutdown
+        Services.LoggingServiceAdapter.Instance.LogInfo("DSP Processor shutting down")
+
+        ' Dispose managers
+        recordingManager?.Dispose()
+
+        ' Cleanup modules
+        playbackManager?.Dispose()
+        WaveformDisplayControl1?.Dispose()
+        fftProcessor?.Clear()
+
+        ' Close logger
+        Logger.Instance.Close()
+
+        MyBase.OnFormClosing(e)
+    End Sub
 
 End Class
