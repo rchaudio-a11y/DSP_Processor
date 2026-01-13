@@ -57,6 +57,24 @@ Partial Class MainForm
         lblInputVolume = New Label()
         tabInput = New TabPage()
         tabRecording = New TabPage()
+        RecordingOptionsPanel1 = New UI.TabPanels.RecordingOptionsPanel()
+        tabSpectrum = New TabPage()
+        grpFFTSettings = New GroupBox()
+        lblFFTSize = New Label()
+        cmbFFTSize = New ComboBox()
+        lblWindowFunction = New Label()
+        cmbWindowFunction = New ComboBox()
+        lblSmoothing = New Label()
+        numSmoothing = New NumericUpDown()
+        chkPeakHold = New CheckBox()
+        btnResetSpectrum = New Button()
+        lblMinFreq = New Label()
+        trackMinFreq = New TrackBar()
+        lblMinFreqValue = New Label()
+        lblMaxFreq = New Label()
+        trackMaxFreq = New TrackBar()
+        lblMaxFreqValue = New Label()
+        lblSpectrumInfo = New Label()
         tabAnalysis = New TabPage()
         tabLogs = New TabPage()
         txtLogViewer = New RichTextBox()
@@ -67,9 +85,10 @@ Partial Class MainForm
         lblLogLevel = New Label()
         visualizationTabs = New TabControl()
         tabWaveform = New TabPage()
-        tabSpectrum = New TabPage()
+        tabSpectrum1 = New TabPage()
         tabPhase = New TabPage()
         tabMeters = New TabPage()
+        SpectrumAnalyzerControl1 = New UI.SpectrumAnalyzerControl()
         CType(picWaveform, ComponentModel.ISupportInitialize).BeginInit()
         CType(trackVolume, ComponentModel.ISupportInitialize).BeginInit()
         CType(splitWaveformArea, ComponentModel.ISupportInitialize).BeginInit()
@@ -80,8 +99,15 @@ Partial Class MainForm
         tabFiles.SuspendLayout()
         tabProgram.SuspendLayout()
         CType(trackInputVolume, ComponentModel.ISupportInitialize).BeginInit()
+        tabRecording.SuspendLayout()
+        tabSpectrum.SuspendLayout()
+        grpFFTSettings.SuspendLayout()
+        CType(numSmoothing, ComponentModel.ISupportInitialize).BeginInit()
+        CType(trackMinFreq, ComponentModel.ISupportInitialize).BeginInit()
+        CType(trackMaxFreq, ComponentModel.ISupportInitialize).BeginInit()
         tabLogs.SuspendLayout()
         visualizationTabs.SuspendLayout()
+        tabSpectrum1.SuspendLayout()
         SuspendLayout()
         ' 
         ' TimerAudio
@@ -119,10 +145,9 @@ Partial Class MainForm
         ' meterRecording
         ' 
         meterRecording.BackColor = Color.Black
-        meterRecording.Dock = DockStyle.Fill
-        meterRecording.Location = New Point(0, 0)
+        meterRecording.Location = New Point(0, 86)
         meterRecording.Name = "meterRecording"
-        meterRecording.Size = New Size(60, 400)
+        meterRecording.Size = New Size(60, 314)
         meterRecording.TabIndex = 0
         ' 
         ' meterPlayback
@@ -229,7 +254,7 @@ Partial Class MainForm
         ' lblRecordingTime
         ' 
         lblRecordingTime.AutoSize = True
-        lblRecordingTime.Font = New Font("Segoe UI", 16.0F, FontStyle.Bold)
+        lblRecordingTime.Font = New Font("Segoe UI", 16F, FontStyle.Bold)
         lblRecordingTime.ForeColor = Color.Red
         lblRecordingTime.Location = New Point(172, 50)
         lblRecordingTime.Name = "lblRecordingTime"
@@ -249,8 +274,7 @@ Partial Class MainForm
         ' 
         ' progressPlayback
         ' 
-        progressPlayback.Dock = DockStyle.Top
-        progressPlayback.Location = New Point(0, 0)
+        progressPlayback.Location = New Point(2, 86)
         progressPlayback.Maximum = 1000
         progressPlayback.Name = "progressPlayback"
         progressPlayback.Size = New Size(1718, 40)
@@ -265,10 +289,9 @@ Partial Class MainForm
         ' picWaveform
         ' 
         picWaveform.BackColor = Color.Black
-        picWaveform.Dock = DockStyle.Fill
-        picWaveform.Location = New Point(0, 40)
+        picWaveform.Location = New Point(0, 129)
         picWaveform.Name = "picWaveform"
-        picWaveform.Size = New Size(1718, 360)
+        picWaveform.Size = New Size(1718, 271)
         picWaveform.TabIndex = 1
         picWaveform.TabStop = False
         ' 
@@ -340,13 +363,14 @@ Partial Class MainForm
         mainTabs.Controls.Add(tabProgram)
         mainTabs.Controls.Add(tabInput)
         mainTabs.Controls.Add(tabRecording)
+        mainTabs.Controls.Add(tabSpectrum)
         mainTabs.Controls.Add(tabAnalysis)
         mainTabs.Controls.Add(tabLogs)
         mainTabs.Location = New Point(0, 536)
         mainTabs.Multiline = True
         mainTabs.Name = "mainTabs"
         mainTabs.SelectedIndex = 0
-        mainTabs.Size = New Size(442, 505)
+        mainTabs.Size = New Size(454, 515)
         mainTabs.TabIndex = 8
         ' 
         ' tabFiles
@@ -359,7 +383,7 @@ Partial Class MainForm
         tabFiles.Location = New Point(4, 54)
         tabFiles.Name = "tabFiles"
         tabFiles.Padding = New Padding(3)
-        tabFiles.Size = New Size(434, 447)
+        tabFiles.Size = New Size(446, 457)
         tabFiles.TabIndex = 0
         tabFiles.Text = "📁 Files"
         ' 
@@ -381,7 +405,7 @@ Partial Class MainForm
         tabProgram.Location = New Point(4, 54)
         tabProgram.Name = "tabProgram"
         tabProgram.Padding = New Padding(3)
-        tabProgram.Size = New Size(434, 447)
+        tabProgram.Size = New Size(446, 457)
         tabProgram.TabIndex = 1
         tabProgram.Text = "⚙️ Program"
         ' 
@@ -410,19 +434,223 @@ Partial Class MainForm
         tabInput.Location = New Point(4, 54)
         tabInput.Name = "tabInput"
         tabInput.Padding = New Padding(3)
-        tabInput.Size = New Size(434, 447)
+        tabInput.Size = New Size(446, 457)
         tabInput.TabIndex = 5
         tabInput.Text = "🎚️ Input"
         ' 
         ' tabRecording
         ' 
         tabRecording.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabRecording.Controls.Add(RecordingOptionsPanel1)
         tabRecording.Location = New Point(4, 54)
         tabRecording.Name = "tabRecording"
         tabRecording.Padding = New Padding(3)
-        tabRecording.Size = New Size(342, 447)
+        tabRecording.Size = New Size(446, 457)
         tabRecording.TabIndex = 2
         tabRecording.Text = "🎛️ Recording"
+        ' 
+        ' RecordingOptionsPanel1
+        ' 
+        RecordingOptionsPanel1.AutoScroll = True
+        RecordingOptionsPanel1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        RecordingOptionsPanel1.Dock = DockStyle.Fill
+        RecordingOptionsPanel1.ForeColor = Color.FromArgb(CByte(241), CByte(241), CByte(241))
+        RecordingOptionsPanel1.Location = New Point(3, 3)
+        RecordingOptionsPanel1.Name = "RecordingOptionsPanel1"
+        RecordingOptionsPanel1.Size = New Size(440, 451)
+        RecordingOptionsPanel1.TabIndex = 0
+        ' 
+        ' tabSpectrum
+        ' 
+        tabSpectrum.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabSpectrum.Controls.Add(grpFFTSettings)
+        tabSpectrum.Controls.Add(lblSpectrumInfo)
+        tabSpectrum.Location = New Point(4, 54)
+        tabSpectrum.Name = "tabSpectrum"
+        tabSpectrum.Padding = New Padding(3)
+        tabSpectrum.Size = New Size(446, 457)
+        tabSpectrum.TabIndex = 6
+        tabSpectrum.Text = "🌈 Spectrum"
+        ' 
+        ' grpFFTSettings
+        ' 
+        grpFFTSettings.Controls.Add(lblFFTSize)
+        grpFFTSettings.Controls.Add(cmbFFTSize)
+        grpFFTSettings.Controls.Add(lblWindowFunction)
+        grpFFTSettings.Controls.Add(cmbWindowFunction)
+        grpFFTSettings.Controls.Add(lblSmoothing)
+        grpFFTSettings.Controls.Add(numSmoothing)
+        grpFFTSettings.Controls.Add(chkPeakHold)
+        grpFFTSettings.Controls.Add(btnResetSpectrum)
+        grpFFTSettings.Controls.Add(lblMinFreq)
+        grpFFTSettings.Controls.Add(trackMinFreq)
+        grpFFTSettings.Controls.Add(lblMinFreqValue)
+        grpFFTSettings.Controls.Add(lblMaxFreq)
+        grpFFTSettings.Controls.Add(trackMaxFreq)
+        grpFFTSettings.Controls.Add(lblMaxFreqValue)
+        grpFFTSettings.ForeColor = Color.White
+        grpFFTSettings.Location = New Point(6, 6)
+        grpFFTSettings.Name = "grpFFTSettings"
+        grpFFTSettings.Size = New Size(420, 445)
+        grpFFTSettings.TabIndex = 0
+        grpFFTSettings.TabStop = False
+        grpFFTSettings.Text = "FFT Settings"
+        ' 
+        ' lblFFTSize
+        ' 
+        lblFFTSize.AutoSize = True
+        lblFFTSize.ForeColor = Color.White
+        lblFFTSize.Location = New Point(10, 30)
+        lblFFTSize.Name = "lblFFTSize"
+        lblFFTSize.Size = New Size(65, 20)
+        lblFFTSize.TabIndex = 0
+        lblFFTSize.Text = "FFT Size:"
+        ' 
+        ' cmbFFTSize
+        ' 
+        cmbFFTSize.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+        cmbFFTSize.ForeColor = Color.White
+        cmbFFTSize.FormattingEnabled = True
+        cmbFFTSize.Items.AddRange(New Object() {"1024", "2048", "4096", "8192", "16384"})
+        cmbFFTSize.Location = New Point(10, 53)
+        cmbFFTSize.Name = "cmbFFTSize"
+        cmbFFTSize.Size = New Size(150, 28)
+        cmbFFTSize.TabIndex = 1
+        ' 
+        ' lblWindowFunction
+        ' 
+        lblWindowFunction.AutoSize = True
+        lblWindowFunction.ForeColor = Color.White
+        lblWindowFunction.Location = New Point(10, 90)
+        lblWindowFunction.Name = "lblWindowFunction"
+        lblWindowFunction.Size = New Size(127, 20)
+        lblWindowFunction.TabIndex = 2
+        lblWindowFunction.Text = "Window Function:"
+        ' 
+        ' cmbWindowFunction
+        ' 
+        cmbWindowFunction.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+        cmbWindowFunction.ForeColor = Color.White
+        cmbWindowFunction.FormattingEnabled = True
+        cmbWindowFunction.Items.AddRange(New Object() {"None", "Hann", "Hamming", "Blackman"})
+        cmbWindowFunction.Location = New Point(10, 113)
+        cmbWindowFunction.Name = "cmbWindowFunction"
+        cmbWindowFunction.Size = New Size(150, 28)
+        cmbWindowFunction.TabIndex = 3
+        ' 
+        ' lblSmoothing
+        ' 
+        lblSmoothing.AutoSize = True
+        lblSmoothing.ForeColor = Color.White
+        lblSmoothing.Location = New Point(10, 150)
+        lblSmoothing.Name = "lblSmoothing"
+        lblSmoothing.Size = New Size(108, 20)
+        lblSmoothing.TabIndex = 4
+        lblSmoothing.Text = "Smoothing (%)"
+        ' 
+        ' numSmoothing
+        ' 
+        numSmoothing.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+        numSmoothing.ForeColor = Color.White
+        numSmoothing.Location = New Point(10, 173)
+        numSmoothing.Name = "numSmoothing"
+        numSmoothing.Size = New Size(150, 27)
+        numSmoothing.TabIndex = 5
+        numSmoothing.Value = New Decimal(New Integer() {70, 0, 0, 0})
+        ' 
+        ' chkPeakHold
+        ' 
+        chkPeakHold.AutoSize = True
+        chkPeakHold.ForeColor = Color.White
+        chkPeakHold.Location = New Point(10, 210)
+        chkPeakHold.Name = "chkPeakHold"
+        chkPeakHold.Size = New Size(147, 24)
+        chkPeakHold.TabIndex = 6
+        chkPeakHold.Text = "Enable Peak Hold"
+        chkPeakHold.UseVisualStyleBackColor = True
+        ' 
+        ' btnResetSpectrum
+        ' 
+        btnResetSpectrum.BackColor = Color.FromArgb(CByte(75), CByte(75), CByte(78))
+        btnResetSpectrum.FlatStyle = FlatStyle.Flat
+        btnResetSpectrum.ForeColor = Color.White
+        btnResetSpectrum.Location = New Point(10, 240)
+        btnResetSpectrum.Name = "btnResetSpectrum"
+        btnResetSpectrum.Size = New Size(150, 30)
+        btnResetSpectrum.TabIndex = 7
+        btnResetSpectrum.Text = "Reset Spectrum"
+        btnResetSpectrum.UseVisualStyleBackColor = False
+        ' 
+        ' lblMinFreq
+        ' 
+        lblMinFreq.AutoSize = True
+        lblMinFreq.ForeColor = Color.White
+        lblMinFreq.Location = New Point(10, 280)
+        lblMinFreq.Name = "lblMinFreq"
+        lblMinFreq.Size = New Size(108, 20)
+        lblMinFreq.TabIndex = 8
+        lblMinFreq.Text = "Min Frequency:"
+        ' 
+        ' trackMinFreq
+        ' 
+        trackMinFreq.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+        trackMinFreq.Location = New Point(10, 303)
+        trackMinFreq.Maximum = 2000
+        trackMinFreq.Minimum = 20
+        trackMinFreq.Name = "trackMinFreq"
+        trackMinFreq.Size = New Size(300, 56)
+        trackMinFreq.TabIndex = 9
+        trackMinFreq.TickFrequency = 100
+        trackMinFreq.Value = 20
+        ' 
+        ' lblMinFreqValue
+        ' 
+        lblMinFreqValue.AutoSize = True
+        lblMinFreqValue.ForeColor = Color.Cyan
+        lblMinFreqValue.Location = New Point(320, 308)
+        lblMinFreqValue.Name = "lblMinFreqValue"
+        lblMinFreqValue.Size = New Size(47, 20)
+        lblMinFreqValue.TabIndex = 10
+        lblMinFreqValue.Text = "20 Hz"
+        ' 
+        ' lblMaxFreq
+        ' 
+        lblMaxFreq.AutoSize = True
+        lblMaxFreq.ForeColor = Color.White
+        lblMaxFreq.Location = New Point(10, 355)
+        lblMaxFreq.Name = "lblMaxFreq"
+        lblMaxFreq.Size = New Size(111, 20)
+        lblMaxFreq.TabIndex = 11
+        lblMaxFreq.Text = "Max Frequency:"
+        ' 
+        ' trackMaxFreq
+        ' 
+        trackMaxFreq.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+        trackMaxFreq.Location = New Point(6, 378)
+        trackMaxFreq.Maximum = 20000
+        trackMaxFreq.Minimum = 1000
+        trackMaxFreq.Name = "trackMaxFreq"
+        trackMaxFreq.Size = New Size(300, 56)
+        trackMaxFreq.TabIndex = 12
+        trackMaxFreq.TickFrequency = 1000
+        trackMaxFreq.Value = 12000
+        ' 
+        ' lblMaxFreqValue
+        ' 
+        lblMaxFreqValue.AutoSize = True
+        lblMaxFreqValue.ForeColor = Color.Lime
+        lblMaxFreqValue.Location = New Point(320, 378)
+        lblMaxFreqValue.Name = "lblMaxFreqValue"
+        lblMaxFreqValue.Size = New Size(71, 20)
+        lblMaxFreqValue.TabIndex = 13
+        lblMaxFreqValue.Text = "12000 Hz"
+        ' 
+        ' lblSpectrumInfo
+        ' 
+        lblSpectrumInfo.Location = New Point(0, 0)
+        lblSpectrumInfo.Name = "lblSpectrumInfo"
+        lblSpectrumInfo.Size = New Size(100, 23)
+        lblSpectrumInfo.TabIndex = 1
         ' 
         ' tabAnalysis
         ' 
@@ -430,7 +658,7 @@ Partial Class MainForm
         tabAnalysis.Location = New Point(4, 54)
         tabAnalysis.Name = "tabAnalysis"
         tabAnalysis.Padding = New Padding(3)
-        tabAnalysis.Size = New Size(342, 447)
+        tabAnalysis.Size = New Size(446, 457)
         tabAnalysis.TabIndex = 3
         tabAnalysis.Text = "📊 Analysis"
         ' 
@@ -446,7 +674,7 @@ Partial Class MainForm
         tabLogs.Location = New Point(4, 54)
         tabLogs.Name = "tabLogs"
         tabLogs.Padding = New Padding(3)
-        tabLogs.Size = New Size(342, 447)
+        tabLogs.Size = New Size(446, 457)
         tabLogs.TabIndex = 5
         tabLogs.Text = "📜 Logs"
         ' 
@@ -525,14 +753,14 @@ Partial Class MainForm
         ' 
         visualizationTabs.Anchor = AnchorStyles.Top Or AnchorStyles.Bottom Or AnchorStyles.Left Or AnchorStyles.Right
         visualizationTabs.Controls.Add(tabWaveform)
-        visualizationTabs.Controls.Add(tabSpectrum)
+        visualizationTabs.Controls.Add(tabSpectrum1)
         visualizationTabs.Controls.Add(tabPhase)
         visualizationTabs.Controls.Add(tabMeters)
-        visualizationTabs.Location = New Point(448, 536)
+        visualizationTabs.Location = New Point(456, 536)
         visualizationTabs.Multiline = True
         visualizationTabs.Name = "visualizationTabs"
         visualizationTabs.SelectedIndex = 0
-        visualizationTabs.Size = New Size(1334, 505)
+        visualizationTabs.Size = New Size(1326, 511)
         visualizationTabs.TabIndex = 9
         ' 
         ' tabWaveform
@@ -541,19 +769,20 @@ Partial Class MainForm
         tabWaveform.Location = New Point(4, 29)
         tabWaveform.Name = "tabWaveform"
         tabWaveform.Padding = New Padding(3)
-        tabWaveform.Size = New Size(1326, 472)
+        tabWaveform.Size = New Size(1318, 478)
         tabWaveform.TabIndex = 0
         tabWaveform.Text = "📈 Waveform"
         ' 
-        ' tabSpectrum
+        ' tabSpectrum1
         ' 
-        tabSpectrum.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
-        tabSpectrum.Location = New Point(4, 29)
-        tabSpectrum.Name = "tabSpectrum"
-        tabSpectrum.Padding = New Padding(3)
-        tabSpectrum.Size = New Size(1326, 472)
-        tabSpectrum.TabIndex = 1
-        tabSpectrum.Text = "🌈 Spectrum"
+        tabSpectrum1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabSpectrum1.Controls.Add(SpectrumAnalyzerControl1)
+        tabSpectrum1.Location = New Point(4, 29)
+        tabSpectrum1.Name = "tabSpectrum1"
+        tabSpectrum1.Padding = New Padding(3)
+        tabSpectrum1.Size = New Size(1318, 478)
+        tabSpectrum1.TabIndex = 1
+        tabSpectrum1.Text = "🌈 Spectrum"
         ' 
         ' tabPhase
         ' 
@@ -561,7 +790,7 @@ Partial Class MainForm
         tabPhase.Location = New Point(4, 29)
         tabPhase.Name = "tabPhase"
         tabPhase.Padding = New Padding(3)
-        tabPhase.Size = New Size(1326, 472)
+        tabPhase.Size = New Size(1318, 478)
         tabPhase.TabIndex = 2
         tabPhase.Text = "🔄 Phase"
         ' 
@@ -571,19 +800,28 @@ Partial Class MainForm
         tabMeters.Location = New Point(4, 29)
         tabMeters.Name = "tabMeters"
         tabMeters.Padding = New Padding(3)
-        tabMeters.Size = New Size(1326, 472)
+        tabMeters.Size = New Size(1318, 478)
         tabMeters.TabIndex = 3
         tabMeters.Text = "📊 Meters"
         ' 
+        ' SpectrumAnalyzerControl1
+        ' 
+        SpectrumAnalyzerControl1.BackColor = Color.Black
+        SpectrumAnalyzerControl1.Dock = DockStyle.Fill
+        SpectrumAnalyzerControl1.Location = New Point(3, 3)
+        SpectrumAnalyzerControl1.Name = "SpectrumAnalyzerControl1"
+        SpectrumAnalyzerControl1.Size = New Size(1312, 472)
+        SpectrumAnalyzerControl1.TabIndex = 0
+        ' 
         ' MainForm
         ' 
-        AutoScaleDimensions = New SizeF(8.0F, 20.0F)
+        AutoScaleDimensions = New SizeF(8F, 20F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1782, 1053)
+        Controls.Add(transportControl)
         Controls.Add(visualizationTabs)
         Controls.Add(mainTabs)
         Controls.Add(splitWaveformArea)
-        Controls.Add(transportControl)
         Controls.Add(lblRecordingTime)
         Name = "MainForm"
         Text = "DSP Processor - Dark Mode"
@@ -599,9 +837,17 @@ Partial Class MainForm
         tabProgram.ResumeLayout(False)
         tabProgram.PerformLayout()
         CType(trackInputVolume, ComponentModel.ISupportInitialize).EndInit()
+        tabRecording.ResumeLayout(False)
+        tabSpectrum.ResumeLayout(False)
+        grpFFTSettings.ResumeLayout(False)
+        grpFFTSettings.PerformLayout()
+        CType(numSmoothing, ComponentModel.ISupportInitialize).EndInit()
+        CType(trackMinFreq, ComponentModel.ISupportInitialize).EndInit()
+        CType(trackMaxFreq, ComponentModel.ISupportInitialize).EndInit()
         tabLogs.ResumeLayout(False)
         tabLogs.PerformLayout()
         visualizationTabs.ResumeLayout(False)
+        tabSpectrum1.ResumeLayout(False)
         ResumeLayout(False)
         PerformLayout()
     End Sub
@@ -637,6 +883,23 @@ Partial Class MainForm
     Friend WithEvents tabFiles As TabPage
     Friend WithEvents tabProgram As TabPage
     Friend WithEvents tabRecording As TabPage
+    Friend WithEvents tabSpectrum As TabPage
+    Friend WithEvents grpFFTSettings As GroupBox
+    Friend WithEvents lblFFTSize As Label
+    Friend WithEvents cmbFFTSize As ComboBox
+    Friend WithEvents lblWindowFunction As Label
+    Friend WithEvents cmbWindowFunction As ComboBox
+    Friend WithEvents lblSmoothing As Label
+    Friend WithEvents numSmoothing As NumericUpDown
+    Friend WithEvents chkPeakHold As CheckBox
+    Friend WithEvents btnResetSpectrum As Button
+    Friend WithEvents lblSpectrumInfo As Label
+    Friend WithEvents lblMinFreq As Label
+    Friend WithEvents trackMinFreq As TrackBar
+    Friend WithEvents lblMinFreqValue As Label
+    Friend WithEvents lblMaxFreq As Label
+    Friend WithEvents trackMaxFreq As TrackBar
+    Friend WithEvents lblMaxFreqValue As Label
     Friend WithEvents tabAnalysis As TabPage
     Friend WithEvents tabInput As TabPage
     Friend WithEvents tabLogs As TabPage
@@ -650,8 +913,9 @@ Partial Class MainForm
     Friend WithEvents lblInputVolume As Label
     Friend WithEvents visualizationTabs As TabControl
     Friend WithEvents tabWaveform As TabPage
-    Friend WithEvents tabSpectrum As TabPage
+    Friend WithEvents tabSpectrum1 As TabPage
     Friend WithEvents tabPhase As TabPage
     Friend WithEvents tabMeters As TabPage
-
+    Friend WithEvents RecordingOptionsPanel1 As UI.TabPanels.RecordingOptionsPanel
+    Friend WithEvents SpectrumAnalyzerControl1 As UI.SpectrumAnalyzerControl
 End Class
