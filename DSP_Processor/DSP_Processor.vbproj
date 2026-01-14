@@ -20,6 +20,22 @@
     <Compile Remove="My Project\**\*.vb" />
     <None Remove="My Project\**\*.myapp" />
   </ItemGroup>
+  <ItemGroup>
+    <None Remove="Test Audio\Calibration signal.wav" />
+    <None Remove="Test Audio\freq20-20000-20s.wav" />
+    <None Remove="Test Audio\whitenoise.wav" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Test Audio\Calibration signal.wav">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Test Audio\freq20-20000-20s.wav">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Test Audio\whitenoise.wav">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />

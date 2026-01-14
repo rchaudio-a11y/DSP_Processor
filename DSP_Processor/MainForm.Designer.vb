@@ -43,6 +43,14 @@ Partial Class MainForm
         tabFiles = New TabPage()
         tabProgram = New TabPage()
         AudioSettingsPanel1 = New UI.TabPanels.AudioSettingsPanel()
+        grpRouting = New GroupBox()
+        lblInputSource = New Label()
+        radioMicrophone = New RadioButton()
+        radioFilePlayback = New RadioButton()
+        btnBrowseInputFile = New Button()
+        lblSelectedFile = New Label()
+        lblOutputDevice = New Label()
+        cmbOutputDevice = New ComboBox()
         tabInput = New TabPage()
         InputTabPanel1 = New UI.TabPanels.InputTabPanel()
         tabRecording = New TabPage()
@@ -63,6 +71,9 @@ Partial Class MainForm
         lblMaxFreq = New Label()
         trackMaxFreq = New TrackBar()
         lblMaxFreqValue = New Label()
+        lblDBRange = New Label()
+        trackDBRange = New TrackBar()
+        lblDBRangeValue = New Label()
         lblSpectrumInfo = New Label()
         tabAnalysis = New TabPage()
         tabLogs = New TabPage()
@@ -94,6 +105,7 @@ Partial Class MainForm
         CType(numSmoothing, ComponentModel.ISupportInitialize).BeginInit()
         CType(trackMinFreq, ComponentModel.ISupportInitialize).BeginInit()
         CType(trackMaxFreq, ComponentModel.ISupportInitialize).BeginInit()
+        CType(trackDBRange, ComponentModel.ISupportInitialize).BeginInit()
         tabLogs.SuspendLayout()
         visualizationTabs.SuspendLayout()
         tabWaveform.SuspendLayout()
@@ -185,7 +197,7 @@ Partial Class MainForm
         ' 
         ' TimerPlayback
         ' 
-        TimerPlayback.Interval = 50
+        TimerPlayback.Interval = 17 ' 60 Hz (17ms = ~60 FPS)
         ' 
         ' TimerMeters
         ' 
@@ -284,6 +296,7 @@ Partial Class MainForm
         ' 
         tabProgram.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabProgram.Controls.Add(AudioSettingsPanel1)
+        tabProgram.Controls.Add(grpRouting)
         tabProgram.Location = New Point(4, 54)
         tabProgram.Name = "tabProgram"
         tabProgram.Padding = New Padding(3)
@@ -295,11 +308,106 @@ Partial Class MainForm
         ' 
         AudioSettingsPanel1.AutoScroll = True
         AudioSettingsPanel1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
-        AudioSettingsPanel1.Dock = DockStyle.Fill
+        AudioSettingsPanel1.Dock = DockStyle.Top
         AudioSettingsPanel1.Location = New Point(3, 3)
         AudioSettingsPanel1.Name = "AudioSettingsPanel1"
-        AudioSettingsPanel1.Size = New Size(440, 787)
+        AudioSettingsPanel1.Size = New Size(440, 270)
         AudioSettingsPanel1.TabIndex = 1
+        ' 
+        ' grpRouting
+        ' 
+        grpRouting.Controls.Add(lblInputSource)
+        grpRouting.Controls.Add(radioMicrophone)
+        grpRouting.Controls.Add(radioFilePlayback)
+        grpRouting.Controls.Add(btnBrowseInputFile)
+        grpRouting.Controls.Add(lblSelectedFile)
+        grpRouting.Controls.Add(lblOutputDevice)
+        grpRouting.Controls.Add(cmbOutputDevice)
+        grpRouting.ForeColor = Color.White
+        grpRouting.Location = New Point(13, 280)
+        grpRouting.Name = "grpRouting"
+        grpRouting.Size = New Size(320, 250)
+        grpRouting.TabIndex = 2
+        grpRouting.TabStop = False
+        grpRouting.Text = "Audio Routing"
+        ' 
+        ' lblInputSource
+        ' 
+        lblInputSource.AutoSize = True
+        lblInputSource.ForeColor = Color.White
+        lblInputSource.Location = New Point(10, 25)
+        lblInputSource.Name = "lblInputSource"
+        lblInputSource.Size = New Size(100, 20)
+        lblInputSource.TabIndex = 0
+        lblInputSource.Text = "Input Source:"
+        ' 
+        ' radioMicrophone
+        ' 
+        radioMicrophone.AutoSize = True
+        radioMicrophone.Checked = True
+        radioMicrophone.ForeColor = Color.White
+        radioMicrophone.Location = New Point(10, 50)
+        radioMicrophone.Name = "radioMicrophone"
+        radioMicrophone.Size = New Size(113, 24)
+        radioMicrophone.TabIndex = 1
+        radioMicrophone.TabStop = True
+        radioMicrophone.Text = "🎤 Microphone"
+        radioMicrophone.UseVisualStyleBackColor = True
+        ' 
+        ' radioFilePlayback
+        ' 
+        radioFilePlayback.AutoSize = True
+        radioFilePlayback.ForeColor = Color.White
+        radioFilePlayback.Location = New Point(10, 80)
+        radioFilePlayback.Name = "radioFilePlayback"
+        radioFilePlayback.Size = New Size(128, 24)
+        radioFilePlayback.TabIndex = 2
+        radioFilePlayback.Text = "📂 File Playback"
+        radioFilePlayback.UseVisualStyleBackColor = True
+        ' 
+        ' btnBrowseInputFile
+        ' 
+        btnBrowseInputFile.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+        btnBrowseInputFile.Enabled = False
+        btnBrowseInputFile.FlatStyle = FlatStyle.Flat
+        btnBrowseInputFile.ForeColor = Color.White
+        btnBrowseInputFile.Location = New Point(30, 110)
+        btnBrowseInputFile.Name = "btnBrowseInputFile"
+        btnBrowseInputFile.Size = New Size(270, 30)
+        btnBrowseInputFile.TabIndex = 3
+        btnBrowseInputFile.Text = "Browse for audio file..."
+        btnBrowseInputFile.UseVisualStyleBackColor = False
+        ' 
+        ' lblSelectedFile
+        ' 
+        lblSelectedFile.AutoSize = False
+        lblSelectedFile.ForeColor = Color.Cyan
+        lblSelectedFile.Location = New Point(30, 145)
+        lblSelectedFile.Name = "lblSelectedFile"
+        lblSelectedFile.Size = New Size(270, 40)
+        lblSelectedFile.TabIndex = 4
+        lblSelectedFile.Text = "No file selected"
+        ' 
+        ' lblOutputDevice
+        ' 
+        lblOutputDevice.AutoSize = True
+        lblOutputDevice.ForeColor = Color.White
+        lblOutputDevice.Location = New Point(10, 195)
+        lblOutputDevice.Name = "lblOutputDevice"
+        lblOutputDevice.Size = New Size(112, 20)
+        lblOutputDevice.TabIndex = 5
+        lblOutputDevice.Text = "Output Device:"
+        ' 
+        ' cmbOutputDevice
+        ' 
+        cmbOutputDevice.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+        cmbOutputDevice.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbOutputDevice.ForeColor = Color.White
+        cmbOutputDevice.FormattingEnabled = True
+        cmbOutputDevice.Location = New Point(10, 218)
+        cmbOutputDevice.Name = "cmbOutputDevice"
+        cmbOutputDevice.Size = New Size(290, 28)
+        cmbOutputDevice.TabIndex = 6
         ' 
         ' tabInput
         ' 
@@ -373,10 +481,13 @@ Partial Class MainForm
         grpFFTSettings.Controls.Add(lblMaxFreq)
         grpFFTSettings.Controls.Add(trackMaxFreq)
         grpFFTSettings.Controls.Add(lblMaxFreqValue)
+        grpFFTSettings.Controls.Add(lblDBRange)
+        grpFFTSettings.Controls.Add(trackDBRange)
+        grpFFTSettings.Controls.Add(lblDBRangeValue)
         grpFFTSettings.ForeColor = Color.White
         grpFFTSettings.Location = New Point(6, 6)
         grpFFTSettings.Name = "grpFFTSettings"
-        grpFFTSettings.Size = New Size(420, 445)
+        grpFFTSettings.Size = New Size(420, 520)
         grpFFTSettings.TabIndex = 0
         grpFFTSettings.TabStop = False
         grpFFTSettings.Text = "FFT Settings"
@@ -529,6 +640,38 @@ Partial Class MainForm
         lblMaxFreqValue.Size = New Size(71, 20)
         lblMaxFreqValue.TabIndex = 13
         lblMaxFreqValue.Text = "12000 Hz"
+        ' 
+        ' lblDBRange
+        ' 
+        lblDBRange.AutoSize = True
+        lblDBRange.ForeColor = Color.White
+        lblDBRange.Location = New Point(10, 430)
+        lblDBRange.Name = "lblDBRange"
+        lblDBRange.Size = New Size(130, 20)
+        lblDBRange.TabIndex = 14
+        lblDBRange.Text = "dB Range (Min):"
+        ' 
+        ' trackDBRange
+        ' 
+        trackDBRange.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+        trackDBRange.Location = New Point(10, 453)
+        trackDBRange.Maximum = -20
+        trackDBRange.Minimum = -100
+        trackDBRange.Name = "trackDBRange"
+        trackDBRange.Size = New Size(300, 56)
+        trackDBRange.TabIndex = 15
+        trackDBRange.TickFrequency = 10
+        trackDBRange.Value = -60
+        ' 
+        ' lblDBRangeValue
+        ' 
+        lblDBRangeValue.AutoSize = True
+        lblDBRangeValue.ForeColor = Color.Yellow
+        lblDBRangeValue.Location = New Point(320, 453)
+        lblDBRangeValue.Name = "lblDBRangeValue"
+        lblDBRangeValue.Size = New Size(58, 20)
+        lblDBRangeValue.TabIndex = 16
+        lblDBRangeValue.Text = "-60 dB"
         ' 
         ' lblSpectrumInfo
         ' 
@@ -740,6 +883,7 @@ Partial Class MainForm
         CType(numSmoothing, ComponentModel.ISupportInitialize).EndInit()
         CType(trackMinFreq, ComponentModel.ISupportInitialize).EndInit()
         CType(trackMaxFreq, ComponentModel.ISupportInitialize).EndInit()
+        CType(trackDBRange, ComponentModel.ISupportInitialize).EndInit()
         tabLogs.ResumeLayout(False)
         tabLogs.PerformLayout()
         visualizationTabs.ResumeLayout(False)
@@ -780,13 +924,15 @@ Partial Class MainForm
     Friend WithEvents numSmoothing As NumericUpDown
     Friend WithEvents chkPeakHold As CheckBox
     Friend WithEvents btnResetSpectrum As Button
-    Friend WithEvents lblSpectrumInfo As Label
     Friend WithEvents lblMinFreq As Label
     Friend WithEvents trackMinFreq As TrackBar
     Friend WithEvents lblMinFreqValue As Label
     Friend WithEvents lblMaxFreq As Label
     Friend WithEvents trackMaxFreq As TrackBar
     Friend WithEvents lblMaxFreqValue As Label
+    Friend WithEvents lblDBRange As Label
+    Friend WithEvents trackDBRange As TrackBar
+    Friend WithEvents lblDBRangeValue As Label
     Friend WithEvents tabAnalysis As TabPage
     Friend WithEvents tabInput As TabPage
     Friend WithEvents tabLogs As TabPage
@@ -806,4 +952,13 @@ Partial Class MainForm
     Friend WithEvents AudioSettingsPanel1 As UI.TabPanels.AudioSettingsPanel
     Friend WithEvents InputTabPanel1 As UI.TabPanels.InputTabPanel
     Friend WithEvents WaveformDisplayControl1 As UI.WaveformDisplayControl
+    Friend WithEvents grpRouting As GroupBox
+    Friend WithEvents lblInputSource As Label
+    Friend WithEvents radioMicrophone As RadioButton
+    Friend WithEvents radioFilePlayback As RadioButton
+    Friend WithEvents btnBrowseInputFile As Button
+    Friend WithEvents lblSelectedFile As Label
+    Friend WithEvents lblOutputDevice As Label
+    Friend WithEvents cmbOutputDevice As ComboBox
+    Friend WithEvents lblSpectrumInfo As Label
 End Class

@@ -8,6 +8,10 @@ Namespace Models
         Public Property WindowFunction As String = "Hann"
         Public Property Smoothing As Integer = 70
         Public Property PeakHoldEnabled As Boolean = False
+        Public Property MinFrequency As Integer = 20
+        Public Property MaxFrequency As Integer = 12000
+        Public Property MinDB As Integer = -60
+        Public Property MaxDB As Integer = 0
 
         ''' <summary>
         ''' Serialize to JSON

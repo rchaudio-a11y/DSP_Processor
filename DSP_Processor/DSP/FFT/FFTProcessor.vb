@@ -97,6 +97,7 @@ Namespace DSP.FFT
         
         ''' <summary>
         ''' Calculate FFT and return magnitude spectrum in dB
+        ''' INDUSTRY STANDARD: Properly normalized and calibrated to dBFS
         ''' </summary>
         ''' <returns>Array of dB values (DC to Nyquist)</returns>
         Public Function CalculateSpectrum() As Single()
@@ -127,17 +128,57 @@ Namespace DSP.FFT
             Dim halfSize = fftLength \ 2
             Dim spectrum(halfSize - 1) As Single
             
+            ' Calculate window coherent gain (for proper amplitude calibration)
+            Dim windowGain As Single = GetWindowCoherentGain()
+            
             For i As Integer = 0 To halfSize - 1
                 Dim real = fftBuffer(i).X
                 Dim imag = fftBuffer(i).Y
+                
+                ' Calculate magnitude
                 Dim magnitude = Math.Sqrt(real * real + imag * imag)
                 
-                ' Convert to dB (with floor to prevent log(0))
-                magnitude = Math.Max(magnitude, 0.0000001F)
+                ' STEP 1: Normalize by FFT length (convert FFT output to amplitude)
+                ' This makes a full-scale sine wave have magnitude = 1.0
+                magnitude /= (fftLength / 2.0F)
+                
+                ' STEP 2: Compensate for window coherent gain
+                ' Hann window reduces amplitude by ~6 dB, we compensate here
+                magnitude /= windowGain
+                
+                ' STEP 3: Convert to dBFS (referenced to full scale)
+                ' Avoid log(0) with a very small floor (-120 dB)
+                magnitude = Math.Max(magnitude, 0.000001F) ' -120 dBFS floor
+                
+                ' Convert to dB: 20*log10(magnitude)
+                ' Now a -12 dBFS sine will show as -12 dB in the spectrum!
                 spectrum(i) = 20.0F * Math.Log10(magnitude)
             Next
             
             Return spectrum
+        End Function
+        
+        ''' <summary>
+        ''' Get coherent gain of current window function
+        ''' This is the amplitude reduction factor that must be compensated
+        ''' </summary>
+        Private Function GetWindowCoherentGain() As Single
+            Select Case WindowFunction
+                Case WindowType.None
+                    Return 1.0F ' Rectangular window has no loss
+                    
+                Case WindowType.Hann
+                    Return 0.5F ' Hann window coherent gain = 0.5 (-6.02 dB)
+                    
+                Case WindowType.Hamming
+                    Return 0.54F ' Hamming window coherent gain ? 0.54
+                    
+                Case WindowType.Blackman
+                    Return 0.42F ' Blackman window coherent gain ? 0.42
+                    
+                Case Else
+                    Return 1.0F
+            End Select
         End Function
         
         ''' <summary>

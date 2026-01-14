@@ -32,6 +32,7 @@ Namespace Managers
 #Region "Fields"
 
         Private _recordingsFolder As String
+        Private _testAudioFolder As String
         Private _files As New List(Of FileInfo)
 
 #End Region
@@ -42,6 +43,13 @@ Namespace Managers
         Public ReadOnly Property RecordingsFolder As String
             Get
                 Return _recordingsFolder
+            End Get
+        End Property
+
+        ''' <summary>Path to test audio folder</summary>
+        Public ReadOnly Property TestAudioFolder As String
+            Get
+                Return _testAudioFolder
             End Get
         End Property
 
@@ -66,42 +74,52 @@ Namespace Managers
         Public Sub New()
             ' Default recordings folder
             _recordingsFolder = Path.Combine(Application.StartupPath, "Recordings")
+            _testAudioFolder = Path.Combine(Application.StartupPath, "Test Audio")
             EnsureFolderExists()
 
             Logger.Instance.Info("FileManager initialized", "FileManager")
         End Sub
 
-        Public Sub New(folder As String)
-            _recordingsFolder = folder
+        Public Sub New(recordingsFolder As String, Optional testAudioFolder As String = Nothing)
+            _recordingsFolder = recordingsFolder
+            _testAudioFolder = If(testAudioFolder, Path.Combine(Application.StartupPath, "Test Audio"))
             EnsureFolderExists()
 
-            Logger.Instance.Info($"FileManager initialized with folder: {folder}", "FileManager")
+            Logger.Instance.Info($"FileManager initialized with folders: {recordingsFolder}, {_testAudioFolder}", "FileManager")
         End Sub
 
 #End Region
 
 #Region "Public Methods"
 
-        ''' <summary>Refresh the file list from disk</summary>
+        ''' <summary>Refresh the file list from disk (scans both Recordings and Test Audio folders)</summary>
         Public Sub RefreshFileList()
             Try
                 _files.Clear()
 
-                If Not Directory.Exists(_recordingsFolder) Then
+                ' Scan Recordings folder
+                If Directory.Exists(_recordingsFolder) Then
+                    For Each filePath In Directory.GetFiles(_recordingsFolder, "*.wav")
+                        _files.Add(New FileInfo(filePath))
+                    Next
+                Else
                     Logger.Instance.Warning($"Recordings folder not found: {_recordingsFolder}", "FileManager")
-                    RaiseEvent FileListChanged(Me, EventArgs.Empty)
-                    Return
                 End If
 
-                ' Get all WAV files
-                For Each filePath In Directory.GetFiles(_recordingsFolder, "*.wav")
-                    _files.Add(New FileInfo(filePath))
-                Next
+                ' Scan Test Audio folder
+                If Directory.Exists(_testAudioFolder) Then
+                    For Each filePath In Directory.GetFiles(_testAudioFolder, "*.wav")
+                        _files.Add(New FileInfo(filePath))
+                    Next
+                    Logger.Instance.Debug($"Test Audio folder scanned: {_testAudioFolder}", "FileManager")
+                Else
+                    Logger.Instance.Debug($"Test Audio folder not found (will be created on resource deployment): {_testAudioFolder}", "FileManager")
+                End If
 
                 ' Sort by date (newest first)
                 _files.Sort(Function(a, b) b.LastWriteTime.CompareTo(a.LastWriteTime))
 
-                Logger.Instance.Debug($"File list refreshed: {_files.Count} recording(s) found", "FileManager")
+                Logger.Instance.Debug($"File list refreshed: {_files.Count} file(s) found", "FileManager")
                 RaiseEvent FileListChanged(Me, EventArgs.Empty)
 
             Catch ex As Exception
@@ -234,15 +252,20 @@ Namespace Managers
             Return False
         End Function
 
-        ''' <summary>Ensure recordings folder exists</summary>
+        ''' <summary>Ensure recordings and test audio folders exist</summary>
         Public Sub EnsureFolderExists()
             Try
                 If Not Directory.Exists(_recordingsFolder) Then
                     Directory.CreateDirectory(_recordingsFolder)
                     Logger.Instance.Info($"Created recordings folder: {_recordingsFolder}", "FileManager")
                 End If
+
+                If Not Directory.Exists(_testAudioFolder) Then
+                    Directory.CreateDirectory(_testAudioFolder)
+                    Logger.Instance.Info($"Created test audio folder: {_testAudioFolder}", "FileManager")
+                End If
             Catch ex As Exception
-                Logger.Instance.Error($"Failed to create recordings folder: {_recordingsFolder}", ex, "FileManager")
+                Logger.Instance.Error($"Failed to create folders", ex, "FileManager")
             End Try
         End Sub
 
