@@ -71,6 +71,7 @@ Partial Public Class MainForm
         WireUIEvents()
         WireAudioSettingsPanel()
         WireInputTabPanel()
+        WireAudioPipelinePanel()
 
         ' Load all settings (this will trigger OnSettingsLoaded event)
         settingsManager.LoadAll()
@@ -78,6 +79,9 @@ Partial Public Class MainForm
         ' Apply settings to AudioSettingsPanel and InputTabPanel
         AudioSettingsPanel1.LoadSettings(settingsManager.AudioSettings)
         InputTabPanel1.LoadSettings(settingsManager.MeterSettings)
+
+        ' Initialize AudioPipelinePanel
+        AudioPipelinePanel1.Initialize()
 
         ' Apply meter settings
         ApplyMeterSettings(settingsManager.MeterSettings)
@@ -208,6 +212,12 @@ Partial Public Class MainForm
         ' Wire up InputTabPanel event
         AddHandler InputTabPanel1.SettingsChanged, AddressOf OnMeterSettingsChanged
         Logger.Instance.Info("InputTabPanel wired", "MainForm")
+    End Sub
+
+    Private Sub WireAudioPipelinePanel()
+        ' Wire up AudioPipelinePanel event
+        AddHandler AudioPipelinePanel1.ConfigurationChanged, AddressOf OnPipelineConfigurationChanged
+        Logger.Instance.Info("AudioPipelinePanel wired", "MainForm")
     End Sub
 
 #End Region
@@ -427,6 +437,15 @@ Partial Public Class MainForm
 
         ' Save settings
         settingsManager.SaveAll()
+    End Sub
+
+    Private Sub OnPipelineConfigurationChanged(sender As Object, config As PipelineConfiguration)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Pipeline configuration changed")
+        
+        ' Configuration is automatically saved by AudioPipelineRouter
+        ' Here we would apply the configuration to the actual audio flow (Phase 3)
+        ' For now, just log it
+        Logger.Instance.Info($"Pipeline config updated: DSP={config.Processing.EnableDSP}, Recording={config.Destination.EnableRecording}", "MainForm")
     End Sub
 
     Private Sub ApplyMeterSettings(settings As Models.MeterSettings)

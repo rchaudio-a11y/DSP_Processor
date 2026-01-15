@@ -56,6 +56,8 @@ Partial Class MainForm
         InputTabPanel1 = New UI.TabPanels.InputTabPanel()
         tabRecording = New TabPage()
         RecordingOptionsPanel1 = New UI.TabPanels.RecordingOptionsPanel()
+        tabPipeline = New TabPage()
+        AudioPipelinePanel1 = New UI.TabPanels.AudioPipelinePanel()
         tabSpectrum = New TabPage()
         grpFFTSettings = New GroupBox()
         lblFFTSize = New Label()
@@ -281,6 +283,7 @@ Partial Class MainForm
         mainTabs.Controls.Add(tabProgram)
         mainTabs.Controls.Add(tabInput)
         mainTabs.Controls.Add(tabRecording)
+        mainTabs.Controls.Add(tabPipeline)
         mainTabs.Controls.Add(tabSpectrum)
         mainTabs.Controls.Add(tabAnalysis)
         mainTabs.Controls.Add(tabLogs)
@@ -464,6 +467,27 @@ Partial Class MainForm
         RecordingOptionsPanel1.Name = "RecordingOptionsPanel1"
         RecordingOptionsPanel1.Size = New Size(440, 787)
         RecordingOptionsPanel1.TabIndex = 0
+        ' 
+        ' tabPipeline
+        ' 
+        tabPipeline.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabPipeline.Controls.Add(AudioPipelinePanel1)
+        tabPipeline.Location = New Point(4, 54)
+        tabPipeline.Name = "tabPipeline"
+        tabPipeline.Padding = New Padding(3)
+        tabPipeline.Size = New Size(446, 793)
+        tabPipeline.TabIndex = 8
+        tabPipeline.Text = "🔀 Pipeline"
+        ' 
+        ' AudioPipelinePanel1
+        ' 
+        AudioPipelinePanel1.AutoScroll = True
+        AudioPipelinePanel1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        AudioPipelinePanel1.Dock = DockStyle.Fill
+        AudioPipelinePanel1.Location = New Point(3, 3)
+        AudioPipelinePanel1.Name = "AudioPipelinePanel1"
+        AudioPipelinePanel1.Size = New Size(440, 787)
+        AudioPipelinePanel1.TabIndex = 0
         ' 
         ' tabSpectrum
         ' 
@@ -953,6 +977,8 @@ Partial Class MainForm
     Friend WithEvents SpectrumAnalyzerControl1 As UI.SpectrumAnalyzerControl
     Friend WithEvents AudioSettingsPanel1 As UI.TabPanels.AudioSettingsPanel
     Friend WithEvents InputTabPanel1 As UI.TabPanels.InputTabPanel
+    Friend WithEvents AudioPipelinePanel1 As UI.TabPanels.AudioPipelinePanel
+    Friend WithEvents tabPipeline As TabPage
     Friend WithEvents WaveformDisplayControl1 As UI.WaveformDisplayControl
     Friend WithEvents grpRouting As GroupBox
     Friend WithEvents lblInputSource As Label
