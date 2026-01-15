@@ -14,6 +14,8 @@ Namespace AudioIO
         Private channelsValue As Integer
         Private bitsValue As Integer
         Private volumeValue As Single = 1.0F ' 0.0 to 1.0 (0% to 100%)
+        Private bufferOverflowCount As Integer = 0 ' Track buffer overflows
+        Private lastOverflowWarning As DateTime = DateTime.MinValue
 
         Public Sub New(sampleRate As Integer, channels As String, bits As Integer, Optional deviceIndex As Integer = 0, Optional BufferMill As Integer = 20)
             sampleRateValue = sampleRate
@@ -60,6 +62,17 @@ Namespace AudioIO
                 End If
                 
                 bufferQueue.Enqueue(copy)
+                
+                ' Detect buffer overflow (queue too large = consumer not keeping up)
+                If bufferQueue.Count > 10 Then ' More than 10 buffers queued = potential issue
+                    bufferOverflowCount += 1
+                    
+                    ' Warn every 5 seconds to avoid log spam
+                    If (DateTime.Now - lastOverflowWarning).TotalSeconds > 5 Then
+                        Logger.Instance.Warning($"Buffer queue overflow detected! Queue size: {bufferQueue.Count}, Overflows: {bufferOverflowCount}. This may cause clicks/pops.", "MicInputSource")
+                        lastOverflowWarning = DateTime.Now
+                    End If
+                End If
             End If
         End Sub
 

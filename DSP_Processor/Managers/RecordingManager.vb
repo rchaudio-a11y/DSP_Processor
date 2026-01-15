@@ -147,6 +147,10 @@ Namespace Managers
 
                 Logger.Instance.Info("Arming microphone...", "RecordingManager")
 
+                ' DIAGNOSTIC: Log buffer settings
+                Logger.Instance.Info($"Buffer size: {audioSettings.BufferMilliseconds}ms", "RecordingManager")
+                Logger.Instance.Info($"Sample rate: {audioSettings.SampleRate}Hz, Channels: {audioSettings.Channels}, Bits: {audioSettings.BitDepth}", "RecordingManager")
+
                 ' Create mic input source
                 mic = New MicInputSource(
                     audioSettings.SampleRate,
@@ -158,8 +162,10 @@ Namespace Managers
                 ' Apply volume
                 mic.Volume = 1.0F ' Default, can be adjusted via property
 
-                ' Start processing timer (20ms intervals)
+                ' Start processing timer (20ms intervals - must be <= buffer size)
+                ' Keep at 20ms for responsiveness even if buffer is larger
                 processingTimer = New Timer(AddressOf ProcessingTimer_Tick, Nothing, 0, 20)
+                Logger.Instance.Debug($"Processing timer: 20ms intervals, Buffer: {audioSettings.BufferMilliseconds}ms", "RecordingManager")
 
                 _isArmed = True
                 RaiseEvent MicrophoneArmed(Me, True)
@@ -214,8 +220,14 @@ Namespace Managers
 
                 Logger.Instance.Info("Starting recording...", "RecordingManager")
 
-                ' Clear stale buffers
-                mic?.ClearBuffers()
+                ' DON'T clear buffers - we WANT the pre-filled audio from mic arming!
+                ' This is the whole point of arming the mic early - to avoid losing the first second
+                ' mic?.ClearBuffers() ' REMOVED - was causing first second loss!
+                
+                ' DIAGNOSTIC: Log buffer queue size
+                If mic IsNot Nothing Then
+                    Logger.Instance.Info($"Starting recording with pre-filled mic buffer", "RecordingManager")
+                End If
 
                 ' Set recorder input
                 recorder.InputSource = mic

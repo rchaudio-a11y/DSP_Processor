@@ -24,15 +24,15 @@ Namespace Utils
                 End If
                 
                 ' Deploy white noise file
-                DeployEmbeddedResource("DSP_Processor.Test Audio.whitenoise.wav", 
+                DeployEmbeddedResource("DSP_Processor.whitenoise.wav", 
                                       Path.Combine(recordingsFolder, "WhiteNoise_Test.wav"))
                 
                 ' Deploy frequency sweep file
-                DeployEmbeddedResource("DSP_Processor.Test Audio.freq20-20000-20s.wav", 
+                DeployEmbeddedResource("DSP_Processor.freq20-20000-20s.wav", 
                                       Path.Combine(recordingsFolder, "FreqSweep_20Hz-20kHz_Test.wav"))
                 
                 ' Deploy calibration signal
-                DeployEmbeddedResource("DSP_Processor.Test Audio.Calibration signal.wav", 
+                DeployEmbeddedResource("DSP_Processor.Calibration signal.wav", 
                                       Path.Combine(recordingsFolder, "Calibration_Test.wav"))
                 
                 Logger.Instance.Info("Test audio files deployed successfully", "ResourceDeployer")

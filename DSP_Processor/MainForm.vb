@@ -84,6 +84,10 @@ Partial Public Class MainForm
         trackVolume.Value = 100
         lblVolume.Text = "100%"
 
+        ' Start timers for UI updates
+        TimerMeters.Start() ' For volume meters
+        ' TimerPlayback will be started when playback begins (in OnPlaybackStarted)
+
         ' NOTE: Microphone will be armed after settings are loaded (in OnSettingsLoaded)
 
         ' Update UI state (will be updated again after mic arms)
@@ -161,6 +165,7 @@ Partial Public Class MainForm
         ' Wire up AudioRouter FFT events
         AddHandler audioRouter.InputSamplesAvailable, AddressOf OnDSPInputSamples
         AddHandler audioRouter.OutputSamplesAvailable, AddressOf OnDSPOutputSamples
+        AddHandler audioRouter.PlaybackCompleted, AddressOf OnPlaybackCompleted
     End Sub
 
     Private Sub WireAudioSettingsPanel()
@@ -292,7 +297,7 @@ Partial Public Class MainForm
 
             ' Update spectrum display with FFT (feed to INPUT display for PRE monitoring)
             fftProcessorInput.SampleRate = e.SampleRate
-            fftProcessorInput.AddSamples(e.Buffer, e.Buffer.Length, e.BitsPerSample)
+            fftProcessorInput.AddSamples(e.Buffer, e.Buffer.Length, e.BitsPerSample, e.Channels)
             Dim spectrum = fftProcessorInput.CalculateSpectrum()
 
             If spectrum IsNot Nothing AndAlso spectrum.Length > 0 Then
@@ -426,6 +431,8 @@ Partial Public Class MainForm
             SpectrumAnalyzerControl1.OutputDisplay.MaxFrequency = settings.MaxFrequency
             SpectrumAnalyzerControl1.InputDisplay.MinDB = settings.MinDB
             SpectrumAnalyzerControl1.OutputDisplay.MinDB = settings.MinDB
+            SpectrumAnalyzerControl1.InputDisplay.MaxDB = settings.MaxDB
+            SpectrumAnalyzerControl1.OutputDisplay.MaxDB = settings.MaxDB
 
             Services.LoggingServiceAdapter.Instance.LogInfo($"Spectrum settings applied: FFT={settings.FFTSize}, Window={settings.WindowFunction}")
 
@@ -706,9 +713,13 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnPlaybackStarted(sender As Object, filepath As String)
+        ' Start the timer to update playback position
+        TimerPlayback.Start()
+        
         ' Update UI
         panelLED.BackColor = Color.RoyalBlue
         lblStatus.Text = $"Status: Playing {Path.GetFileName(filepath)}"
+        btnStopPlayback.Enabled = True
     End Sub
 
     Private Sub OnPlaybackStopped(sender As Object, e As NAudio.Wave.StoppedEventArgs)
@@ -726,6 +737,13 @@ Partial Public Class MainForm
             playbackManager.UpdatePosition()
             transportControl.TrackPosition = playbackManager.CurrentPosition
             transportControl.TrackDuration = playbackManager.TotalDuration
+            
+            ' DIAGNOSTIC: Log playback position every 30 ticks (~0.5 seconds)
+            Static tickCount As Integer = 0
+            tickCount += 1
+            If tickCount Mod 30 = 0 Then
+                Logger.Instance.Debug($"Playback position: {playbackManager.CurrentPosition} / {playbackManager.TotalDuration}", "MainForm")
+            End If
         End If
 
         ' Update DSP BOTH input (PRE) and output (POST) samples for FFT comparison at 60 Hz
@@ -761,29 +779,54 @@ Partial Public Class MainForm
     ''' <summary>Handle DSP input samples for FFT (PRE-DSP - raw audio)</summary>
     Private Sub OnDSPInputSamples(sender As Object, e As AudioIO.AudioSamplesEventArgs)
         Try
+            ' DIAGNOSTIC: Log that we received the event
+            Static callCount As Integer = 0
+            callCount += 1
+            If callCount Mod 10 = 0 Then
+                Services.LoggingServiceAdapter.Instance.LogInfo($"OnDSPInputSamples: Event received! Count={callCount}, Samples={e.Count} bytes")
+            End If
+
             ' Feed RAW audio to INPUT display (BEFORE any processing)
             fftProcessorInput.SampleRate = e.SampleRate
-            fftProcessorInput.AddSamples(e.Samples, e.Count, e.BitsPerSample)
+            fftProcessorInput.AddSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels)
             Dim spectrumInput = fftProcessorInput.CalculateSpectrum()
 
             If spectrumInput IsNot Nothing AndAlso spectrumInput.Length > 0 Then
                 SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrumInput, e.SampleRate, fftProcessorInput.FFTSize)
+            Else
+                ' Log if spectrum is null/empty
+                If callCount Mod 10 = 0 Then
+                    Services.LoggingServiceAdapter.Instance.LogWarning($"OnDSPInputSamples: Spectrum is NULL or empty!")
+                End If
             End If
         Catch ex As Exception
-            ' Ignore FFT errors silently
+            ' Log FFT errors instead of ignoring
+            Services.LoggingServiceAdapter.Instance.LogError($"OnDSPInputSamples error: {ex.Message}", ex)
         End Try
     End Sub
 
     ''' <summary>Handle DSP output samples for FFT (POST-DSP - processed audio)</summary>
     Private Sub OnDSPOutputSamples(sender As Object, e As AudioIO.AudioSamplesEventArgs)
         Try
+            ' DIAGNOSTIC: Log that we received the event
+            Static callCount As Integer = 0
+            callCount += 1
+            If callCount Mod 10 = 0 Then
+                Services.LoggingServiceAdapter.Instance.LogInfo($"OnDSPOutputSamples: Event received! Count={callCount}, Samples={e.Count} bytes")
+            End If
+
             ' Feed PROCESSED audio to OUTPUT display (AFTER DSP processing)
             fftProcessorOutput.SampleRate = e.SampleRate
-            fftProcessorOutput.AddSamples(e.Samples, e.Count, e.BitsPerSample)
+            fftProcessorOutput.AddSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels)
             Dim spectrumOutput = fftProcessorOutput.CalculateSpectrum()
 
             If spectrumOutput IsNot Nothing AndAlso spectrumOutput.Length > 0 Then
                 SpectrumAnalyzerControl1.OutputDisplay.UpdateSpectrum(spectrumOutput, e.SampleRate, fftProcessorOutput.FFTSize)
+            Else
+                ' Log if spectrum is null/empty
+                If callCount Mod 10 = 0 Then
+                    Services.LoggingServiceAdapter.Instance.LogWarning($"OnDSPOutputSamples: Spectrum is NULL or empty!")
+                End If
             End If
 
             ' DIAGNOSTIC: Calculate TRUE peak level from audio samples (every second)
@@ -795,7 +838,31 @@ Partial Public Class MainForm
             End If
 
         Catch ex As Exception
-            ' Ignore FFT errors silently
+            ' Log FFT errors instead of ignoring
+            Services.LoggingServiceAdapter.Instance.LogError($"OnDSPOutputSamples error: {ex.Message}", ex)
+        End Try
+    End Sub
+
+    ''' <summary>Handle playback completion (file reached EOF naturally)</summary>
+    Private Sub OnPlaybackCompleted(sender As Object, e As EventArgs)
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo("Playback completed naturally (EOF reached)")
+            Logger.Instance.Info("Playback completed naturally", "MainForm")
+
+            ' Update transport control to stopped state
+            If InvokeRequired Then
+                Invoke(New Action(Sub()
+                                      transportControl.State = UI.TransportControl.TransportState.Stopped
+                                      panelLED.BackColor = Color.Yellow
+                                      lblStatus.Text = "Status: Ready (Mic Armed)"
+                                  End Sub))
+            Else
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                panelLED.BackColor = Color.Yellow
+                lblStatus.Text = "Status: Ready (Mic Armed)"
+            End If
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"OnPlaybackCompleted error: {ex.Message}", ex)
         End Try
     End Sub
 

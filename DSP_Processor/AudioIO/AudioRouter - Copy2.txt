@@ -120,7 +120,6 @@ Namespace AudioIO
         Public Event InputSourceChanged As EventHandler(Of InputSourceType)
         Public Event OutputDestinationChanged As EventHandler(Of OutputDestinationType)
         Public Event PlaybackStopped As EventHandler
-        Public Event PlaybackCompleted As EventHandler
 
         ''' <summary>Raised when audio samples are available for FFT analysis (input)</summary>
         Public Event InputSamplesAvailable As EventHandler(Of AudioSamplesEventArgs)
@@ -322,8 +321,6 @@ Namespace AudioIO
                         ' Log startup ONCE
                         Utils.Logger.Instance.Info($"File feeder started (EVENT-DRIVEN): {BLOCK_SIZE_SAMPLES} samples per block ({floatBlockSize} bytes IEEE Float → {pcm16BlockSize} bytes PCM16)", "AudioRouter")
 
-                        Dim reachedEOF As Boolean = False ' Track if we reached end naturally
-
                         While Not feederCancellation
                             ' WAIT for signal from DSP (input buffer <25%)
                             ' Use 1ms timeout for VERY fast response
@@ -344,8 +341,6 @@ Namespace AudioIO
                                 bytesRead = fileReader.Read(floatBuffer, 0, floatBlockSize)
                                 If bytesRead = 0 Then
                                     Utils.Logger.Instance.Info("File feeder reached end of file", "AudioRouter")
-                                    feederCancellation = True ' Stop the outer loop too
-                                    reachedEOF = True ' Mark that we reached EOF naturally
                                     Exit While
                                 End If
 
@@ -367,11 +362,6 @@ Namespace AudioIO
 
                         ' Log final stats ONCE after stopping
                         Utils.Logger.Instance.Info($"File feeder stopped: {blockCount} blocks written", "AudioRouter")
-
-                        ' Raise PlaybackCompleted if we finished the file naturally
-                        If reachedEOF Then
-                            RaiseEvent PlaybackCompleted(Me, EventArgs.Empty)
-                        End If
 
                     Catch ex As System.Threading.ThreadAbortException
                         Utils.Logger.Instance.Info("File feeder thread aborted", "AudioRouter")
@@ -500,7 +490,7 @@ Namespace AudioIO
                     ' DIAGNOSTIC: Log every 30 calls (~500ms at 60Hz)
                     Static callCount As Integer = 0
                     callCount += 1
-                    If callCount Mod 30 = 0 AndAlso available > 0 Then
+                    If callCount Mod 30 = 0 Then
                         Utils.Logger.Instance.Info($"UpdateOutputSamples: {available} bytes available in output monitor", "AudioRouter")
                     End If
 
@@ -511,21 +501,6 @@ Namespace AudioIO
                         Dim bytesRead = dspThread.ReadOutputMonitor(buffer, 0, buffer.Length)
 
                         If bytesRead > 0 Then
-                            ' DIAGNOSTIC: Check sample amplitude RIGHT AFTER reading from monitor buffer
-                            Static lastDiagTime As DateTime = DateTime.MinValue
-                            If (DateTime.Now - lastDiagTime).TotalSeconds >= 1.0 Then
-                                Dim maxSample As Single = 0.0F
-                                For i = 0 To bytesRead - 1 Step 2
-                                    If i + 1 < bytesRead Then
-                                        Dim sample = Math.Abs(BitConverter.ToInt16(buffer, i))
-                                        If sample > maxSample Then maxSample = sample
-                                    End If
-                                Next
-                                Dim maxSampleDB = 20.0F * Math.Log10(Math.Max(maxSample / 32768.0F, 0.00001F))
-                                Utils.Logger.Instance.Info($"MONITOR BUFFER CHECK: Peak={maxSampleDB:F1} dBFS from {bytesRead} bytes BEFORE FFT", "AudioRouter")
-                                lastDiagTime = DateTime.Now
-                            End If
-
                             ' Clone buffer for async processing
                             Dim clonedBuffer(bytesRead - 1) As Byte
                             Array.Copy(buffer, clonedBuffer, bytesRead)
@@ -570,7 +545,7 @@ Namespace AudioIO
                     ' DIAGNOSTIC: Log every 30 calls (~500ms at 60Hz)
                     Static callCount As Integer = 0
                     callCount += 1
-                    If callCount Mod 30 = 0 AndAlso available > 0 Then
+                    If callCount Mod 30 = 0 Then
                         Utils.Logger.Instance.Info($"UpdateInputSamples: {available} bytes available in input monitor", "AudioRouter")
                     End If
 

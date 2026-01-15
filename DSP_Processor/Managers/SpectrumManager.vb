@@ -192,7 +192,7 @@ Namespace Managers
         ''' </summary>
         Public Sub AddInputSamples(buffer As Byte(), length As Integer, bitsPerSample As Integer)
             If fftInput IsNot Nothing Then
-                fftInput.AddSamples(buffer, length, bitsPerSample)
+                fftInput.AddSamples(buffer, length, bitsPerSample, 1) ' Assume mono for now
             End If
         End Sub
 
@@ -201,7 +201,7 @@ Namespace Managers
         ''' </summary>
         Public Sub AddOutputSamples(buffer As Byte(), length As Integer, bitsPerSample As Integer)
             If fftOutput IsNot Nothing Then
-                fftOutput.AddSamples(buffer, length, bitsPerSample)
+                fftOutput.AddSamples(buffer, length, bitsPerSample, 1) ' Assume mono for now
             End If
         End Sub
 

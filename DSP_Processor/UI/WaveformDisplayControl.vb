@@ -18,6 +18,8 @@ Namespace UI
         Private currentWaveform As Bitmap = Nothing
         Private currentFilePath As String = ""
         Private isLoading As Boolean = False
+        Private ReadOnly lockObject As New Object() ' Thread safety
+        Private resizeTimer As System.Windows.Forms.Timer ' Debounce resize
 
 #End Region
 
@@ -105,6 +107,12 @@ Namespace UI
             Me.BackColor = Color.Black
             Me.DoubleBuffered = True
 
+            ' Initialize resize timer (debounce resize events)
+            resizeTimer = New System.Windows.Forms.Timer() With {
+                .Interval = 300 ' 300ms debounce
+            }
+            AddHandler resizeTimer.Tick, AddressOf ResizeTimer_Tick
+
             Logger.Instance.Debug("WaveformDisplayControl initialized", "WaveformDisplayControl")
         End Sub
 
@@ -120,39 +128,45 @@ Namespace UI
             End If
 
             Try
-                isLoading = True
-                Me.Invalidate() ' Show "Loading..." state
+                SyncLock lockObject
+                    isLoading = True
+                    Me.Invalidate() ' Show "Loading..." state
 
-                Logger.Instance.Debug($"Loading waveform: {System.IO.Path.GetFileName(filepath)}", "WaveformDisplayControl")
+                    Logger.Instance.Debug($"Loading waveform: {System.IO.Path.GetFileName(filepath)}", "WaveformDisplayControl")
 
-                ' Dispose old waveform
-                DisposeCurrentWaveform()
+                    ' Dispose old waveform
+                    DisposeCurrentWaveform()
 
-                ' Render new waveform
-                Using timer = Logger.Instance.StartTimer("Waveform Rendering")
-                    currentWaveform = renderer.Render(filepath, Me.Width, Me.Height)
-                End Using
+                    ' Render new waveform
+                    Using timer = Logger.Instance.StartTimer("Waveform Rendering")
+                        currentWaveform = renderer.Render(filepath, Me.Width, Me.Height)
+                    End Using
 
-                currentFilePath = filepath
-                isLoading = False
+                    currentFilePath = filepath
+                    isLoading = False
 
-                ' Redraw with new waveform
-                Me.Invalidate()
+                    ' Redraw with new waveform
+                    Me.Invalidate()
 
-                Logger.Instance.Debug($"Waveform loaded: {System.IO.Path.GetFileName(filepath)}", "WaveformDisplayControl")
+                    Logger.Instance.Debug($"Waveform loaded: {System.IO.Path.GetFileName(filepath)}", "WaveformDisplayControl")
+                End SyncLock
 
             Catch ex As Exception
                 Logger.Instance.Error($"Failed to load waveform: {ex.Message}", ex, "WaveformDisplayControl")
-                isLoading = False
-                DisposeCurrentWaveform()
+                SyncLock lockObject
+                    isLoading = False
+                    DisposeCurrentWaveform()
+                End SyncLock
                 Me.Invalidate() ' Show error state
             End Try
         End Sub
 
         ''' <summary>Clear current waveform display</summary>
         Public Sub Clear()
-            DisposeCurrentWaveform()
-            currentFilePath = ""
+            SyncLock lockObject
+                DisposeCurrentWaveform()
+                currentFilePath = ""
+            End SyncLock
             Me.Invalidate()
 
             Logger.Instance.Debug("Waveform display cleared", "WaveformDisplayControl")
@@ -196,17 +210,44 @@ Namespace UI
 
         Protected Overrides Sub OnPaint(e As PaintEventArgs)
             Dim g = e.Graphics
+            Dim waveformCopy As Bitmap = Nothing
+            Dim isLoadingCopy As Boolean
+            Dim hasWaveform As Boolean
+
+            ' Get thread-safe copy of state
+            SyncLock lockObject
+                isLoadingCopy = isLoading
+                hasWaveform = (currentWaveform IsNot Nothing)
+                
+                ' Clone the bitmap to avoid disposal race conditions
+                If hasWaveform Then
+                    Try
+                        waveformCopy = New Bitmap(currentWaveform)
+                    Catch ex As Exception
+                        Logger.Instance.Warning($"Failed to clone waveform for painting: {ex.Message}", "WaveformDisplayControl")
+                        hasWaveform = False
+                    End Try
+                End If
+            End SyncLock
 
             ' Fill background
             g.Clear(renderer.BackgroundColor)
 
-            If isLoading Then
+            If isLoadingCopy Then
                 ' Show "Loading..." message
                 DrawCenteredText(g, "Loading waveform...", Brushes.White)
 
-            ElseIf currentWaveform IsNot Nothing Then
-                ' Draw waveform
-                g.DrawImage(currentWaveform, 0, 0, Me.Width, Me.Height)
+            ElseIf hasWaveform AndAlso waveformCopy IsNot Nothing Then
+                ' Draw waveform copy
+                Try
+                    g.DrawImage(waveformCopy, 0, 0, Me.Width, Me.Height)
+                Catch ex As Exception
+                    Logger.Instance.Warning($"Failed to draw waveform: {ex.Message}", "WaveformDisplayControl")
+                    DrawCenteredText(g, "Error displaying waveform", Brushes.Red)
+                Finally
+                    ' Dispose the copy
+                    waveformCopy?.Dispose()
+                End Try
 
             Else
                 ' Show "No waveform loaded" message
@@ -226,16 +267,19 @@ Namespace UI
         Protected Overrides Sub OnResize(e As EventArgs)
             MyBase.OnResize(e)
 
-            ' Redraw at new size if waveform is loaded
+            ' Use timer to debounce resize events
             If Not isLoading AndAlso Not String.IsNullOrEmpty(currentFilePath) Then
-                ' Delay redraw to avoid excessive redraws during resize
-                System.Threading.Tasks.Task.Delay(100).ContinueWith(Sub()
-                    If Me.InvokeRequired Then
-                        Me.Invoke(Sub() Redraw())
-                    Else
-                        Redraw()
-                    End If
-                End Sub)
+                resizeTimer.Stop() ' Cancel previous timer
+                resizeTimer.Start() ' Start new timer
+            End If
+        End Sub
+
+        Private Sub ResizeTimer_Tick(sender As Object, e As EventArgs)
+            resizeTimer.Stop()
+            
+            ' Redraw at new size
+            If Not isLoading AndAlso Not String.IsNullOrEmpty(currentFilePath) Then
+                Redraw()
             End If
         End Sub
 
@@ -245,7 +289,17 @@ Namespace UI
 
         Protected Overrides Sub Dispose(disposing As Boolean)
             If disposing Then
-                DisposeCurrentWaveform()
+                ' Stop resize timer
+                If resizeTimer IsNot Nothing Then
+                    resizeTimer.Stop()
+                    resizeTimer.Dispose()
+                    resizeTimer = Nothing
+                End If
+
+                ' Dispose waveform
+                SyncLock lockObject
+                    DisposeCurrentWaveform()
+                End SyncLock
 
                 If renderer IsNot Nothing Then
                     renderer.ClearCache()

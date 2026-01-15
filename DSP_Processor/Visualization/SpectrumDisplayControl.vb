@@ -25,6 +25,8 @@ Namespace Visualization
         Private _peakHoldColor As Color = Color.Red
         Private _gridColor As Color = Color.FromArgb(50, 50, 50)
         Private _textColor As Color = Color.Gray
+        Private _currentSampleRate As Integer = 44100 ' Store sample rate from UpdateSpectrum
+        Private _currentFFTSize As Integer = 4096     ' Store FFT size from UpdateSpectrum
         
         ''' <summary>
         ''' Minimum frequency to display (Hz)
@@ -193,6 +195,28 @@ Namespace Visualization
                 Return
             End If
             
+            ' Store sample rate and FFT size for frequency mapping
+            _currentSampleRate = sampleRate
+            _currentFFTSize = fftSize
+            
+            ' DIAGNOSTIC: Log spectrum data every 30 calls (~500ms)
+            Static callCount As Integer = 0
+            callCount += 1
+            If callCount Mod 30 = 0 Then
+                ' Find peak value in spectrum
+                Dim peakValue As Single = -96.0F
+                Dim peakBin As Integer = 0
+                For i = 0 To newSpectrum.Length - 1
+                    If newSpectrum(i) > peakValue Then
+                        peakValue = newSpectrum(i)
+                        peakBin = i
+                    End If
+                Next
+                
+                Dim freq = (peakBin * (sampleRate / 2.0F) / newSpectrum.Length)
+                Utils.Logger.Instance.Info($"UpdateSpectrum: {newSpectrum.Length} bins, Peak={peakValue:F1} dB at bin {peakBin} ({freq:F0} Hz), SampleRate={sampleRate}, MinFreq={_minFrequency}, MaxFreq={_maxFrequency}, MinDB={_minDB}, MaxDB={_maxDB}", "SpectrumDisplay")
+            End If
+            
             ' Initialize arrays if needed
             If spectrum Is Nothing OrElse spectrum.Length <> newSpectrum.Length Then
                 ReDim spectrum(newSpectrum.Length - 1)
@@ -200,13 +224,15 @@ Namespace Visualization
                 ReDim peakHold(newSpectrum.Length - 1)
                 ReDim peakHoldTimer(newSpectrum.Length - 1)
                 
-                ' Initialize to minimum
+                ' Initialize to the INCOMING spectrum values, not MinDB!
                 For i = 0 To spectrum.Length - 1
-                    spectrum(i) = _minDB
-                    smoothedSpectrum(i) = _minDB
-                    peakHold(i) = _minDB
+                    spectrum(i) = newSpectrum(i)
+                    smoothedSpectrum(i) = newSpectrum(i)
+                    peakHold(i) = newSpectrum(i)
                     peakHoldTimer(i) = 0
                 Next
+                
+                Utils.Logger.Instance.Info($"Spectrum arrays initialized: {spectrum.Length} bins", "SpectrumDisplay")
             End If
             
             ' Update spectrum with smoothing
@@ -294,18 +320,42 @@ Namespace Visualization
         Private Sub DrawSpectrum(g As Graphics)
             If spectrum.Length < 2 Then Return
 
+            ' Calculate Nyquist frequency from sample rate
+            Dim nyquistFreq = _currentSampleRate / 2.0F
+
+            ' DIAGNOSTIC: Log drawing info every 60 frames (~1 second at 60 FPS)
+            Static drawCount As Integer = 0
+            drawCount += 1
+            
             ' Create path for spectrum
             Using path As New GraphicsPath()
                 Dim points As New List(Of PointF)
 
                 For i = 0 To spectrum.Length - 1
-                    Dim freq = (i * 22050.0F / spectrum.Length) ' Assuming Nyquist ~22kHz
+                    ' Calculate frequency for this bin using actual sample rate
+                    Dim freq = (i * nyquistFreq / spectrum.Length)
+                    
                     If freq >= _minFrequency AndAlso freq <= _maxFrequency Then
                         Dim x = MapFrequencyToX(freq)
                         Dim y = MapDBToY(spectrum(i))
                         points.Add(New PointF(x, y))
                     End If
                 Next
+
+                ' DIAGNOSTIC: Log point count
+                If drawCount Mod 60 = 0 Then
+                    Utils.Logger.Instance.Info($"DrawSpectrum: {points.Count} points, Nyquist={nyquistFreq:F0} Hz, Width={Width}, Height={Height}", "SpectrumDisplay")
+                    
+                    ' Log a few sample points
+                    If points.Count > 0 Then
+                        Utils.Logger.Instance.Info($"  Point 0: X={points(0).X:F1}, Y={points(0).Y:F1}", "SpectrumDisplay")
+                        If points.Count > points.Count \ 2 Then
+                            Dim mid = points.Count \ 2
+                            Utils.Logger.Instance.Info($"  Point {mid}: X={points(mid).X:F1}, Y={points(mid).Y:F1}", "SpectrumDisplay")
+                        End If
+                        Utils.Logger.Instance.Info($"  Point {points.Count - 1}: X={points(points.Count - 1).X:F1}, Y={points(points.Count - 1).Y:F1}", "SpectrumDisplay")
+                    End If
+                End If
 
                 If points.Count >= 2 Then
                     ' Draw filled area under curve
@@ -330,10 +380,15 @@ Namespace Visualization
         Private Sub DrawPeakHold(g As Graphics)
             If peakHold.Length < 2 Then Return
 
+            ' Calculate Nyquist frequency from sample rate
+            Dim nyquistFreq = _currentSampleRate / 2.0F
+
             Dim points As New List(Of PointF)
 
             For i = 0 To peakHold.Length - 1
-                Dim freq = (i * 22050.0F / peakHold.Length)
+                ' Calculate frequency for this bin using actual sample rate
+                Dim freq = (i * nyquistFreq / peakHold.Length)
+                
                 If freq >= _minFrequency AndAlso freq <= _maxFrequency Then
                     Dim x = MapFrequencyToX(freq)
                     Dim y = MapDBToY(peakHold(i))
@@ -383,8 +438,11 @@ Namespace Visualization
         End Function
 
         Private Function MapDBToY(db As Single) As Single
+            ' Clamp dB to range first
+            Dim clampedDB = Math.Max(_minDB, Math.Min(_maxDB, db))
+            
             ' Linear dB scale
-            Dim normalized = (db - _minDB) / (_maxDB - _minDB)
+            Dim normalized = (clampedDB - _minDB) / (_maxDB - _minDB)
             Return Height - 30 - normalized * (Height - 40)
         End Function
         

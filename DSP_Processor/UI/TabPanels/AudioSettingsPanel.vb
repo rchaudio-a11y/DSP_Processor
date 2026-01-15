@@ -15,6 +15,8 @@ Namespace UI.TabPanels
 #Region "Controls"
 
         Private grpAudioSettings As GroupBox
+        Private lblAudioDriver As Label
+        Private cmbAudioDriver As ComboBox
         Private lblInputDevice As Label
         Private cmbInputDevices As ComboBox
         Private lblSampleRate As Label
@@ -56,21 +58,38 @@ Namespace UI.TabPanels
             grpAudioSettings = New GroupBox() With {
                 .Text = "Audio Device Settings",
                 .Location = New Point(10, 10),
-                .Size = New Size(320, 260),
+                .Size = New Size(320, 320),
                 .BackColor = Color.FromArgb(45, 45, 48),
                 .ForeColor = Color.White
             }
 
-            ' Input Device
-            lblInputDevice = New Label() With {
-                .Text = "Input Device:",
+            ' Audio Driver (NEW - Task 1.1)
+            lblAudioDriver = New Label() With {
+                .Text = "Audio Driver:",
                 .Location = New Point(10, 25),
                 .Size = New Size(100, 20),
                 .ForeColor = Color.White
             }
 
-            cmbInputDevices = New ComboBox() With {
+            cmbAudioDriver = New ComboBox() With {
                 .Location = New Point(10, 48),
+                .Size = New Size(290, 25),
+                .DropDownStyle = ComboBoxStyle.DropDownList,
+                .BackColor = Color.FromArgb(60, 60, 60),
+                .ForeColor = Color.White
+            }
+            AddHandler cmbAudioDriver.SelectedIndexChanged, AddressOf OnDriverChanged
+
+            ' Input Device (moved down)
+            lblInputDevice = New Label() With {
+                .Text = "Input Device:",
+                .Location = New Point(10, 83),
+                .Size = New Size(100, 20),
+                .ForeColor = Color.White
+            }
+
+            cmbInputDevices = New ComboBox() With {
+                .Location = New Point(10, 106),
                 .Size = New Size(290, 25),
                 .DropDownStyle = ComboBoxStyle.DropDownList,
                 .BackColor = Color.FromArgb(60, 60, 60),
@@ -78,16 +97,16 @@ Namespace UI.TabPanels
             }
             AddHandler cmbInputDevices.SelectedIndexChanged, AddressOf OnControlChanged
 
-            ' Sample Rate
+            ' Sample Rate (moved down)
             lblSampleRate = New Label() With {
                 .Text = "Sample Rate:",
-                .Location = New Point(10, 83),
+                .Location = New Point(10, 141),
                 .Size = New Size(100, 20),
                 .ForeColor = Color.White
             }
 
             cmbSampleRates = New ComboBox() With {
-                .Location = New Point(10, 106),
+                .Location = New Point(10, 164),
                 .Size = New Size(140, 25),
                 .DropDownStyle = ComboBoxStyle.DropDownList,
                 .BackColor = Color.FromArgb(60, 60, 60),
@@ -95,16 +114,16 @@ Namespace UI.TabPanels
             }
             AddHandler cmbSampleRates.SelectedIndexChanged, AddressOf OnControlChanged
 
-            ' Bit Depth
+            ' Bit Depth (moved down)
             lblBitDepth = New Label() With {
                 .Text = "Bit Depth:",
-                .Location = New Point(160, 83),
+                .Location = New Point(160, 141),
                 .Size = New Size(100, 20),
                 .ForeColor = Color.White
             }
 
             cmbBitDepths = New ComboBox() With {
-                .Location = New Point(160, 106),
+                .Location = New Point(160, 164),
                 .Size = New Size(140, 25),
                 .DropDownStyle = ComboBoxStyle.DropDownList,
                 .BackColor = Color.FromArgb(60, 60, 60),
@@ -112,16 +131,16 @@ Namespace UI.TabPanels
             }
             AddHandler cmbBitDepths.SelectedIndexChanged, AddressOf OnControlChanged
 
-            ' Channel Mode
+            ' Channel Mode (moved down)
             lblChannelMode = New Label() With {
                 .Text = "Channel Mode:",
-                .Location = New Point(10, 141),
+                .Location = New Point(10, 199),
                 .Size = New Size(100, 20),
                 .ForeColor = Color.White
             }
 
             cmbChannelMode = New ComboBox() With {
-                .Location = New Point(10, 164),
+                .Location = New Point(10, 222),
                 .Size = New Size(140, 25),
                 .DropDownStyle = ComboBoxStyle.DropDownList,
                 .BackColor = Color.FromArgb(60, 60, 60),
@@ -129,16 +148,16 @@ Namespace UI.TabPanels
             }
             AddHandler cmbChannelMode.SelectedIndexChanged, AddressOf OnControlChanged
 
-            ' Buffer Size
+            ' Buffer Size (moved down)
             lblBufferSize = New Label() With {
                 .Text = "Buffer Size:",
-                .Location = New Point(160, 141),
+                .Location = New Point(160, 199),
                 .Size = New Size(100, 20),
                 .ForeColor = Color.White
             }
 
             cmbBufferSize = New ComboBox() With {
-                .Location = New Point(160, 164),
+                .Location = New Point(160, 222),
                 .Size = New Size(140, 25),
                 .DropDownStyle = ComboBoxStyle.DropDownList,
                 .BackColor = Color.FromArgb(60, 60, 60),
@@ -148,6 +167,7 @@ Namespace UI.TabPanels
 
             ' Add controls to group
             grpAudioSettings.Controls.AddRange({
+                lblAudioDriver, cmbAudioDriver,
                 lblInputDevice, cmbInputDevices,
                 lblSampleRate, cmbSampleRates,
                 lblBitDepth, cmbBitDepths,
@@ -170,15 +190,11 @@ Namespace UI.TabPanels
             suppressEvents = True
 
             Try
-                ' Input Devices
-                cmbInputDevices.Items.Clear()
-                For i = 0 To WaveIn.DeviceCount - 1
-                    Dim caps = WaveIn.GetCapabilities(i)
-                    cmbInputDevices.Items.Add($"{i}: {caps.ProductName}")
-                Next
-                If cmbInputDevices.Items.Count > 0 Then
-                    cmbInputDevices.SelectedIndex = 0
-                End If
+                ' Audio Drivers (NEW - Task 1.1)
+                PopulateDrivers()
+
+                ' Input Devices (now uses AudioInputManager)
+                PopulateInputDevices()
 
                 ' Sample Rates
                 cmbSampleRates.Items.Clear()
@@ -277,11 +293,8 @@ Namespace UI.TabPanels
 
             suppressEvents = True
             Try
-                cmbInputDevices.Items.Clear()
-                For i = 0 To WaveIn.DeviceCount - 1
-                    Dim caps = WaveIn.GetCapabilities(i)
-                    cmbInputDevices.Items.Add($"{i}: {caps.ProductName}")
-                Next
+                ' Use AudioInputManager for driver-aware device refresh
+                PopulateInputDevices()
 
                 ' Restore selection if valid
                 If currentIndex >= 0 AndAlso currentIndex < cmbInputDevices.Items.Count Then
@@ -294,6 +307,48 @@ Namespace UI.TabPanels
             End Try
         End Sub
 
+        ''' <summary>Populates the audio driver dropdown (Task 1.1)</summary>
+        Private Sub PopulateDrivers()
+            cmbAudioDriver.Items.Clear()
+
+            Dim availableDrivers = AudioIO.AudioInputManager.Instance.AvailableDrivers
+            For Each driver In availableDrivers
+                cmbAudioDriver.Items.Add(driver.ToString())
+            Next
+
+            ' Select first available driver (typically WaveIn)
+            If cmbAudioDriver.Items.Count > 0 Then
+                cmbAudioDriver.SelectedIndex = 0
+            End If
+
+            Utils.Logger.Instance.Debug($"Populated {cmbAudioDriver.Items.Count} audio drivers", "AudioSettingsPanel")
+        End Sub
+
+        ''' <summary>Populates the input device dropdown based on selected driver (Task 1.1)</summary>
+        Private Sub PopulateInputDevices()
+            cmbInputDevices.Items.Clear()
+
+            Dim currentDriver = AudioIO.AudioInputManager.Instance.CurrentDriver
+            Dim devices = AudioIO.AudioInputManager.Instance.GetDevices(currentDriver)
+
+            For Each device In devices
+                cmbInputDevices.Items.Add(device.Name)
+            Next
+
+            ' Select default device if available
+            Dim defaultDevice = devices.FirstOrDefault(Function(d) d.IsDefault)
+            If defaultDevice IsNot Nothing Then
+                Dim index = devices.IndexOf(defaultDevice)
+                If index >= 0 Then
+                    cmbInputDevices.SelectedIndex = index
+                End If
+            ElseIf cmbInputDevices.Items.Count > 0 Then
+                cmbInputDevices.SelectedIndex = 0
+            End If
+
+            Utils.Logger.Instance.Debug($"Populated {cmbInputDevices.Items.Count} input devices for {currentDriver}", "AudioSettingsPanel")
+        End Sub
+
 #End Region
 
 #Region "Event Handlers"
@@ -303,6 +358,32 @@ Namespace UI.TabPanels
 
             ' Raise single event with all settings
             RaiseEvent SettingsChanged(Me, GetSettings())
+        End Sub
+
+        ''' <summary>Handles driver selection change (Task 1.1)</summary>
+        Private Sub OnDriverChanged(sender As Object, e As EventArgs)
+            If suppressEvents Then Return
+
+            ' Get selected driver
+            If cmbAudioDriver.SelectedIndex >= 0 Then
+                Dim selectedDriver As AudioIO.DriverType
+                If [Enum].TryParse(cmbAudioDriver.SelectedItem.ToString(), selectedDriver) Then
+                    ' Update AudioInputManager
+                    AudioIO.AudioInputManager.Instance.CurrentDriver = selectedDriver
+                    Utils.Logger.Instance.Info($"Audio driver changed to: {selectedDriver}", "AudioSettingsPanel")
+
+                    ' Refresh device list for new driver
+                    suppressEvents = True
+                    Try
+                        PopulateInputDevices()
+                    Finally
+                        suppressEvents = False
+                    End Try
+
+                    ' Raise settings changed event
+                    RaiseEvent SettingsChanged(Me, GetSettings())
+                End If
+            End If
         End Sub
 
 #End Region
