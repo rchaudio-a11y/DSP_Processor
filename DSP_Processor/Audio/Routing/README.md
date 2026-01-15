@@ -78,7 +78,7 @@ router.RouteAudioBuffer(audioBuffer, AudioSourceType.Microphone)
 ## Integration Status
 
 - [x] Phase 1: Foundation (Router classes, JSON manager)
-- [ ] Phase 2: UI Controls (AudioPipelinePanel)
+- [x] Phase 2: UI Controls (AudioPipelinePanel, RoutingPanel, SpectrumSettingsPanel)
 - [ ] Phase 3: Integration (Wire to existing code)
 - [ ] Phase 4: Advanced Features (Undo/Redo, visualization)
 
@@ -88,11 +88,11 @@ router.RouteAudioBuffer(audioBuffer, AudioSourceType.Microphone)
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `AudioPipelineRouter.vb` | Central routing controller | ?? In Progress |
-| `PipelineConfiguration.vb` | Configuration classes | ?? In Progress |
-| `PipelineConfigurationManager.vb` | JSON persistence | ?? In Progress |
-| `PipelineTemplateManager.vb` | Template management | ?? In Progress |
-| `RoutingEventArgs.vb` | Event arguments | ?? In Progress |
+| `AudioPipelineRouter.vb` | Central routing controller | ? Complete |
+| `PipelineConfiguration.vb` | Configuration classes | ? Complete |
+| `PipelineConfigurationManager.vb` | JSON persistence | ? Complete |
+| `PipelineTemplateManager.vb` | Template management | ? Complete |
+| `RoutingEventArgs.vb` | Event arguments | ? Complete |
 
 ---
 

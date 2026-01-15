@@ -25,7 +25,7 @@ Partial Public Class MainForm
     ' FFT processing for spectrum display (separate processors for INPUT and OUTPUT)
     Private fftProcessorInput As DSP.FFT.FFTProcessor
     Private fftProcessorOutput As DSP.FFT.FFTProcessor
-    
+
     ' Flag to prevent FFT queue buildup
     Private fftProcessingInProgress As Boolean = False
 
@@ -254,8 +254,8 @@ Partial Public Class MainForm
         ' Wire up RecordingOptionsPanel event
         AddHandler RecordingOptionsPanel1.OptionsChanged, AddressOf OnRecordingOptionsChanged
 
-        ' Populate output devices in routing UI (Phase 2.0)
-        PopulateOutputDevices()
+        ' RoutingPanel already initialized in MainForm_Load
+        ' Output devices populated via InitializeRoutingPanel()
 
         ' Now arm the microphone
         Try
@@ -359,38 +359,38 @@ Partial Public Class MainForm
         ' Skip if already processing to prevent queue buildup
         If Not fftProcessingInProgress Then
             fftProcessingInProgress = True
-            
+
             ' Make a copy of the buffer for async processing
             Dim bufferCopy(e.Buffer.Length - 1) As Byte
             Array.Copy(e.Buffer, bufferCopy, e.Buffer.Length)
             Dim sampleRate = e.SampleRate
             Dim bitsPerSample = e.BitsPerSample
             Dim channels = e.Channels
-            
+
             ' Fire and forget - process FFT on background thread
             Task.Run(Sub()
-                Try
-                    ' Add samples and calculate spectrum (CPU-intensive)
-                    fftProcessorInput.SampleRate = sampleRate
-                    fftProcessorInput.AddSamples(bufferCopy, bufferCopy.Length, bitsPerSample, channels)
-                    Dim spectrum = fftProcessorInput.CalculateSpectrum()
+                         Try
+                             ' Add samples and calculate spectrum (CPU-intensive)
+                             fftProcessorInput.SampleRate = sampleRate
+                             fftProcessorInput.AddSamples(bufferCopy, bufferCopy.Length, bitsPerSample, channels)
+                             Dim spectrum = fftProcessorInput.CalculateSpectrum()
 
-                    If spectrum IsNot Nothing AndAlso spectrum.Length > 0 Then
-                        ' Update UI on UI thread
-                        Me.BeginInvoke(New Action(Sub()
-                            Try
-                                SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrum, sampleRate, fftProcessorInput.FFTSize)
-                            Catch
-                                ' Ignore UI update errors
-                            End Try
-                        End Sub))
-                    End If
-                Catch
-                    ' Ignore FFT errors (freewheeling - can drop frames)
-                Finally
-                    fftProcessingInProgress = False
-                End Try
-            End Sub)
+                             If spectrum IsNot Nothing AndAlso spectrum.Length > 0 Then
+                                 ' Update UI on UI thread
+                                 Me.BeginInvoke(New Action(Sub()
+                                                               Try
+                                                                   SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrum, sampleRate, fftProcessorInput.FFTSize)
+                                                               Catch
+                                                                   ' Ignore UI update errors
+                                                               End Try
+                                                           End Sub))
+                             End If
+                         Catch
+                             ' Ignore FFT errors (freewheeling - can drop frames)
+                         Finally
+                             fftProcessingInProgress = False
+                         End Try
+                     End Sub)
         End If
     End Sub
 
@@ -428,7 +428,7 @@ Partial Public Class MainForm
             Catch ex As Exception
                 Services.LoggingServiceAdapter.Instance.LogWarning($"Failed to disarm old device: {ex.Message}")
             End Try
-            
+
             ' Now initialize with new settings and arm new device
             recordingManager.Initialize(settings, settingsManager.RecordingOptions)
             Try
@@ -458,7 +458,7 @@ Partial Public Class MainForm
 
     Private Sub OnPipelineConfigurationChanged(sender As Object, config As PipelineConfiguration)
         Services.LoggingServiceAdapter.Instance.LogInfo("Pipeline configuration changed")
-        
+
         ' Configuration is automatically saved by AudioPipelineRouter
         ' Here we would apply the configuration to the actual audio flow (Phase 3)
         ' For now, just log it
@@ -471,10 +471,10 @@ Partial Public Class MainForm
             Dim deviceNames = audioRouter.GetOutputDeviceNames().ToList()
             Dim selectedDevice = audioRouter.GetSelectedOutputDevice()
             RoutingPanel1.LoadOutputDevices(deviceNames, selectedDevice)
-            
+
             ' Set initial input source
             RoutingPanel1.SetMicrophoneInput()
-            
+
             Logger.Instance.Info("RoutingPanel initialized", "MainForm")
         Catch ex As Exception
             Logger.Instance.Error("Failed to initialize RoutingPanel", ex, "MainForm")
@@ -503,26 +503,26 @@ Partial Public Class MainForm
 
     Private Sub OnSpectrumSettingsChanged(sender As Object, settings As Models.SpectrumSettings)
         Services.LoggingServiceAdapter.Instance.LogInfo("Spectrum settings changed")
-        
+
         ' Update settings manager
         settingsManager.SpectrumSettings = settings
-        
+
         ' Apply settings (implementation from existing handlers)
         ApplySpectrumSettings(settings)
-        
+
         ' Save settings
         settingsManager.SaveAll()
     End Sub
 
     Private Sub OnSpectrumResetRequested(sender As Object, e As EventArgs)
         Services.LoggingServiceAdapter.Instance.LogInfo("Spectrum reset requested")
-        
+
         ' Create default settings
         Dim defaults = New Models.SpectrumSettings()
-        
+
         ' Load into panel
         SpectrumSettingsPanel1.LoadSettings(defaults)
-        
+
         ' Apply
         OnSpectrumSettingsChanged(sender, defaults)
     End Sub
@@ -550,11 +550,11 @@ Partial Public Class MainForm
 
     Private Sub ApplySpectrumSettings(settings As Models.SpectrumSettings)
         Try
-            ' Apply FFT settings
+            ' Apply FFT settings to processors
             fftProcessorInput.FFTSize = settings.FFTSize
             fftProcessorOutput.FFTSize = settings.FFTSize
 
-            ' Apply window function
+            ' Apply window function to processors
             Dim windowType As DSP.FFT.FFTProcessor.WindowType
             Select Case settings.WindowFunction
                 Case "None"
@@ -571,21 +571,8 @@ Partial Public Class MainForm
             fftProcessorInput.WindowFunction = windowType
             fftProcessorOutput.WindowFunction = windowType
 
-            ' Apply to UI controls
-            cmbFFTSize.SelectedItem = settings.FFTSize.ToString()
-            cmbWindowFunction.SelectedItem = settings.WindowFunction
-            numSmoothing.Value = settings.Smoothing
-            chkPeakHold.Checked = settings.PeakHoldEnabled
-
-            ' Apply frequency range
-            trackMinFreq.Value = settings.MinFrequency
-            trackMaxFreq.Value = settings.MaxFrequency
-            lblMinFreqValue.Text = $"{settings.MinFrequency} Hz"
-            lblMaxFreqValue.Text = $"{settings.MaxFrequency} Hz"
-
-            ' Apply dB range
-            trackDBRange.Value = settings.MinDB
-            lblDBRangeValue.Text = $"{settings.MinDB} dB"
+            ' NOTE: UI controls (combo boxes, trackbars, etc.) are now in SpectrumSettingsPanel
+            ' They are managed by that panel and updated via SpectrumSettingsPanel.LoadSettings()
 
             ' Apply to spectrum displays
             Dim smoothingFactor = CSng(settings.Smoothing / 100)
@@ -1144,161 +1131,9 @@ Partial Public Class MainForm
 
 #End Region
 
-#Region "Spectrum Analyzer Event Handlers"
-
-    Private Sub cmbFFTSize_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbFFTSize.SelectedIndexChanged
-        If cmbFFTSize.SelectedItem IsNot Nothing AndAlso settingsManager IsNot Nothing Then
-            Dim fftSize = Integer.Parse(cmbFFTSize.SelectedItem.ToString())
-            fftProcessorInput.FFTSize = fftSize
-            fftProcessorOutput.FFTSize = fftSize
-            settingsManager.SpectrumSettings.FFTSize = fftSize
-            settingsManager.SaveAll()
-            Services.LoggingServiceAdapter.Instance.LogInfo($"FFT size changed to: {fftSize}")
-        End If
-    End Sub
-
-    Private Sub cmbWindowFunction_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbWindowFunction.SelectedIndexChanged
-        If cmbWindowFunction.SelectedItem IsNot Nothing AndAlso settingsManager IsNot Nothing Then
-            Dim windowType As DSP.FFT.FFTProcessor.WindowType
-            Select Case cmbWindowFunction.SelectedItem.ToString()
-                Case "None"
-                    windowType = DSP.FFT.FFTProcessor.WindowType.None
-                Case "Hann"
-                    windowType = DSP.FFT.FFTProcessor.WindowType.Hann
-                Case "Hamming"
-                    windowType = DSP.FFT.FFTProcessor.WindowType.Hamming
-                Case "Blackman"
-                    windowType = DSP.FFT.FFTProcessor.WindowType.Blackman
-                Case Else
-                    windowType = DSP.FFT.FFTProcessor.WindowType.Hann
-            End Select
-            fftProcessorInput.WindowFunction = windowType
-            fftProcessorOutput.WindowFunction = windowType
-            settingsManager.SpectrumSettings.WindowFunction = cmbWindowFunction.SelectedItem.ToString()
-            settingsManager.SaveAll()
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Window function changed to: {cmbWindowFunction.SelectedItem}")
-        End If
-    End Sub
-
-    Private Sub numSmoothing_ValueChanged(sender As Object, e As EventArgs) Handles numSmoothing.ValueChanged
-        ' Guard against firing during initialization
-        If settingsManager Is Nothing OrElse SpectrumAnalyzerControl1 Is Nothing Then Return
-
-        ' Convert percentage (0-100) to factor (0.0-1.0) and apply to both displays
-        Dim smoothingFactor = CSng(numSmoothing.Value / 100)
-        SpectrumAnalyzerControl1.InputDisplay.SmoothingFactor = smoothingFactor
-        SpectrumAnalyzerControl1.OutputDisplay.SmoothingFactor = smoothingFactor
-        settingsManager.SpectrumSettings.Smoothing = CInt(numSmoothing.Value)
-        settingsManager.SaveAll()
-        Services.LoggingServiceAdapter.Instance.LogInfo($"Smoothing changed to: {numSmoothing.Value}%")
-    End Sub
-
-    Private Sub chkPeakHold_CheckedChanged(sender As Object, e As EventArgs) Handles chkPeakHold.CheckedChanged
-        ' Guard against firing during initialization
-        If settingsManager Is Nothing OrElse SpectrumAnalyzerControl1 Is Nothing Then Return
-
-        ' Apply to both displays
-        SpectrumAnalyzerControl1.InputDisplay.PeakHoldEnabled = chkPeakHold.Checked
-        SpectrumAnalyzerControl1.OutputDisplay.PeakHoldEnabled = chkPeakHold.Checked
-        settingsManager.SpectrumSettings.PeakHoldEnabled = chkPeakHold.Checked
-        settingsManager.SaveAll()
-        Services.LoggingServiceAdapter.Instance.LogInfo($"Peak hold: {If(chkPeakHold.Checked, "enabled", "disabled")}")
-    End Sub
-
-    Private Sub btnResetSpectrum_Click(sender As Object, e As EventArgs) Handles btnResetSpectrum.Click
-        ' Clear both PRE and POST displays
-        SpectrumAnalyzerControl1.InputDisplay.Clear()
-        SpectrumAnalyzerControl1.OutputDisplay.Clear()
-        fftProcessorInput.Clear()
-        fftProcessorOutput.Clear()
-        Services.LoggingServiceAdapter.Instance.LogInfo("Spectrum analyzer reset")
-    End Sub
-
-    Private Sub trackMinFreq_Scroll(sender As Object, e As EventArgs) Handles trackMinFreq.Scroll
-        ' Guard against firing during initialization
-        If settingsManager Is Nothing OrElse SpectrumAnalyzerControl1 Is Nothing Then Return
-
-        ' Update both displays
-        SpectrumAnalyzerControl1.InputDisplay.MinFrequency = trackMinFreq.Value
-        SpectrumAnalyzerControl1.OutputDisplay.MinFrequency = trackMinFreq.Value
-        lblMinFreqValue.Text = $"{trackMinFreq.Value} Hz"
-        settingsManager.SpectrumSettings.MinFrequency = trackMinFreq.Value
-        settingsManager.SaveAll()
-        Services.LoggingServiceAdapter.Instance.LogInfo($"Min frequency: {trackMinFreq.Value} Hz")
-    End Sub
-
-    Private Sub trackMaxFreq_Scroll(sender As Object, e As EventArgs) Handles trackMaxFreq.Scroll
-        ' Guard against firing during initialization
-        If settingsManager Is Nothing OrElse SpectrumAnalyzerControl1 Is Nothing Then Return
-
-        ' Update both displays
-        SpectrumAnalyzerControl1.InputDisplay.MaxFrequency = trackMaxFreq.Value
-        SpectrumAnalyzerControl1.OutputDisplay.MaxFrequency = trackMaxFreq.Value
-        lblMaxFreqValue.Text = $"{trackMaxFreq.Value} Hz"
-        settingsManager.SpectrumSettings.MaxFrequency = trackMaxFreq.Value
-        settingsManager.SaveAll()
-        Services.LoggingServiceAdapter.Instance.LogInfo($"Max frequency: {trackMaxFreq.Value} Hz")
-    End Sub
-
-    Private Sub trackDBRange_Scroll(sender As Object, e As EventArgs) Handles trackDBRange.Scroll
-        ' Guard against firing during initialization
-        If settingsManager Is Nothing OrElse SpectrumAnalyzerControl1 Is Nothing Then Return
-
-        ' Update both displays - trackbar value is negative (-100 to -20)
-        Dim minDB = trackDBRange.Value
-        SpectrumAnalyzerControl1.InputDisplay.MinDB = minDB
-        SpectrumAnalyzerControl1.OutputDisplay.MinDB = minDB
-        lblDBRangeValue.Text = $"{minDB} dB"
-        settingsManager.SpectrumSettings.MinDB = minDB
-        settingsManager.SaveAll()
-        Services.LoggingServiceAdapter.Instance.LogInfo($"dB range (min): {minDB} dB")
-    End Sub
-
-#End Region
-
 #Region "Audio Routing (Phase 2.0)"
 
-    ''' <summary>Populate output device dropdown</summary>
-    Private Sub PopulateOutputDevices()
-        Try
-            cmbOutputDevice.Items.Clear()
-
-            Dim deviceNames = audioRouter.GetOutputDeviceNames()
-            cmbOutputDevice.Items.AddRange(deviceNames)
-
-            ' Select current device
-            Dim selectedDevice = audioRouter.GetSelectedOutputDevice()
-            If selectedDevice >= 0 AndAlso selectedDevice < cmbOutputDevice.Items.Count Then
-                cmbOutputDevice.SelectedIndex = selectedDevice
-            ElseIf cmbOutputDevice.Items.Count > 0 Then
-                cmbOutputDevice.SelectedIndex = 0
-            End If
-
-            Services.LoggingServiceAdapter.Instance.LogInfo($"Output devices populated: {deviceNames.Length} device(s)")
-        Catch ex As Exception
-            Services.LoggingServiceAdapter.Instance.LogError($"Failed to populate output devices: {ex.Message}", ex)
-        End Try
-    End Sub
-
-    ''' <summary>Handle input source selection change</summary>
-    Private Sub OnInputSourceChanged(sender As Object, e As EventArgs)
-        Try
-            If radioMicrophone.Checked Then
-                audioRouter.CurrentInputSource = AudioIO.AudioRouter.InputSourceType.Microphone
-                btnBrowseInputFile.Enabled = False
-                lblSelectedFile.Text = "No file selected"
-                Services.LoggingServiceAdapter.Instance.LogInfo("Input source: Microphone")
-            ElseIf radioFilePlayback.Checked Then
-                audioRouter.CurrentInputSource = AudioIO.AudioRouter.InputSourceType.FilePlayback
-                btnBrowseInputFile.Enabled = True
-                Services.LoggingServiceAdapter.Instance.LogInfo("Input source: File Playback")
-            End If
-        Catch ex As Exception
-            Services.LoggingServiceAdapter.Instance.LogError($"Failed to change input source: {ex.Message}", ex)
-        End Try
-    End Sub
-
-    ''' <summary>Handle browse for input file button</summary>
+    ''' <summary>Handle browse for input file button - called by RoutingPanel</summary>
     Private Sub OnBrowseInputFileClick(sender As Object, e As EventArgs)
         Try
             Using openFileDialog As New OpenFileDialog()
@@ -1308,7 +1143,9 @@ Partial Public Class MainForm
 
                 If openFileDialog.ShowDialog() = DialogResult.OK Then
                     Dim selectedFile = openFileDialog.FileName
-                    lblSelectedFile.Text = Path.GetFileName(selectedFile)
+
+                    ' Update RoutingPanel display
+                    RoutingPanel1.SelectedFilePath = Path.GetFileName(selectedFile)
 
                     ' Store in AudioRouter
                     audioRouter.SelectedInputFile = selectedFile
@@ -1338,18 +1175,6 @@ Partial Public Class MainForm
             End Using
         Catch ex As Exception
             Services.LoggingServiceAdapter.Instance.LogError($"Failed to browse for input file: {ex.Message}", ex)
-        End Try
-    End Sub
-
-    ''' <summary>Handle output device selection change</summary>
-    Private Sub OnOutputDeviceChanged(sender As Object, e As EventArgs)
-        Try
-            If cmbOutputDevice.SelectedIndex >= 0 Then
-                audioRouter.SelectOutputDevice(cmbOutputDevice.SelectedIndex)
-                Services.LoggingServiceAdapter.Instance.LogInfo($"Output device changed: {cmbOutputDevice.SelectedItem}")
-            End If
-        Catch ex As Exception
-            Services.LoggingServiceAdapter.Instance.LogError($"Failed to change output device: {ex.Message}", ex)
         End Try
     End Sub
 

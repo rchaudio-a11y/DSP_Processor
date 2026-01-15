@@ -44,41 +44,15 @@ Partial Class MainForm
         tabFiles = New TabPage()
         tabProgram = New TabPage()
         AudioSettingsPanel1 = New UI.TabPanels.AudioSettingsPanel()
-        grpRouting = New GroupBox()
-        lblInputSource = New Label()
-        radioMicrophone = New RadioButton()
-        radioFilePlayback = New RadioButton()
-        btnBrowseInputFile = New Button()
-        lblSelectedFile = New Label()
-        lblOutputDevice = New Label()
-        cmbOutputDevice = New ComboBox()
+        RoutingPanel1 = New UI.TabPanels.RoutingPanel()
         tabInput = New TabPage()
         InputTabPanel1 = New UI.TabPanels.InputTabPanel()
         tabRecording = New TabPage()
         RecordingOptionsPanel1 = New UI.TabPanels.RecordingOptionsPanel()
         tabPipeline = New TabPage()
         AudioPipelinePanel1 = New UI.TabPanels.AudioPipelinePanel()
-        RoutingPanel1 = New UI.TabPanels.RoutingPanel()
-        SpectrumSettingsPanel1 = New UI.TabPanels.SpectrumSettingsPanel()
         tabSpectrum = New TabPage()
-        grpFFTSettings = New GroupBox()
-        lblFFTSize = New Label()
-        cmbFFTSize = New ComboBox()
-        lblWindowFunction = New Label()
-        cmbWindowFunction = New ComboBox()
-        lblSmoothing = New Label()
-        numSmoothing = New NumericUpDown()
-        chkPeakHold = New CheckBox()
-        btnResetSpectrum = New Button()
-        lblMinFreq = New Label()
-        trackMinFreq = New TrackBar()
-        lblMinFreqValue = New Label()
-        lblMaxFreq = New Label()
-        trackMaxFreq = New TrackBar()
-        lblMaxFreqValue = New Label()
-        lblDBRange = New Label()
-        trackDBRange = New TrackBar()
-        lblDBRangeValue = New Label()
+        SpectrumSettingsPanel1 = New UI.TabPanels.SpectrumSettingsPanel()
         lblSpectrumInfo = New Label()
         tabAnalysis = New TabPage()
         tabLogs = New TabPage()
@@ -102,15 +76,10 @@ Partial Class MainForm
         mainTabs.SuspendLayout()
         tabFiles.SuspendLayout()
         tabProgram.SuspendLayout()
-        grpRouting.SuspendLayout()
         tabInput.SuspendLayout()
         tabRecording.SuspendLayout()
+        tabPipeline.SuspendLayout()
         tabSpectrum.SuspendLayout()
-        grpFFTSettings.SuspendLayout()
-        CType(numSmoothing, ComponentModel.ISupportInitialize).BeginInit()
-        CType(trackMinFreq, ComponentModel.ISupportInitialize).BeginInit()
-        CType(trackMaxFreq, ComponentModel.ISupportInitialize).BeginInit()
-        CType(trackDBRange, ComponentModel.ISupportInitialize).BeginInit()
         tabLogs.SuspendLayout()
         visualizationTabs.SuspendLayout()
         tabWaveform.SuspendLayout()
@@ -329,16 +298,14 @@ Partial Class MainForm
         AudioSettingsPanel1.Dock = DockStyle.Top
         AudioSettingsPanel1.Location = New Point(3, 3)
         AudioSettingsPanel1.Name = "AudioSettingsPanel1"
-        AudioSettingsPanel1.Size = New Size(440, 270)
+        AudioSettingsPanel1.Size = New Size(440, 338)
         AudioSettingsPanel1.TabIndex = 1
         ' 
         ' RoutingPanel1
         ' 
         RoutingPanel1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
-        RoutingPanel1.Location = New Point(3, 280)
+        RoutingPanel1.Location = New Point(3, 347)
         RoutingPanel1.Name = "RoutingPanel1"
-        RoutingPanel1.OutputDeviceIndex = -1
-        RoutingPanel1.SelectedFilePath = "No file selected"
         RoutingPanel1.Size = New Size(440, 270)
         RoutingPanel1.TabIndex = 2
         ' 
@@ -426,230 +393,6 @@ Partial Class MainForm
         SpectrumSettingsPanel1.Name = "SpectrumSettingsPanel1"
         SpectrumSettingsPanel1.Size = New Size(440, 550)
         SpectrumSettingsPanel1.TabIndex = 0
-        ' 
-        ' lblSpectrumInfo
-        ' 
-        lblSpectrumInfo.Location = New Point(0, 0)
-        lblSpectrumInfo.Name = "lblSpectrumInfo"
-        lblSpectrumInfo.Size = New Size(100, 23)
-        lblSpectrumInfo.TabIndex = 1
-        ' 
-        ' tabAnalysis
-        ' 
-        tabAnalysis.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
-        tabAnalysis.Location = New Point(4, 54)
-        tabAnalysis.Name = "tabAnalysis"
-        tabAnalysis.Padding = New Padding(3)
-        tabAnalysis.Size = New Size(446, 793)
-        tabSpectrum.Text = "🌈 Spectrum"
-        ' 
-        ' grpFFTSettings
-        ' 
-        grpFFTSettings.Controls.Add(lblFFTSize)
-        grpFFTSettings.Controls.Add(cmbFFTSize)
-        grpFFTSettings.Controls.Add(lblWindowFunction)
-        grpFFTSettings.Controls.Add(cmbWindowFunction)
-        grpFFTSettings.Controls.Add(lblSmoothing)
-        grpFFTSettings.Controls.Add(numSmoothing)
-        grpFFTSettings.Controls.Add(chkPeakHold)
-        grpFFTSettings.Controls.Add(btnResetSpectrum)
-        grpFFTSettings.Controls.Add(lblMinFreq)
-        grpFFTSettings.Controls.Add(trackMinFreq)
-        grpFFTSettings.Controls.Add(lblMinFreqValue)
-        grpFFTSettings.Controls.Add(lblMaxFreq)
-        grpFFTSettings.Controls.Add(trackMaxFreq)
-        grpFFTSettings.Controls.Add(lblMaxFreqValue)
-        grpFFTSettings.Controls.Add(lblDBRange)
-        grpFFTSettings.Controls.Add(trackDBRange)
-        grpFFTSettings.Controls.Add(lblDBRangeValue)
-        grpFFTSettings.ForeColor = Color.White
-        grpFFTSettings.Location = New Point(6, 6)
-        grpFFTSettings.Name = "grpFFTSettings"
-        grpFFTSettings.Size = New Size(420, 520)
-        grpFFTSettings.TabIndex = 0
-        grpFFTSettings.TabStop = False
-        grpFFTSettings.Text = "FFT Settings"
-        ' 
-        ' lblFFTSize
-        ' 
-        lblFFTSize.AutoSize = True
-        lblFFTSize.ForeColor = Color.White
-        lblFFTSize.Location = New Point(10, 30)
-        lblFFTSize.Name = "lblFFTSize"
-        lblFFTSize.Size = New Size(65, 20)
-        lblFFTSize.TabIndex = 0
-        lblFFTSize.Text = "FFT Size:"
-        ' 
-        ' cmbFFTSize
-        ' 
-        cmbFFTSize.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
-        cmbFFTSize.ForeColor = Color.White
-        cmbFFTSize.FormattingEnabled = True
-        cmbFFTSize.Items.AddRange(New Object() {"1024", "2048", "4096", "8192", "16384"})
-        cmbFFTSize.Location = New Point(10, 53)
-        cmbFFTSize.Name = "cmbFFTSize"
-        cmbFFTSize.Size = New Size(150, 28)
-        cmbFFTSize.TabIndex = 1
-        ' 
-        ' lblWindowFunction
-        ' 
-        lblWindowFunction.AutoSize = True
-        lblWindowFunction.ForeColor = Color.White
-        lblWindowFunction.Location = New Point(10, 90)
-        lblWindowFunction.Name = "lblWindowFunction"
-        lblWindowFunction.Size = New Size(127, 20)
-        lblWindowFunction.TabIndex = 2
-        lblWindowFunction.Text = "Window Function:"
-        ' 
-        ' cmbWindowFunction
-        ' 
-        cmbWindowFunction.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
-        cmbWindowFunction.ForeColor = Color.White
-        cmbWindowFunction.FormattingEnabled = True
-        cmbWindowFunction.Items.AddRange(New Object() {"None", "Hann", "Hamming", "Blackman"})
-        cmbWindowFunction.Location = New Point(10, 113)
-        cmbWindowFunction.Name = "cmbWindowFunction"
-        cmbWindowFunction.Size = New Size(150, 28)
-        cmbWindowFunction.TabIndex = 3
-        ' 
-        ' lblSmoothing
-        ' 
-        lblSmoothing.AutoSize = True
-        lblSmoothing.ForeColor = Color.White
-        lblSmoothing.Location = New Point(10, 150)
-        lblSmoothing.Name = "lblSmoothing"
-        lblSmoothing.Size = New Size(108, 20)
-        lblSmoothing.TabIndex = 4
-        lblSmoothing.Text = "Smoothing (%)"
-        ' 
-        ' numSmoothing
-        ' 
-        numSmoothing.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
-        numSmoothing.ForeColor = Color.White
-        numSmoothing.Location = New Point(10, 173)
-        numSmoothing.Name = "numSmoothing"
-        numSmoothing.Size = New Size(150, 27)
-        numSmoothing.TabIndex = 5
-        numSmoothing.Value = New Decimal(New Integer() {70, 0, 0, 0})
-        ' 
-        ' chkPeakHold
-        ' 
-        chkPeakHold.AutoSize = True
-        chkPeakHold.ForeColor = Color.White
-        chkPeakHold.Location = New Point(10, 210)
-        chkPeakHold.Name = "chkPeakHold"
-        chkPeakHold.Size = New Size(147, 24)
-        chkPeakHold.TabIndex = 6
-        chkPeakHold.Text = "Enable Peak Hold"
-        chkPeakHold.UseVisualStyleBackColor = True
-        ' 
-        ' btnResetSpectrum
-        ' 
-        btnResetSpectrum.BackColor = Color.FromArgb(CByte(75), CByte(75), CByte(78))
-        btnResetSpectrum.FlatStyle = FlatStyle.Flat
-        btnResetSpectrum.ForeColor = Color.White
-        btnResetSpectrum.Location = New Point(10, 240)
-        btnResetSpectrum.Name = "btnResetSpectrum"
-        btnResetSpectrum.Size = New Size(150, 30)
-        btnResetSpectrum.TabIndex = 7
-        btnResetSpectrum.Text = "Reset Spectrum"
-        btnResetSpectrum.UseVisualStyleBackColor = False
-        ' 
-        ' lblMinFreq
-        ' 
-        lblMinFreq.AutoSize = True
-        lblMinFreq.ForeColor = Color.White
-        lblMinFreq.Location = New Point(10, 280)
-        lblMinFreq.Name = "lblMinFreq"
-        lblMinFreq.Size = New Size(108, 20)
-        lblMinFreq.TabIndex = 8
-        lblMinFreq.Text = "Min Frequency:"
-        ' 
-        ' trackMinFreq
-        ' 
-        trackMinFreq.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
-        trackMinFreq.Location = New Point(10, 303)
-        trackMinFreq.Maximum = 2000
-        trackMinFreq.Minimum = 20
-        trackMinFreq.Name = "trackMinFreq"
-        trackMinFreq.Size = New Size(300, 56)
-        trackMinFreq.TabIndex = 9
-        trackMinFreq.TickFrequency = 100
-        trackMinFreq.Value = 20
-        ' 
-        ' lblMinFreqValue
-        ' 
-        lblMinFreqValue.AutoSize = True
-        lblMinFreqValue.ForeColor = Color.Cyan
-        lblMinFreqValue.Location = New Point(320, 308)
-        lblMinFreqValue.Name = "lblMinFreqValue"
-        lblMinFreqValue.Size = New Size(47, 20)
-        lblMinFreqValue.TabIndex = 10
-        lblMinFreqValue.Text = "20 Hz"
-        ' 
-        ' lblMaxFreq
-        ' 
-        lblMaxFreq.AutoSize = True
-        lblMaxFreq.ForeColor = Color.White
-        lblMaxFreq.Location = New Point(10, 355)
-        lblMaxFreq.Name = "lblMaxFreq"
-        lblMaxFreq.Size = New Size(111, 20)
-        lblMaxFreq.TabIndex = 11
-        lblMaxFreq.Text = "Max Frequency:"
-        ' 
-        ' trackMaxFreq
-        ' 
-        trackMaxFreq.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
-        trackMaxFreq.Location = New Point(6, 378)
-        trackMaxFreq.Maximum = 20000
-        trackMaxFreq.Minimum = 1000
-        trackMaxFreq.Name = "trackMaxFreq"
-        trackMaxFreq.Size = New Size(300, 56)
-        trackMaxFreq.TabIndex = 12
-        trackMaxFreq.TickFrequency = 1000
-        trackMaxFreq.Value = 12000
-        ' 
-        ' lblMaxFreqValue
-        ' 
-        lblMaxFreqValue.AutoSize = True
-        lblMaxFreqValue.ForeColor = Color.Lime
-        lblMaxFreqValue.Location = New Point(320, 378)
-        lblMaxFreqValue.Name = "lblMaxFreqValue"
-        lblMaxFreqValue.Size = New Size(71, 20)
-        lblMaxFreqValue.TabIndex = 13
-        lblMaxFreqValue.Text = "12000 Hz"
-        ' 
-        ' lblDBRange
-        ' 
-        lblDBRange.AutoSize = True
-        lblDBRange.ForeColor = Color.White
-        lblDBRange.Location = New Point(10, 430)
-        lblDBRange.Name = "lblDBRange"
-        lblDBRange.Size = New Size(115, 20)
-        lblDBRange.TabIndex = 14
-        lblDBRange.Text = "dB Range (Min):"
-        ' 
-        ' trackDBRange
-        ' 
-        trackDBRange.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
-        trackDBRange.Location = New Point(10, 453)
-        trackDBRange.Maximum = -20
-        trackDBRange.Minimum = -100
-        trackDBRange.Name = "trackDBRange"
-        trackDBRange.Size = New Size(300, 56)
-        trackDBRange.TabIndex = 15
-        trackDBRange.TickFrequency = 10
-        trackDBRange.Value = -60
-        ' 
-        ' lblDBRangeValue
-        ' 
-        lblDBRangeValue.AutoSize = True
-        lblDBRangeValue.ForeColor = Color.Yellow
-        lblDBRangeValue.Location = New Point(320, 453)
-        lblDBRangeValue.Name = "lblDBRangeValue"
-        lblDBRangeValue.Size = New Size(53, 20)
-        lblDBRangeValue.TabIndex = 16
-        lblDBRangeValue.Text = "-60 dB"
         ' 
         ' lblSpectrumInfo
         ' 
@@ -841,17 +584,10 @@ Partial Class MainForm
         tabFiles.ResumeLayout(False)
         tabFiles.PerformLayout()
         tabProgram.ResumeLayout(False)
-        grpRouting.ResumeLayout(False)
-        grpRouting.PerformLayout()
         tabInput.ResumeLayout(False)
         tabRecording.ResumeLayout(False)
+        tabPipeline.ResumeLayout(False)
         tabSpectrum.ResumeLayout(False)
-        grpFFTSettings.ResumeLayout(False)
-        grpFFTSettings.PerformLayout()
-        CType(numSmoothing, ComponentModel.ISupportInitialize).EndInit()
-        CType(trackMinFreq, ComponentModel.ISupportInitialize).EndInit()
-        CType(trackMaxFreq, ComponentModel.ISupportInitialize).EndInit()
-        CType(trackDBRange, ComponentModel.ISupportInitialize).EndInit()
         tabLogs.ResumeLayout(False)
         tabLogs.PerformLayout()
         visualizationTabs.ResumeLayout(False)
@@ -883,24 +619,6 @@ Partial Class MainForm
     Friend WithEvents tabProgram As TabPage
     Friend WithEvents tabRecording As TabPage
     Friend WithEvents tabSpectrum As TabPage
-    Friend WithEvents grpFFTSettings As GroupBox
-    Friend WithEvents lblFFTSize As Label
-    Friend WithEvents cmbFFTSize As ComboBox
-    Friend WithEvents lblWindowFunction As Label
-    Friend WithEvents cmbWindowFunction As ComboBox
-    Friend WithEvents lblSmoothing As Label
-    Friend WithEvents numSmoothing As NumericUpDown
-    Friend WithEvents chkPeakHold As CheckBox
-    Friend WithEvents btnResetSpectrum As Button
-    Friend WithEvents lblMinFreq As Label
-    Friend WithEvents trackMinFreq As TrackBar
-    Friend WithEvents lblMinFreqValue As Label
-    Friend WithEvents lblMaxFreq As Label
-    Friend WithEvents trackMaxFreq As TrackBar
-    Friend WithEvents lblMaxFreqValue As Label
-    Friend WithEvents lblDBRange As Label
-    Friend WithEvents trackDBRange As TrackBar
-    Friend WithEvents lblDBRangeValue As Label
     Friend WithEvents tabAnalysis As TabPage
     Friend WithEvents tabInput As TabPage
     Friend WithEvents tabLogs As TabPage
@@ -924,13 +642,5 @@ Partial Class MainForm
     Friend WithEvents SpectrumSettingsPanel1 As UI.TabPanels.SpectrumSettingsPanel
     Friend WithEvents tabPipeline As TabPage
     Friend WithEvents WaveformDisplayControl1 As UI.WaveformDisplayControl
-    Friend WithEvents grpRouting As GroupBox
-    Friend WithEvents lblInputSource As Label
-    Friend WithEvents radioMicrophone As RadioButton
-    Friend WithEvents radioFilePlayback As RadioButton
-    Friend WithEvents btnBrowseInputFile As Button
-    Friend WithEvents lblSelectedFile As Label
-    Friend WithEvents lblOutputDevice As Label
-    Friend WithEvents cmbOutputDevice As ComboBox
     Friend WithEvents lblSpectrumInfo As Label
 End Class
