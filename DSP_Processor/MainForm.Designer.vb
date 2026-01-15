@@ -58,6 +58,8 @@ Partial Class MainForm
         RecordingOptionsPanel1 = New UI.TabPanels.RecordingOptionsPanel()
         tabPipeline = New TabPage()
         AudioPipelinePanel1 = New UI.TabPanels.AudioPipelinePanel()
+        RoutingPanel1 = New UI.TabPanels.RoutingPanel()
+        SpectrumSettingsPanel1 = New UI.TabPanels.SpectrumSettingsPanel()
         tabSpectrum = New TabPage()
         grpFFTSettings = New GroupBox()
         lblFFTSize = New Label()
@@ -312,7 +314,7 @@ Partial Class MainForm
         ' 
         tabProgram.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabProgram.Controls.Add(AudioSettingsPanel1)
-        tabProgram.Controls.Add(grpRouting)
+        tabProgram.Controls.Add(RoutingPanel1)
         tabProgram.Location = New Point(4, 54)
         tabProgram.Name = "tabProgram"
         tabProgram.Padding = New Padding(3)
@@ -330,99 +332,15 @@ Partial Class MainForm
         AudioSettingsPanel1.Size = New Size(440, 270)
         AudioSettingsPanel1.TabIndex = 1
         ' 
-        ' grpRouting
+        ' RoutingPanel1
         ' 
-        grpRouting.Controls.Add(lblInputSource)
-        grpRouting.Controls.Add(radioMicrophone)
-        grpRouting.Controls.Add(radioFilePlayback)
-        grpRouting.Controls.Add(btnBrowseInputFile)
-        grpRouting.Controls.Add(lblSelectedFile)
-        grpRouting.Controls.Add(lblOutputDevice)
-        grpRouting.Controls.Add(cmbOutputDevice)
-        grpRouting.ForeColor = Color.White
-        grpRouting.Location = New Point(13, 280)
-        grpRouting.Name = "grpRouting"
-        grpRouting.Size = New Size(320, 250)
-        grpRouting.TabIndex = 2
-        grpRouting.TabStop = False
-        grpRouting.Text = "Audio Routing"
-        ' 
-        ' lblInputSource
-        ' 
-        lblInputSource.AutoSize = True
-        lblInputSource.ForeColor = Color.White
-        lblInputSource.Location = New Point(10, 25)
-        lblInputSource.Name = "lblInputSource"
-        lblInputSource.Size = New Size(95, 20)
-        lblInputSource.TabIndex = 0
-        lblInputSource.Text = "Input Source:"
-        ' 
-        ' radioMicrophone
-        ' 
-        radioMicrophone.AutoSize = True
-        radioMicrophone.Checked = True
-        radioMicrophone.ForeColor = Color.White
-        radioMicrophone.Location = New Point(10, 50)
-        radioMicrophone.Name = "radioMicrophone"
-        radioMicrophone.Size = New Size(135, 24)
-        radioMicrophone.TabIndex = 1
-        radioMicrophone.TabStop = True
-        radioMicrophone.Text = "🎤 Microphone"
-        radioMicrophone.UseVisualStyleBackColor = True
-        ' 
-        ' radioFilePlayback
-        ' 
-        radioFilePlayback.AutoSize = True
-        radioFilePlayback.ForeColor = Color.White
-        radioFilePlayback.Location = New Point(10, 80)
-        radioFilePlayback.Name = "radioFilePlayback"
-        radioFilePlayback.Size = New Size(140, 24)
-        radioFilePlayback.TabIndex = 2
-        radioFilePlayback.Text = "📂 File Playback"
-        radioFilePlayback.UseVisualStyleBackColor = True
-        ' 
-        ' btnBrowseInputFile
-        ' 
-        btnBrowseInputFile.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
-        btnBrowseInputFile.Enabled = False
-        btnBrowseInputFile.FlatStyle = FlatStyle.Flat
-        btnBrowseInputFile.ForeColor = Color.White
-        btnBrowseInputFile.Location = New Point(30, 110)
-        btnBrowseInputFile.Name = "btnBrowseInputFile"
-        btnBrowseInputFile.Size = New Size(270, 30)
-        btnBrowseInputFile.TabIndex = 3
-        btnBrowseInputFile.Text = "Browse for audio file..."
-        btnBrowseInputFile.UseVisualStyleBackColor = False
-        ' 
-        ' lblSelectedFile
-        ' 
-        lblSelectedFile.ForeColor = Color.Cyan
-        lblSelectedFile.Location = New Point(30, 145)
-        lblSelectedFile.Name = "lblSelectedFile"
-        lblSelectedFile.Size = New Size(270, 40)
-        lblSelectedFile.TabIndex = 4
-        lblSelectedFile.Text = "No file selected"
-        ' 
-        ' lblOutputDevice
-        ' 
-        lblOutputDevice.AutoSize = True
-        lblOutputDevice.ForeColor = Color.White
-        lblOutputDevice.Location = New Point(10, 195)
-        lblOutputDevice.Name = "lblOutputDevice"
-        lblOutputDevice.Size = New Size(107, 20)
-        lblOutputDevice.TabIndex = 5
-        lblOutputDevice.Text = "Output Device:"
-        ' 
-        ' cmbOutputDevice
-        ' 
-        cmbOutputDevice.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
-        cmbOutputDevice.DropDownStyle = ComboBoxStyle.DropDownList
-        cmbOutputDevice.ForeColor = Color.White
-        cmbOutputDevice.FormattingEnabled = True
-        cmbOutputDevice.Location = New Point(10, 218)
-        cmbOutputDevice.Name = "cmbOutputDevice"
-        cmbOutputDevice.Size = New Size(290, 28)
-        cmbOutputDevice.TabIndex = 6
+        RoutingPanel1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        RoutingPanel1.Location = New Point(3, 280)
+        RoutingPanel1.Name = "RoutingPanel1"
+        RoutingPanel1.OutputDeviceIndex = -1
+        RoutingPanel1.SelectedFilePath = "No file selected"
+        RoutingPanel1.Size = New Size(440, 270)
+        RoutingPanel1.TabIndex = 2
         ' 
         ' tabInput
         ' 
@@ -492,13 +410,37 @@ Partial Class MainForm
         ' tabSpectrum
         ' 
         tabSpectrum.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
-        tabSpectrum.Controls.Add(grpFFTSettings)
+        tabSpectrum.Controls.Add(SpectrumSettingsPanel1)
         tabSpectrum.Controls.Add(lblSpectrumInfo)
         tabSpectrum.Location = New Point(4, 54)
         tabSpectrum.Name = "tabSpectrum"
         tabSpectrum.Padding = New Padding(3)
         tabSpectrum.Size = New Size(446, 793)
         tabSpectrum.TabIndex = 6
+        tabSpectrum.Text = "🌈 Spectrum"
+        ' 
+        ' SpectrumSettingsPanel1
+        ' 
+        SpectrumSettingsPanel1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        SpectrumSettingsPanel1.Location = New Point(3, 3)
+        SpectrumSettingsPanel1.Name = "SpectrumSettingsPanel1"
+        SpectrumSettingsPanel1.Size = New Size(440, 550)
+        SpectrumSettingsPanel1.TabIndex = 0
+        ' 
+        ' lblSpectrumInfo
+        ' 
+        lblSpectrumInfo.Location = New Point(0, 0)
+        lblSpectrumInfo.Name = "lblSpectrumInfo"
+        lblSpectrumInfo.Size = New Size(100, 23)
+        lblSpectrumInfo.TabIndex = 1
+        ' 
+        ' tabAnalysis
+        ' 
+        tabAnalysis.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        tabAnalysis.Location = New Point(4, 54)
+        tabAnalysis.Name = "tabAnalysis"
+        tabAnalysis.Padding = New Padding(3)
+        tabAnalysis.Size = New Size(446, 793)
         tabSpectrum.Text = "🌈 Spectrum"
         ' 
         ' grpFFTSettings
@@ -978,6 +920,8 @@ Partial Class MainForm
     Friend WithEvents AudioSettingsPanel1 As UI.TabPanels.AudioSettingsPanel
     Friend WithEvents InputTabPanel1 As UI.TabPanels.InputTabPanel
     Friend WithEvents AudioPipelinePanel1 As UI.TabPanels.AudioPipelinePanel
+    Friend WithEvents RoutingPanel1 As UI.TabPanels.RoutingPanel
+    Friend WithEvents SpectrumSettingsPanel1 As UI.TabPanels.SpectrumSettingsPanel
     Friend WithEvents tabPipeline As TabPage
     Friend WithEvents WaveformDisplayControl1 As UI.WaveformDisplayControl
     Friend WithEvents grpRouting As GroupBox

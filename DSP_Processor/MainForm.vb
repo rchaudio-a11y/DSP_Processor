@@ -72,6 +72,8 @@ Partial Public Class MainForm
         WireAudioSettingsPanel()
         WireInputTabPanel()
         WireAudioPipelinePanel()
+        WireRoutingPanel()
+        WireSpectrumSettingsPanel()
 
         ' Load all settings (this will trigger OnSettingsLoaded event)
         settingsManager.LoadAll()
@@ -82,6 +84,12 @@ Partial Public Class MainForm
 
         ' Initialize AudioPipelinePanel
         AudioPipelinePanel1.Initialize()
+
+        ' Initialize RoutingPanel
+        InitializeRoutingPanel()
+
+        ' Initialize SpectrumSettingsPanel  
+        SpectrumSettingsPanel1.LoadSettings(settingsManager.SpectrumSettings)
 
         ' Apply meter settings
         ApplyMeterSettings(settingsManager.MeterSettings)
@@ -188,13 +196,10 @@ Partial Public Class MainForm
         ' Subscribe to logging events
         AddHandler Services.LoggingServiceAdapter.Instance.LogMessageReceived, AddressOf OnLogMessage
 
-        ' Wire up routing UI events (Phase 2.0)
-        AddHandler radioMicrophone.CheckedChanged, AddressOf OnInputSourceChanged
-        AddHandler radioFilePlayback.CheckedChanged, AddressOf OnInputSourceChanged
-        AddHandler cmbOutputDevice.SelectedIndexChanged, AddressOf OnOutputDeviceChanged
-
-        ' Wire up file browser button
-        AddHandler btnBrowseInputFile.Click, AddressOf OnBrowseInputFileClick
+        ' Wire up RoutingPanel events
+        AddHandler RoutingPanel1.InputSourceChanged, AddressOf OnRoutingPanelInputSourceChanged
+        AddHandler RoutingPanel1.OutputDeviceChanged, AddressOf OnRoutingPanelOutputDeviceChanged
+        AddHandler RoutingPanel1.BrowseFileClicked, AddressOf OnRoutingPanelBrowseFileClicked
 
         ' Wire up AudioRouter FFT events
         AddHandler audioRouter.InputSamplesAvailable, AddressOf OnDSPInputSamples
@@ -218,6 +223,18 @@ Partial Public Class MainForm
         ' Wire up AudioPipelinePanel event
         AddHandler AudioPipelinePanel1.ConfigurationChanged, AddressOf OnPipelineConfigurationChanged
         Logger.Instance.Info("AudioPipelinePanel wired", "MainForm")
+    End Sub
+
+    Private Sub WireRoutingPanel()
+        ' RoutingPanel events already wired in WireUIEvents
+        Logger.Instance.Info("RoutingPanel wired", "MainForm")
+    End Sub
+
+    Private Sub WireSpectrumSettingsPanel()
+        ' Wire up SpectrumSettingsPanel events
+        AddHandler SpectrumSettingsPanel1.SettingsChanged, AddressOf OnSpectrumSettingsChanged
+        AddHandler SpectrumSettingsPanel1.ResetRequested, AddressOf OnSpectrumResetRequested
+        Logger.Instance.Info("SpectrumSettingsPanel wired", "MainForm")
     End Sub
 
 #End Region
@@ -446,6 +463,68 @@ Partial Public Class MainForm
         ' Here we would apply the configuration to the actual audio flow (Phase 3)
         ' For now, just log it
         Logger.Instance.Info($"Pipeline config updated: DSP={config.Processing.EnableDSP}, Recording={config.Destination.EnableRecording}", "MainForm")
+    End Sub
+
+    Private Sub InitializeRoutingPanel()
+        ' Populate output devices
+        Try
+            Dim deviceNames = audioRouter.GetOutputDeviceNames().ToList()
+            Dim selectedDevice = audioRouter.GetSelectedOutputDevice()
+            RoutingPanel1.LoadOutputDevices(deviceNames, selectedDevice)
+            
+            ' Set initial input source
+            RoutingPanel1.SetMicrophoneInput()
+            
+            Logger.Instance.Info("RoutingPanel initialized", "MainForm")
+        Catch ex As Exception
+            Logger.Instance.Error("Failed to initialize RoutingPanel", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Sub OnRoutingPanelInputSourceChanged(sender As Object, inputSource As String)
+        Logger.Instance.Info($"Input source changed: {inputSource}", "MainForm")
+        ' Handle input source change (same logic as before)
+        ' This will be fully implemented in Phase 3
+    End Sub
+
+    Private Sub OnRoutingPanelOutputDeviceChanged(sender As Object, deviceIndex As Integer)
+        Try
+            audioRouter.SelectOutputDevice(deviceIndex)
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Output device changed: index {deviceIndex}")
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to change output device: {ex.Message}", ex)
+        End Try
+    End Sub
+
+    Private Sub OnRoutingPanelBrowseFileClicked(sender As Object, e As EventArgs)
+        ' Same logic as old OnBrowseInputFileClick
+        OnBrowseInputFileClick(sender, e)
+    End Sub
+
+    Private Sub OnSpectrumSettingsChanged(sender As Object, settings As Models.SpectrumSettings)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Spectrum settings changed")
+        
+        ' Update settings manager
+        settingsManager.SpectrumSettings = settings
+        
+        ' Apply settings (implementation from existing handlers)
+        ApplySpectrumSettings(settings)
+        
+        ' Save settings
+        settingsManager.SaveAll()
+    End Sub
+
+    Private Sub OnSpectrumResetRequested(sender As Object, e As EventArgs)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Spectrum reset requested")
+        
+        ' Create default settings
+        Dim defaults = New Models.SpectrumSettings()
+        
+        ' Load into panel
+        SpectrumSettingsPanel1.LoadSettings(defaults)
+        
+        ' Apply
+        OnSpectrumSettingsChanged(sender, defaults)
     End Sub
 
     Private Sub ApplyMeterSettings(settings As Models.MeterSettings)

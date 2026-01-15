@@ -399,20 +399,27 @@ Namespace UI.TabPanels
 
         ''' <summary>Populate combo boxes and load initial configuration</summary>
         Public Sub Initialize()
+            Utils.Logger.Instance.Info("Initializing AudioPipelinePanel", "AudioPipelinePanel")
+
             suppressEvents = True
             Try
                 ' Populate presets
                 cmbPresets.Items.Clear()
                 If router IsNot Nothing Then
+                    Utils.Logger.Instance.Info($"Loading {router.AvailableTemplates.Count()} available templates", "AudioPipelinePanel")
                     For Each templateName In router.AvailableTemplates
                         cmbPresets.Items.Add(templateName)
                     Next
                     If cmbPresets.Items.Count > 0 Then
                         cmbPresets.SelectedIndex = 0
+                        Utils.Logger.Instance.Info($"Default template selected: {cmbPresets.SelectedItem}", "AudioPipelinePanel")
                     End If
+                Else
+                    Utils.Logger.Instance.Warning("Router is null during Initialize", "AudioPipelinePanel")
                 End If
 
                 ' Populate tap point combos
+                Utils.Logger.Instance.Debug("Populating tap point combo boxes", "AudioPipelinePanel")
                 For Each tapPoint As TapPoint In [Enum].GetValues(GetType(TapPoint))
                     cmbInputFFTTap.Items.Add(tapPoint)
                     cmbOutputFFTTap.Items.Add(tapPoint)
@@ -421,11 +428,17 @@ Namespace UI.TabPanels
                 cmbInputFFTTap.SelectedIndex = 1 ' PreDSP
                 cmbOutputFFTTap.SelectedIndex = 3 ' PostDSP
                 cmbLevelMeterTap.SelectedIndex = 1 ' PreDSP
+                Utils.Logger.Instance.Debug("Tap points initialized: InputFFT=PreDSP, OutputFFT=PostDSP, Meter=PreDSP", "AudioPipelinePanel")
 
                 ' Load current configuration
                 If router IsNot Nothing AndAlso router.CurrentConfiguration IsNot Nothing Then
+                    Utils.Logger.Instance.Info("Loading current router configuration into UI", "AudioPipelinePanel")
                     LoadConfiguration(router.CurrentConfiguration)
+                Else
+                    Utils.Logger.Instance.Warning("No current configuration to load", "AudioPipelinePanel")
                 End If
+
+                Utils.Logger.Instance.Info("AudioPipelinePanel initialization complete", "AudioPipelinePanel")
 
             Finally
                 suppressEvents = False
@@ -437,80 +450,131 @@ Namespace UI.TabPanels
 #Region "Event Handlers"
 
         Private Sub OnSettingChanged(sender As Object, e As EventArgs)
-            If suppressEvents Then Return
+            If suppressEvents Then
+                Utils.Logger.Instance.Debug("OnSettingChanged suppressed", "AudioPipelinePanel")
+                Return
+            End If
+            Utils.Logger.Instance.Info($"Setting changed: {sender?.GetType().Name}", "AudioPipelinePanel")
             ApplyConfiguration()
         End Sub
 
         Private Sub trkInputGain_ValueChanged(sender As Object, e As EventArgs)
             lblInputGainValue.Text = $"{trkInputGain.Value}%"
+            Utils.Logger.Instance.Debug($"Input gain changed: {trkInputGain.Value}%", "AudioPipelinePanel")
             OnSettingChanged(sender, e)
         End Sub
 
         Private Sub trkOutputGain_ValueChanged(sender As Object, e As EventArgs)
             lblOutputGainValue.Text = $"{trkOutputGain.Value}%"
+            Utils.Logger.Instance.Debug($"Output gain changed: {trkOutputGain.Value}%", "AudioPipelinePanel")
             OnSettingChanged(sender, e)
         End Sub
 
         Private Sub cmbPresets_SelectedIndexChanged(sender As Object, e As EventArgs)
-            If suppressEvents OrElse cmbPresets.SelectedItem Is Nothing Then Return
+            If suppressEvents OrElse cmbPresets.SelectedItem Is Nothing Then
+                Utils.Logger.Instance.Debug("Preset selection change suppressed or null", "AudioPipelinePanel")
+                Return
+            End If
 
             Dim templateName = cmbPresets.SelectedItem.ToString()
+            Utils.Logger.Instance.Info($"Preset selected: {templateName}", "AudioPipelinePanel")
+
             If router IsNot Nothing AndAlso router.ApplyTemplate(templateName) Then
                 ' Template applied, reload UI
+                Utils.Logger.Instance.Info($"Template '{templateName}' applied successfully", "AudioPipelinePanel")
                 LoadConfiguration(router.CurrentConfiguration)
+            Else
+                Utils.Logger.Instance.Warning($"Failed to apply template '{templateName}'", "AudioPipelinePanel")
             End If
         End Sub
 
         Private Sub btnSavePreset_Click(sender As Object, e As EventArgs)
+            Utils.Logger.Instance.Info("Save preset button clicked", "AudioPipelinePanel")
+
             ' Prompt for template name
             Dim templateName = InputBox("Enter template name:", "Save Template")
-            If String.IsNullOrWhiteSpace(templateName) Then Return
+            If String.IsNullOrWhiteSpace(templateName) Then
+                Utils.Logger.Instance.Info("Save preset cancelled by user", "AudioPipelinePanel")
+                Return
+            End If
+
+            Utils.Logger.Instance.Info($"Attempting to save template: {templateName}", "AudioPipelinePanel")
 
             If router IsNot Nothing Then
                 If router.SaveCurrentAsTemplate(templateName) Then
+                    Utils.Logger.Instance.Info($"Template '{templateName}' saved successfully", "AudioPipelinePanel")
                     MessageBox.Show($"Template '{templateName}' saved successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information)
                     ' Refresh presets list
                     Initialize()
                 Else
+                    Utils.Logger.Instance.Warning($"Failed to save template '{templateName}'", "AudioPipelinePanel")
                     MessageBox.Show("Failed to save template.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
                 End If
+            Else
+                Utils.Logger.Instance.Warning("Router is null, cannot save template", "AudioPipelinePanel")
             End If
         End Sub
 
         Private Sub btnDeletePreset_Click(sender As Object, e As EventArgs)
-            If cmbPresets.SelectedItem Is Nothing Then Return
+            Utils.Logger.Instance.Info("Delete preset button clicked", "AudioPipelinePanel")
+
+            If cmbPresets.SelectedItem Is Nothing Then
+                Utils.Logger.Instance.Warning("No preset selected for deletion", "AudioPipelinePanel")
+                Return
+            End If
 
             Dim templateName = cmbPresets.SelectedItem.ToString()
+            Utils.Logger.Instance.Info($"Attempting to delete template: {templateName}", "AudioPipelinePanel")
 
             ' Confirm deletion
             Dim result = MessageBox.Show($"Delete template '{templateName}'?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Question)
             If result = DialogResult.Yes Then
+                Utils.Logger.Instance.Info($"User confirmed deletion of '{templateName}'", "AudioPipelinePanel")
+
                 If router IsNot Nothing AndAlso router.DeleteTemplate(templateName) Then
+                    Utils.Logger.Instance.Info($"Template '{templateName}' deleted successfully", "AudioPipelinePanel")
                     MessageBox.Show($"Template '{templateName}' deleted.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information)
                     ' Refresh presets list
                     Initialize()
                 Else
+                    Utils.Logger.Instance.Warning($"Failed to delete template '{templateName}' (may be built-in)", "AudioPipelinePanel")
                     MessageBox.Show("Failed to delete template (built-in presets cannot be deleted).", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
                 End If
+            Else
+                Utils.Logger.Instance.Info($"User cancelled deletion of '{templateName}'", "AudioPipelinePanel")
             End If
         End Sub
 
         Private Sub OnRouterConfigurationChanged(sender As Object, e As RoutingChangedEventArgs)
+            Utils.Logger.Instance.Info("Router configuration changed externally", "AudioPipelinePanel")
+
             ' Router configuration changed externally, reload UI
             If Me.InvokeRequired Then
+                Utils.Logger.Instance.Debug("Invoking LoadConfiguration on UI thread", "AudioPipelinePanel")
                 Me.Invoke(Sub() LoadConfiguration(e.NewConfiguration))
             Else
+                Utils.Logger.Instance.Debug("Loading configuration on current thread", "AudioPipelinePanel")
                 LoadConfiguration(e.NewConfiguration)
             End If
         End Sub
 
         Private Sub ApplyConfiguration()
-            If router Is Nothing Then Return
+            If router Is Nothing Then
+                Utils.Logger.Instance.Warning("ApplyConfiguration called but router is null", "AudioPipelinePanel")
+                Return
+            End If
+
+            Utils.Logger.Instance.Info("Applying configuration changes", "AudioPipelinePanel")
 
             Dim config = GetConfiguration()
+
+            Utils.Logger.Instance.Debug($"Config: DSP={config.Processing.EnableDSP}, InputGain={config.Processing.InputGain:F2}, OutputGain={config.Processing.OutputGain:F2}", "AudioPipelinePanel")
+            Utils.Logger.Instance.Debug($"Config: InputFFT={config.Monitoring.EnableInputFFT}, OutputFFT={config.Monitoring.EnableOutputFFT}, Recording={config.Destination.EnableRecording}", "AudioPipelinePanel")
+
             router.UpdateRouting(config)
 
             ' Raise event for MainForm
+            Utils.Logger.Instance.Debug("Raising ConfigurationChanged event", "AudioPipelinePanel")
             RaiseEvent ConfigurationChanged(Me, config)
         End Sub
 
