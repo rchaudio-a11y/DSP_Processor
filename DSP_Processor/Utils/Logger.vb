@@ -1,6 +1,7 @@
 Imports System.IO
 Imports System.Text
 Imports System.Threading
+Imports System.Collections.Concurrent
 
 Namespace Utils
 
@@ -30,6 +31,12 @@ Namespace Utils
         Private ReadOnly lockObj As New Object()
         Private currentLogFile As String
         Private logWriter As StreamWriter
+        
+        ' Async logging infrastructure
+        Private ReadOnly logQueue As New ConcurrentQueue(Of String)()
+        Private ReadOnly logSignal As New AutoResetEvent(False)
+        Private loggerThread As Thread
+        Private isRunning As Boolean = True
 
 #Region "Properties"
 
@@ -56,6 +63,18 @@ Namespace Utils
         ''' Enable/disable logging to console
         ''' </summary>
         Public Property LogToConsole As Boolean = True
+        
+        ''' <summary>
+        ''' PERFORMANCE: Enable/disable ALL logging
+        ''' </summary>
+        Public Property Enabled As Boolean = True
+        
+        ''' <summary>
+        ''' Use asynchronous buffered logging (recommended for audio applications)
+        ''' When True: Log calls return immediately, background thread writes to disk
+        ''' When False: Log calls block on disk I/O (legacy synchronous mode)
+        ''' </summary>
+        Public Property AsyncLogging As Boolean = True
 
         ''' <summary>
         ''' Directory for log files (relative to application path)
@@ -80,6 +99,14 @@ Namespace Utils
             ' Private constructor for singleton
             EnsureLogDirectoryExists()
             OpenLogFile()
+            
+            ' Start background logging thread
+            loggerThread = New Thread(AddressOf LoggerThreadProc) With {
+                .IsBackground = True,
+                .Priority = ThreadPriority.BelowNormal,
+                .Name = "AsyncLogger"
+            }
+            loggerThread.Start()
         End Sub
 
 #End Region
@@ -141,20 +168,30 @@ Namespace Utils
 #Region "Private Methods"
 
         Private Sub Log(level As LogLevel, message As String, ex As Exception, context As String)
+            ' PERFORMANCE: Quick exit if logging disabled
+            If Not Enabled Then Return
+            
             ' Check minimum level
             If level < MinimumLevel Then Return
 
             ' Format log entry
             Dim logEntry = FormatLogEntry(level, message, ex, context)
 
-            ' Output to console
+            ' Output to console (immediate)
             If LogToConsole Then
                 Console.WriteLine(logEntry)
             End If
 
             ' Output to file
             If LogToFile Then
-                WriteToFile(logEntry)
+                If AsyncLogging Then
+                    ' ASYNC: Enqueue message and signal background thread (non-blocking!)
+                    logQueue.Enqueue(logEntry)
+                    logSignal.Set()
+                Else
+                    ' SYNC: Write immediately (blocks on disk I/O)
+                    WriteToFile(logEntry)
+                End If
             End If
         End Sub
 
@@ -232,7 +269,8 @@ Namespace Utils
 
             Try
                 logWriter = New StreamWriter(currentLogFile, append:=True)
-                logWriter.AutoFlush = True
+                ' Don't use AutoFlush - we flush periodically in background thread
+                logWriter.AutoFlush = False
             Catch ex As Exception
                 Console.WriteLine($"[ERROR] Failed to open log file: {ex.Message}")
             End Try
@@ -284,6 +322,47 @@ Namespace Utils
                 Console.WriteLine($"[ERROR] Failed to cleanup old logs: {ex.Message}")
             End Try
         End Sub
+        
+        ''' <summary>
+        ''' Background thread that writes log messages to disk asynchronously
+        ''' </summary>
+        Private Sub LoggerThreadProc()
+            Try
+                While isRunning
+                    ' Wait for signal or timeout every 100ms to check queue
+                    logSignal.WaitOne(100)
+                    
+                    ' Process all queued messages
+                    Dim entry As String = Nothing
+                    While logQueue.TryDequeue(entry)
+                        ' Write directly without lock (single writer thread)
+                        Try
+                            If logWriter IsNot Nothing Then
+                                logWriter.WriteLine(entry)
+                                
+                                ' Check if rotation needed (periodically)
+                                If NeedsRotation() Then
+                                    RotateLogFile()
+                                End If
+                            End If
+                        Catch ex As Exception
+                            ' Failed to write - output to console as fallback
+                            Console.WriteLine($"[ERROR] Failed to write log: {ex.Message}")
+                        End Try
+                    End While
+                    
+                    ' Flush periodically
+                    Try
+                        logWriter?.Flush()
+                    Catch
+                        ' Ignore flush errors
+                    End Try
+                End While
+                
+            Catch ex As Exception
+                Console.WriteLine($"[ERROR] Logger thread crashed: {ex.Message}")
+            End Try
+        End Sub
 
 #End Region
 
@@ -293,6 +372,10 @@ Namespace Utils
         ''' Flush buffered log entries to disk
         ''' </summary>
         Public Sub Flush()
+            ' Signal writer thread and give it time to flush
+            logSignal.Set()
+            Thread.Sleep(50)
+            
             SyncLock lockObj
                 logWriter?.Flush()
             End SyncLock
@@ -302,6 +385,16 @@ Namespace Utils
         ''' Close the log file (call on application shutdown)
         ''' </summary>
         Public Sub Close()
+            ' Stop background thread
+            isRunning = False
+            logSignal.Set()
+            
+            ' Wait for thread to finish (max 1 second)
+            If loggerThread IsNot Nothing AndAlso loggerThread.IsAlive Then
+                loggerThread.Join(1000)
+            End If
+            
+            ' Close writer
             SyncLock lockObj
                 If logWriter IsNot Nothing Then
                     logWriter.Close()

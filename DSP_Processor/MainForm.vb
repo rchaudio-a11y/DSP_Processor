@@ -5,6 +5,7 @@ Imports DSP_Processor.UI
 Imports DSP_Processor.Utils
 Imports DSP_Processor.Visualization
 Imports DSP_Processor.Managers
+Imports DSP_Processor.Audio.Routing
 Imports NAudio.Wave
 
 Partial Public Class MainForm
@@ -17,9 +18,16 @@ Partial Public Class MainForm
     ' Audio Router (Phase 2.0)
     Private audioRouter As AudioIO.AudioRouter
 
+    ' ===== TEST: AudioPipelineRouter (Phase 1 Foundation - DORMANT) =====
+    ' Uncomment to test the router independently:
+    ' Private testRouter As AudioPipelineRouter
+
     ' FFT processing for spectrum display (separate processors for INPUT and OUTPUT)
     Private fftProcessorInput As DSP.FFT.FFTProcessor
     Private fftProcessorOutput As DSP.FFT.FFTProcessor
+    
+    ' Flag to prevent FFT queue buildup
+    Private fftProcessingInProgress As Boolean = False
 
     Private Sub MainForm_Load(sender As Object, e As EventArgs) Handles MyBase.Load
 
@@ -93,6 +101,28 @@ Partial Public Class MainForm
         ' Update UI state (will be updated again after mic arms)
         lblStatus.Text = "Status: Initializing..."
         btnStopPlayback.Enabled = False
+
+        ' ===== TEST: AudioPipelineRouter (DORMANT - Tested Successfully!) =====
+        ' Uncomment the following block to test the router:
+        '
+        ' Logger.Instance.Info("=== TESTING AudioPipelineRouter ===", "MainForm")
+        ' testRouter = New AudioPipelineRouter()
+        ' testRouter.Initialize()
+        ' Logger.Instance.Info("Router initialized successfully", "MainForm")
+        ' Logger.Instance.Info($"Available templates: {String.Join(", ", testRouter.AvailableTemplates)}", "MainForm")
+        '
+        ' ' Test applying a template
+        ' If testRouter.ApplyTemplate("Simple Record") Then
+        '     Logger.Instance.Info("Applied 'Simple Record' template", "MainForm")
+        '     Logger.Instance.Info($"Current routing:{Environment.NewLine}{testRouter.GetActiveRoutingMap()}", "MainForm")
+        ' End If
+        '
+        ' ' Test saving current as template
+        ' If testRouter.SaveCurrentAsTemplate("My Test Config") Then
+        '     Logger.Instance.Info("Saved current config as 'My Test Config'", "MainForm")
+        ' End If
+        '
+        ' Logger.Instance.Info("=== AudioPipelineRouter Test Complete ===", "MainForm")
 
         Logger.Instance.Info("DSP Processor started", "MainForm")
     End Sub
@@ -290,23 +320,51 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnRecordingBufferAvailable(sender As Object, e As AudioBufferEventArgs)
-        ' Update meter
+        ' FAST PATH: Update meter immediately (must be real-time)
         Try
             Dim levelData = AudioLevelMeter.AnalyzeSamples(e.Buffer, e.BitsPerSample, e.Channels)
             meterRecording.SetLevel(levelData.PeakDB, levelData.RMSDB, levelData.IsClipping)
-
-            ' Update spectrum display with FFT (feed to INPUT display for PRE monitoring)
-            fftProcessorInput.SampleRate = e.SampleRate
-            fftProcessorInput.AddSamples(e.Buffer, e.Buffer.Length, e.BitsPerSample, e.Channels)
-            Dim spectrum = fftProcessorInput.CalculateSpectrum()
-
-            If spectrum IsNot Nothing AndAlso spectrum.Length > 0 Then
-                ' Feed live audio to INPUT display (PRE - before processing)
-                SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrum, e.SampleRate, fftProcessorInput.FFTSize)
-            End If
         Catch
-            ' Ignore metering/FFT errors
+            ' Ignore metering errors
         End Try
+
+        ' ASYNC PATH: FFT processing off the audio thread (can drop frames if too slow)
+        ' Skip if already processing to prevent queue buildup
+        If Not fftProcessingInProgress Then
+            fftProcessingInProgress = True
+            
+            ' Make a copy of the buffer for async processing
+            Dim bufferCopy(e.Buffer.Length - 1) As Byte
+            Array.Copy(e.Buffer, bufferCopy, e.Buffer.Length)
+            Dim sampleRate = e.SampleRate
+            Dim bitsPerSample = e.BitsPerSample
+            Dim channels = e.Channels
+            
+            ' Fire and forget - process FFT on background thread
+            Task.Run(Sub()
+                Try
+                    ' Add samples and calculate spectrum (CPU-intensive)
+                    fftProcessorInput.SampleRate = sampleRate
+                    fftProcessorInput.AddSamples(bufferCopy, bufferCopy.Length, bitsPerSample, channels)
+                    Dim spectrum = fftProcessorInput.CalculateSpectrum()
+
+                    If spectrum IsNot Nothing AndAlso spectrum.Length > 0 Then
+                        ' Update UI on UI thread
+                        Me.BeginInvoke(New Action(Sub()
+                            Try
+                                SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrum, sampleRate, fftProcessorInput.FFTSize)
+                            Catch
+                                ' Ignore UI update errors
+                            End Try
+                        End Sub))
+                    End If
+                Catch
+                    ' Ignore FFT errors (freewheeling - can drop frames)
+                Finally
+                    fftProcessingInProgress = False
+                End Try
+            End Sub)
+        End If
     End Sub
 
     Private Sub OnMicrophoneArmed(sender As Object, isArmed As Boolean)
@@ -334,11 +392,23 @@ Partial Public Class MainForm
 
         ' Apply to recording manager (will re-arm mic with new settings)
         If recordingManager IsNot Nothing Then
+            ' CRITICAL: Disarm old device FIRST before switching
+            Try
+                If recordingManager.IsArmed Then
+                    recordingManager.DisarmMicrophone()
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Disarmed old audio input")
+                End If
+            Catch ex As Exception
+                Services.LoggingServiceAdapter.Instance.LogWarning($"Failed to disarm old device: {ex.Message}")
+            End Try
+            
+            ' Now initialize with new settings and arm new device
             recordingManager.Initialize(settings, settingsManager.RecordingOptions)
             Try
                 recordingManager.ArmMicrophone()
+                Services.LoggingServiceAdapter.Instance.LogInfo("Armed new audio input")
             Catch ex As Exception
-                Services.LoggingServiceAdapter.Instance.LogError($"Failed to re-arm microphone with new settings: {ex.Message}", ex)
+                Services.LoggingServiceAdapter.Instance.LogError($"Failed to arm new device: {ex.Message}", ex)
             End Try
         End If
 
@@ -715,7 +785,7 @@ Partial Public Class MainForm
     Private Sub OnPlaybackStarted(sender As Object, filepath As String)
         ' Start the timer to update playback position
         TimerPlayback.Start()
-        
+
         ' Update UI
         panelLED.BackColor = Color.RoyalBlue
         lblStatus.Text = $"Status: Playing {Path.GetFileName(filepath)}"
@@ -737,7 +807,7 @@ Partial Public Class MainForm
             playbackManager.UpdatePosition()
             transportControl.TrackPosition = playbackManager.CurrentPosition
             transportControl.TrackDuration = playbackManager.TotalDuration
-            
+
             ' DIAGNOSTIC: Log playback position every 30 ticks (~0.5 seconds)
             Static tickCount As Integer = 0
             tickCount += 1
@@ -1210,4 +1280,7 @@ Partial Public Class MainForm
         MyBase.OnFormClosing(e)
     End Sub
 
+    Private Sub tabProgram_Click(sender As Object, e As EventArgs) Handles tabProgram.Click
+
+    End Sub
 End Class

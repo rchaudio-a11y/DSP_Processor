@@ -238,6 +238,7 @@ Namespace Managers
 
     ''' <summary>Audio device and format settings</summary>
     Public Class AudioDeviceSettings
+        Public Property DriverType As AudioIO.DriverType = AudioIO.DriverType.WaveIn
         Public Property InputDeviceIndex As Integer = 0
         Public Property SampleRate As Integer = 44100
         Public Property BitDepth As Integer = 16
@@ -252,6 +253,43 @@ Namespace Managers
         ''' <summary>Deserialize from JSON</summary>
         Public Shared Function FromJson(json As String) As AudioDeviceSettings
             Return Newtonsoft.Json.JsonConvert.DeserializeObject(Of AudioDeviceSettings)(json)
+        End Function
+        
+        ''' <summary>Get driver-specific default settings</summary>
+        Public Shared Function GetDefaultsForDriver(driverType As AudioIO.DriverType) As AudioDeviceSettings
+            Dim defaults = New AudioDeviceSettings()
+            
+            Select Case driverType
+                Case AudioIO.DriverType.WaveIn
+                    ' WaveIn defaults - standard CD quality
+                    defaults.DriverType = AudioIO.DriverType.WaveIn
+                    defaults.SampleRate = 44100
+                    defaults.BitDepth = 16
+                    defaults.Channels = 2
+                    defaults.BufferMilliseconds = 20
+                    defaults.InputDeviceIndex = 0
+                    
+                Case AudioIO.DriverType.WASAPI
+                    ' WASAPI defaults - let device use native format
+                    ' Note: WASAPI will override with native format (usually 48kHz/16bit after conversion)
+                    defaults.DriverType = AudioIO.DriverType.WASAPI
+                    defaults.SampleRate = 48000  ' Common WASAPI native rate
+                    defaults.BitDepth = 16       ' After float conversion
+                    defaults.Channels = 2
+                    defaults.BufferMilliseconds = 10  ' Lower latency for WASAPI
+                    defaults.InputDeviceIndex = 0
+                    
+                Case AudioIO.DriverType.ASIO
+                    ' ASIO defaults - professional low-latency
+                    defaults.DriverType = AudioIO.DriverType.ASIO
+                    defaults.SampleRate = 48000
+                    defaults.BitDepth = 24
+                    defaults.Channels = 2
+                    defaults.BufferMilliseconds = 5  ' Lowest latency
+                    defaults.InputDeviceIndex = 0
+            End Select
+            
+            Return defaults
         End Function
     End Class
 

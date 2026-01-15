@@ -37,7 +37,7 @@ Namespace Managers
 
 #Region "Fields"
 
-        Private mic As MicInputSource
+        Private mic As IInputSource ' Can be MicInputSource or WasapiEngine
         Private recorder As RecordingEngine
         Private processingTimer As Timer
         Private _isArmed As Boolean = False
@@ -92,13 +92,22 @@ Namespace Managers
         Public Property InputVolume As Single
             Get
                 If mic IsNot Nothing Then
-                    Return mic.Volume
+                    ' Both MicInputSource and WasapiEngine have Volume property
+                    If TypeOf mic Is MicInputSource Then
+                        Return DirectCast(mic, MicInputSource).Volume
+                    ElseIf TypeOf mic Is WasapiEngine Then
+                        Return DirectCast(mic, WasapiEngine).Volume
+                    End If
                 End If
                 Return 1.0F
             End Get
             Set(value As Single)
                 If mic IsNot Nothing Then
-                    mic.Volume = value
+                    If TypeOf mic Is MicInputSource Then
+                        DirectCast(mic, MicInputSource).Volume = value
+                    ElseIf TypeOf mic Is WasapiEngine Then
+                        DirectCast(mic, WasapiEngine).Volume = value
+                    End If
                 End If
             End Set
         End Property
@@ -145,22 +154,69 @@ Namespace Managers
                     Throw ex
                 End If
 
-                Logger.Instance.Info("Arming microphone...", "RecordingManager")
+                Logger.Instance.Info("Arming audio input...", "RecordingManager")
 
-                ' DIAGNOSTIC: Log buffer settings
+                ' DIAGNOSTIC: Log settings
+                Logger.Instance.Info($"Driver: {audioSettings.DriverType}", "RecordingManager")
                 Logger.Instance.Info($"Buffer size: {audioSettings.BufferMilliseconds}ms", "RecordingManager")
                 Logger.Instance.Info($"Sample rate: {audioSettings.SampleRate}Hz, Channels: {audioSettings.Channels}, Bits: {audioSettings.BitDepth}", "RecordingManager")
+                Logger.Instance.Info($"Device index: {audioSettings.InputDeviceIndex}", "RecordingManager")
 
-                ' Create mic input source
-                mic = New MicInputSource(
-                    audioSettings.SampleRate,
-                    If(audioSettings.Channels = 1, "Mono (1)", "Stereo (2)"),
-                    audioSettings.BitDepth,
-                    audioSettings.InputDeviceIndex,
-                    audioSettings.BufferMilliseconds)
+                ' Get device info for selected driver and device index
+                Dim devices = AudioIO.AudioInputManager.Instance.GetDevices(audioSettings.DriverType)
+                
+                If devices.Count = 0 Then
+                    Throw New InvalidOperationException($"No {audioSettings.DriverType} devices available")
+                End If
+                
+                If audioSettings.InputDeviceIndex < 0 Or audioSettings.InputDeviceIndex >= devices.Count Then
+                    Throw New ArgumentOutOfRangeException($"Device index {audioSettings.InputDeviceIndex} is out of range. Only {devices.Count} devices available.")
+                End If
+                
+                Dim selectedDevice = devices(audioSettings.InputDeviceIndex)
+                Logger.Instance.Info($"Selected device: {selectedDevice.Name}", "RecordingManager")
+                
+                ' Check driver type and create appropriate engine
+                Select Case audioSettings.DriverType
+                    Case AudioIO.DriverType.WaveIn
+                        ' WaveIn: Use MicInputSource (legacy, will be replaced with WaveInEngine)
+                        Logger.Instance.Info("Using WaveIn (MicInputSource) for audio capture", "RecordingManager")
+                        mic = New MicInputSource(
+                            audioSettings.SampleRate,
+                            If(audioSettings.Channels = 1, "Mono (1)", "Stereo (2)"),
+                            audioSettings.BitDepth,
+                            audioSettings.InputDeviceIndex,
+                            audioSettings.BufferMilliseconds)
+                        
+                    Case AudioIO.DriverType.WASAPI
+                        ' WASAPI: Use WasapiEngine (low-latency, professional audio)
+                        Logger.Instance.Info("Using WASAPI for audio capture", "RecordingManager")
+                        
+                        Dim wasapiEngine = New WasapiEngine(
+                            selectedDevice,
+                            audioSettings.SampleRate,
+                            audioSettings.Channels,
+                            audioSettings.BitDepth,
+                            audioSettings.BufferMilliseconds)
+                        
+                        ' Start WASAPI capture
+                        wasapiEngine.Start()
+                        
+                        mic = wasapiEngine
+                        
+                        ' Log the actual format WASAPI is using (may differ from requested)
+                        Logger.Instance.Info($"WASAPI engine created: {selectedDevice.Name}, requested: {audioSettings.SampleRate}Hz, actual: {wasapiEngine.SampleRate}Hz/{wasapiEngine.BitsPerSample}bit", "RecordingManager")
+                        
+                    Case Else
+                        Throw New NotSupportedException($"Driver type {audioSettings.DriverType} is not supported")
+                End Select
 
                 ' Apply volume
-                mic.Volume = 1.0F ' Default, can be adjusted via property
+                If TypeOf mic Is MicInputSource Then
+                    DirectCast(mic, MicInputSource).Volume = 1.0F
+                ElseIf TypeOf mic Is WasapiEngine Then
+                    DirectCast(mic, WasapiEngine).Volume = 1.0F
+                End If
 
                 ' Start processing timer (20ms intervals - must be <= buffer size)
                 ' Keep at 20ms for responsiveness even if buffer is larger
@@ -170,7 +226,7 @@ Namespace Managers
                 _isArmed = True
                 RaiseEvent MicrophoneArmed(Me, True)
 
-                Logger.Instance.Info("Microphone armed successfully", "RecordingManager")
+                Logger.Instance.Info("Audio input armed successfully", "RecordingManager")
 
             Catch ex As Exception
                 Logger.Instance.Error("Failed to arm microphone", ex, "RecordingManager")
@@ -185,13 +241,23 @@ Namespace Managers
 
                 Logger.Instance.Info("Disarming microphone...", "RecordingManager")
 
-                ' Stop timer
+                ' Stop timer FIRST to prevent race conditions
                 processingTimer?.Dispose()
                 processingTimer = Nothing
 
-                ' Dispose mic
-                mic?.Dispose()
-                mic = Nothing
+                ' Give time for any pending timer events to complete
+                System.Threading.Thread.Sleep(50)
+
+                ' Dispose mic and wait for cleanup
+                If mic IsNot Nothing Then
+                    If TypeOf mic Is IDisposable Then
+                        DirectCast(mic, IDisposable).Dispose()
+                    End If
+                    mic = Nothing
+                End If
+                
+                ' Another small delay to ensure disposal is complete
+                System.Threading.Thread.Sleep(50)
 
                 _isArmed = False
                 RaiseEvent MicrophoneArmed(Me, False)
@@ -299,7 +365,42 @@ Namespace Managers
 
                 ' If recording, let recorder handle everything
                 If recorder IsNot Nothing AndAlso recorder.InputSource IsNot Nothing Then
-                    recorder.Process()
+                    ' AGGRESSIVE DRAIN: Check queue depth and drain aggressively if needed
+                    Dim currentQueueDepth As Integer = 0
+                    
+                    If TypeOf mic Is MicInputSource Then
+                        currentQueueDepth = DirectCast(mic, MicInputSource).BufferQueueCount
+                    ElseIf TypeOf mic Is WasapiEngine Then
+                        currentQueueDepth = DirectCast(mic, WasapiEngine).BufferQueueCount
+                    End If
+                    
+                    ' If queue is building, drain DIRECTLY from mic before Process()
+                    If currentQueueDepth > 10 Then
+                        ' Calculate how much excess to drain
+                        Dim excessBuffers = currentQueueDepth - 5  ' Target: keep at ~5 buffers
+                        Dim drainCalls = Math.Min(excessBuffers, 20)  ' Max 20 drains per tick
+                        
+                        For i = 1 To drainCalls
+                            Dim throwaway(4095) As Byte
+                            Dim read = mic.Read(throwaway, 0, throwaway.Length)
+                            If read = 0 Then Exit For  ' No more data
+                        Next
+                    End If
+                    
+                    ' Now call Process() for recording (adaptive rate)
+                    Dim processCount As Integer = 4  ' Default
+                    
+                    If currentQueueDepth > 100 Then
+                        processCount = 16
+                    ElseIf currentQueueDepth > 50 Then
+                        processCount = 12
+                    ElseIf currentQueueDepth > 20 Then
+                        processCount = 8
+                    End If
+                    
+                    For i = 1 To processCount
+                        recorder.Process()
+                    Next
 
                     ' Check if recording just stopped (loop take completed)
                     Dim isRecording = recorder.IsRecording
@@ -312,31 +413,75 @@ Namespace Managers
                     ' Raise time update
                     RaiseEvent RecordingTimeUpdated(Me, recorder.RecordingDuration)
 
-                    ' Raise buffer available event (for metering/FFT)
-                    If recorder.LastBuffer IsNot Nothing Then
-                        Dim args As New AudioBufferEventArgs With {
-                            .Buffer = recorder.LastBuffer,
-                            .BitsPerSample = recorder.InputSource.BitsPerSample,
-                            .Channels = recorder.InputSource.Channels,
-                            .SampleRate = recorder.InputSource.SampleRate
-                        }
-                        RaiseEvent BufferAvailable(Me, args)
+                    ' FREEWHEELING FFT PATH: Read from separate FFT queue
+                    ' This doesn't block recording and can drop frames if UI is slow
+                    Dim fftBuffer(4095) As Byte ' Small 4KB buffer for responsive FFT
+                    Dim fftRead As Integer = 0
+                    
+                    If TypeOf mic Is MicInputSource Then
+                        Dim micSource = DirectCast(mic, MicInputSource)
+                        fftRead = micSource.ReadForFFT(fftBuffer, 0, fftBuffer.Length)
+                    ElseIf TypeOf mic Is WasapiEngine Then
+                        Dim wasapiEngine = DirectCast(mic, WasapiEngine)
+                        fftRead = wasapiEngine.ReadForFFT(fftBuffer, 0, fftBuffer.Length)
                     End If
-
-                ElseIf mic IsNot Nothing Then
-                    ' Not recording, just consume buffers for metering
-                    Dim buffer(4095) As Byte
-                    Dim read = mic.Read(buffer, 0, buffer.Length)
-
-                    If read > 0 Then
+                        
+                    If fftRead > 0 Then
+                        ' Copy only valid data
+                        Dim validBuffer(fftRead - 1) As Byte
+                        Array.Copy(fftBuffer, validBuffer, fftRead)
+                            
                         Dim args As New AudioBufferEventArgs With {
-                            .Buffer = buffer,
+                            .Buffer = validBuffer,
                             .BitsPerSample = mic.BitsPerSample,
                             .Channels = mic.Channels,
                             .SampleRate = mic.SampleRate
                         }
                         RaiseEvent BufferAvailable(Me, args)
                     End If
+
+                ElseIf mic IsNot Nothing Then
+                    ' Not recording, just consume buffers for metering
+                    ' AGGRESSIVE DRAIN: Same strategy as recording path
+                    Dim currentQueueDepth As Integer = 0
+                    
+                    If TypeOf mic Is MicInputSource Then
+                        currentQueueDepth = DirectCast(mic, MicInputSource).BufferQueueCount
+                    ElseIf TypeOf mic Is WasapiEngine Then
+                        currentQueueDepth = DirectCast(mic, WasapiEngine).BufferQueueCount
+                    End If
+                    
+                    ' If queue building, drain AGGRESSIVELY
+                    Dim drainCount As Integer = 4  ' Default
+                    
+                    If currentQueueDepth > 100 Then
+                        drainCount = 20  ' Maximum aggressive
+                    ElseIf currentQueueDepth > 50 Then
+                        drainCount = 16
+                    ElseIf currentQueueDepth > 20 Then
+                        drainCount = 12
+                    ElseIf currentQueueDepth > 10 Then
+                        drainCount = 8
+                    End If
+                    
+                    ' Drain at adaptive rate
+                    For i = 1 To drainCount
+                        Dim buffer(4095) As Byte
+                        Dim read = mic.Read(buffer, 0, buffer.Length)
+
+                        If read > 0 Then
+                            Dim args As New AudioBufferEventArgs With {
+                                .Buffer = buffer,
+                                .BitsPerSample = mic.BitsPerSample,
+                                .Channels = mic.Channels,
+                                .SampleRate = mic.SampleRate
+                            }
+                            RaiseEvent BufferAvailable(Me, args)
+                        Else
+                            ' No more data, stop draining
+                            Exit For
+                        End If
+                    Next
                 End If
 
             Catch ex As Exception

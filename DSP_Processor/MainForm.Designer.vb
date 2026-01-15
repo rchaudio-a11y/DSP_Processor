@@ -39,6 +39,7 @@ Partial Class MainForm
         btnDelete = New Button()
         transportControl = New UI.TransportControl()
         splitWaveformArea = New SplitContainer()
+        WaveformDisplayControl1 = New UI.WaveformDisplayControl()
         mainTabs = New TabControl()
         tabFiles = New TabPage()
         tabProgram = New TabPage()
@@ -85,7 +86,6 @@ Partial Class MainForm
         lblLogLevel = New Label()
         visualizationTabs = New TabControl()
         tabWaveform = New TabPage()
-        WaveformDisplayControl1 = New UI.WaveformDisplayControl()
         tabSpectrum1 = New TabPage()
         SpectrumAnalyzerControl1 = New UI.SpectrumAnalyzerControl()
         tabPhase = New TabPage()
@@ -98,6 +98,7 @@ Partial Class MainForm
         mainTabs.SuspendLayout()
         tabFiles.SuspendLayout()
         tabProgram.SuspendLayout()
+        grpRouting.SuspendLayout()
         tabInput.SuspendLayout()
         tabRecording.SuspendLayout()
         tabSpectrum.SuspendLayout()
@@ -151,7 +152,7 @@ Partial Class MainForm
         meterRecording.Dock = DockStyle.Fill
         meterRecording.Location = New Point(0, 0)
         meterRecording.Name = "meterRecording"
-        meterRecording.Size = New Size(60, 472)
+        meterRecording.Size = New Size(60, 812)
         meterRecording.TabIndex = 0
         ' 
         ' meterPlayback
@@ -166,7 +167,7 @@ Partial Class MainForm
         ' lblRecordingTime
         ' 
         lblRecordingTime.AutoSize = True
-        lblRecordingTime.Font = New Font("Segoe UI", 16.0F, FontStyle.Bold)
+        lblRecordingTime.Font = New Font("Segoe UI", 16F, FontStyle.Bold)
         lblRecordingTime.ForeColor = Color.Red
         lblRecordingTime.Location = New Point(172, 50)
         lblRecordingTime.Name = "lblRecordingTime"
@@ -197,7 +198,7 @@ Partial Class MainForm
         ' 
         ' TimerPlayback
         ' 
-        TimerPlayback.Interval = 17 ' 60 Hz (17ms = ~60 FPS)
+        TimerPlayback.Interval = 17
         ' 
         ' TimerMeters
         ' 
@@ -257,9 +258,21 @@ Partial Class MainForm
         ' 
         splitWaveformArea.Panel2.Controls.Add(WaveformDisplayControl1)
         splitWaveformArea.Panel2.Controls.Add(progressPlayback)
-        splitWaveformArea.Size = New Size(1312, 472)
+        splitWaveformArea.Size = New Size(1312, 812)
         splitWaveformArea.SplitterDistance = 60
         splitWaveformArea.TabIndex = 1
+        ' 
+        ' WaveformDisplayControl1
+        ' 
+        WaveformDisplayControl1.BackColor = Color.Black
+        WaveformDisplayControl1.Dock = DockStyle.Fill
+        WaveformDisplayControl1.Location = New Point(0, 30)
+        WaveformDisplayControl1.Name = "WaveformDisplayControl1"
+        WaveformDisplayControl1.Size = New Size(1248, 782)
+        WaveformDisplayControl1.TabIndex = 1
+        WaveformDisplayControl1.WaveformBackgroundColor = Color.Black
+        WaveformDisplayControl1.WaveformForegroundColor = Color.Lime
+        WaveformDisplayControl1.WaveformRightChannelColor = Color.Cyan
         ' 
         ' mainTabs
         ' 
@@ -337,7 +350,7 @@ Partial Class MainForm
         lblInputSource.ForeColor = Color.White
         lblInputSource.Location = New Point(10, 25)
         lblInputSource.Name = "lblInputSource"
-        lblInputSource.Size = New Size(100, 20)
+        lblInputSource.Size = New Size(95, 20)
         lblInputSource.TabIndex = 0
         lblInputSource.Text = "Input Source:"
         ' 
@@ -348,7 +361,7 @@ Partial Class MainForm
         radioMicrophone.ForeColor = Color.White
         radioMicrophone.Location = New Point(10, 50)
         radioMicrophone.Name = "radioMicrophone"
-        radioMicrophone.Size = New Size(113, 24)
+        radioMicrophone.Size = New Size(135, 24)
         radioMicrophone.TabIndex = 1
         radioMicrophone.TabStop = True
         radioMicrophone.Text = "🎤 Microphone"
@@ -360,7 +373,7 @@ Partial Class MainForm
         radioFilePlayback.ForeColor = Color.White
         radioFilePlayback.Location = New Point(10, 80)
         radioFilePlayback.Name = "radioFilePlayback"
-        radioFilePlayback.Size = New Size(128, 24)
+        radioFilePlayback.Size = New Size(140, 24)
         radioFilePlayback.TabIndex = 2
         radioFilePlayback.Text = "📂 File Playback"
         radioFilePlayback.UseVisualStyleBackColor = True
@@ -380,7 +393,6 @@ Partial Class MainForm
         ' 
         ' lblSelectedFile
         ' 
-        lblSelectedFile.AutoSize = False
         lblSelectedFile.ForeColor = Color.Cyan
         lblSelectedFile.Location = New Point(30, 145)
         lblSelectedFile.Name = "lblSelectedFile"
@@ -394,7 +406,7 @@ Partial Class MainForm
         lblOutputDevice.ForeColor = Color.White
         lblOutputDevice.Location = New Point(10, 195)
         lblOutputDevice.Name = "lblOutputDevice"
-        lblOutputDevice.Size = New Size(112, 20)
+        lblOutputDevice.Size = New Size(107, 20)
         lblOutputDevice.TabIndex = 5
         lblOutputDevice.Text = "Output Device:"
         ' 
@@ -647,7 +659,7 @@ Partial Class MainForm
         lblDBRange.ForeColor = Color.White
         lblDBRange.Location = New Point(10, 430)
         lblDBRange.Name = "lblDBRange"
-        lblDBRange.Size = New Size(130, 20)
+        lblDBRange.Size = New Size(115, 20)
         lblDBRange.TabIndex = 14
         lblDBRange.Text = "dB Range (Min):"
         ' 
@@ -669,7 +681,7 @@ Partial Class MainForm
         lblDBRangeValue.ForeColor = Color.Yellow
         lblDBRangeValue.Location = New Point(320, 453)
         lblDBRangeValue.Name = "lblDBRangeValue"
-        lblDBRangeValue.Size = New Size(58, 20)
+        lblDBRangeValue.Size = New Size(53, 20)
         lblDBRangeValue.TabIndex = 16
         lblDBRangeValue.Text = "-60 dB"
         ' 
@@ -802,18 +814,6 @@ Partial Class MainForm
         tabWaveform.TabIndex = 0
         tabWaveform.Text = "📈 Waveform"
         ' 
-        ' WaveformDisplayControl1
-        ' 
-        WaveformDisplayControl1.BackColor = Color.Black
-        WaveformDisplayControl1.Dock = DockStyle.Fill
-        WaveformDisplayControl1.Location = New Point(0, 30)
-        WaveformDisplayControl1.Name = "WaveformDisplayControl1"
-        WaveformDisplayControl1.Size = New Size(1248, 442)
-        WaveformDisplayControl1.TabIndex = 1
-        WaveformDisplayControl1.WaveformBackgroundColor = Color.Black
-        WaveformDisplayControl1.WaveformForegroundColor = Color.Lime
-        WaveformDisplayControl1.WaveformRightChannelColor = Color.Cyan
-        ' 
         ' tabSpectrum1
         ' 
         tabSpectrum1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
@@ -857,7 +857,7 @@ Partial Class MainForm
         ' 
         ' MainForm
         ' 
-        AutoScaleDimensions = New SizeF(8.0F, 20.0F)
+        AutoScaleDimensions = New SizeF(8F, 20F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1782, 1053)
         Controls.Add(transportControl)
@@ -875,6 +875,8 @@ Partial Class MainForm
         tabFiles.ResumeLayout(False)
         tabFiles.PerformLayout()
         tabProgram.ResumeLayout(False)
+        grpRouting.ResumeLayout(False)
+        grpRouting.PerformLayout()
         tabInput.ResumeLayout(False)
         tabRecording.ResumeLayout(False)
         tabSpectrum.ResumeLayout(False)

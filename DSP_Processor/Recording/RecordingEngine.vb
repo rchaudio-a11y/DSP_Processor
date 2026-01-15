@@ -180,11 +180,12 @@ Namespace Recording
                 Exit Sub
             End If
 
+            ' Keep buffer small (4KB) for responsive FFT/metering
             Dim buffer(4095) As Byte
             Dim read = InputSource.Read(buffer, 0, buffer.Length)
 
             If read > 0 Then
-                ' Only write actual data, not the buffer underrun fills
+                ' Write to file
                 wavOut.Write(buffer, read)
 
                 ' Store buffer for metering

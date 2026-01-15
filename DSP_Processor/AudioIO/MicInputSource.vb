@@ -9,13 +9,16 @@ Namespace AudioIO
         Implements IInputSource
 
         Private waveIn As WaveInEvent
-        Private bufferQueue As New ConcurrentQueue(Of Byte())
+        Private bufferQueue As New ConcurrentQueue(Of Byte()) ' CRITICAL PATH: Recording (never drops)
+        Private fftQueue As New ConcurrentQueue(Of Byte()) ' FREEWHEELING: FFT/Metering (can drop frames)
         Private sampleRateValue As Integer
         Private channelsValue As Integer
         Private bitsValue As Integer
         Private volumeValue As Single = 1.0F ' 0.0 to 1.0 (0% to 100%)
         Private bufferOverflowCount As Integer = 0 ' Track buffer overflows
         Private lastOverflowWarning As DateTime = DateTime.MinValue
+        Private Const MAX_FFT_QUEUE_DEPTH As Integer = 5 ' Max 5 frames (~100ms) in FFT queue
+        Private _disposed As Boolean = False ' Track disposal to prevent race conditions
 
         Public Sub New(sampleRate As Integer, channels As String, bits As Integer, Optional deviceIndex As Integer = 0, Optional BufferMill As Integer = 20)
             sampleRateValue = sampleRate
@@ -23,7 +26,7 @@ Namespace AudioIO
 
             Dim BM As Integer = If(BufferMill > 0, BufferMill, 20)
 
-            Logger.Instance.Debug($"MicInputSource creating: {channels}, {sampleRate}Hz, {bits}-bit", "MicInputSource")
+            Logger.Instance.Info($"MicInputSource creating: Device={deviceIndex}, {channels}, {sampleRate}Hz, {bits}-bit", "MicInputSource")
 
             Select Case channels
                 Case "Mono (1)"
@@ -50,6 +53,9 @@ Namespace AudioIO
         End Sub
 
         Private Sub OnDataAvailable(sender As Object, e As WaveInEventArgs)
+            ' Check if disposed - ignore callbacks after disposal starts
+            If _disposed Then Return
+            
             ' Capture ALL audio data immediately - no delays, no skipping!
             If e.BytesRecorded > 0 Then
                 ' Copy the buffer so NAudio can reuse its internal one
@@ -61,15 +67,29 @@ Namespace AudioIO
                     ApplyVolume(copy, bitsValue)
                 End If
                 
+                ' CRITICAL PATH: Always enqueue to recording buffer (never drop!)
                 bufferQueue.Enqueue(copy)
                 
-                ' Detect buffer overflow (queue too large = consumer not keeping up)
+                ' FREEWHEELING PATH: Enqueue to FFT buffer (drop old frames if too deep)
+                If fftQueue.Count >= MAX_FFT_QUEUE_DEPTH Then
+                    ' Queue full - drop oldest frame to prevent blocking
+                    Dim discarded As Byte() = Nothing
+                    fftQueue.TryDequeue(discarded)
+                    Logger.Instance.Debug($"FFT queue full ({MAX_FFT_QUEUE_DEPTH} frames), dropped oldest frame", "MicInputSource")
+                End If
+                
+                ' Make a separate copy for FFT (don't share references!)
+                Dim fftCopy(e.BytesRecorded - 1) As Byte
+                Buffer.BlockCopy(copy, 0, fftCopy, 0, e.BytesRecorded)
+                fftQueue.Enqueue(fftCopy)
+                
+                ' Detect buffer overflow (recording queue too large = consumer not keeping up)
                 If bufferQueue.Count > 10 Then ' More than 10 buffers queued = potential issue
                     bufferOverflowCount += 1
                     
                     ' Warn every 5 seconds to avoid log spam
                     If (DateTime.Now - lastOverflowWarning).TotalSeconds > 5 Then
-                        Logger.Instance.Warning($"Buffer queue overflow detected! Queue size: {bufferQueue.Count}, Overflows: {bufferOverflowCount}. This may cause clicks/pops.", "MicInputSource")
+                        Logger.Instance.Warning($"RECORDING buffer queue overflow! Queue size: {bufferQueue.Count}, Overflows: {bufferOverflowCount}. This may cause clicks/pops.", "MicInputSource")
                         lastOverflowWarning = DateTime.Now
                     End If
                 End If
@@ -149,6 +169,13 @@ Namespace AudioIO
                 volumeValue = Math.Max(0.0F, Math.Min(2.0F, value))
             End Set
         End Property
+        
+        ''' <summary>Gets the current recording buffer queue depth</summary>
+        Public ReadOnly Property BufferQueueCount As Integer
+            Get
+                Return bufferQueue.Count
+            End Get
+        End Property
 
         Public Function Read(buffer() As Byte, offset As Integer, count As Integer) As Integer Implements IInputSource.Read
             Dim totalRead As Integer = 0
@@ -167,30 +194,62 @@ Namespace AudioIO
         End Function
 
         ''' <summary>
+        ''' Read from the FREEWHEELING FFT queue (separate from recording path)
+        ''' This queue can drop frames if FFT processing is too slow
+        ''' </summary>
+        Public Function ReadForFFT(buffer() As Byte, offset As Integer, count As Integer) As Integer
+            Dim totalRead As Integer = 0
+            Dim outBuffer() As Byte = Nothing
+
+            ' Read all available buffers up to requested count
+            While totalRead < count AndAlso fftQueue.TryDequeue(outBuffer)
+                Dim toCopy As Integer = Math.Min(outBuffer.Length, count - totalRead)
+                System.Buffer.BlockCopy(outBuffer, 0, buffer, offset + totalRead, toCopy)
+                totalRead += toCopy
+            End While
+
+            Return totalRead
+        End Function
+
+        ''' <summary>
         ''' Clears all buffered audio data. Call this before starting a new recording.
         ''' </summary>
         Public Sub ClearBuffers()
             Dim dummy As Byte() = Nothing
             Dim cleared As Integer = 0
+            Dim fftCleared As Integer = 0
+            
+            ' Clear recording buffer
             While bufferQueue.TryDequeue(dummy)
                 cleared += 1
             End While
             
-            If cleared > 0 Then
-                Logger.Instance.Debug($"Cleared {cleared} stale buffers from queue", "MicInputSource")
+            ' Clear FFT buffer
+            While fftQueue.TryDequeue(dummy)
+                fftCleared += 1
+            End While
+            
+            If cleared > 0 Or fftCleared > 0 Then
+                Logger.Instance.Debug($"Cleared {cleared} recording buffers and {fftCleared} FFT buffers", "MicInputSource")
             End If
         End Sub
 
         Public Sub Dispose()
+            _disposed = True ' Set flag FIRST to stop new callbacks
+            
             If waveIn IsNot Nothing Then
                 waveIn.StopRecording()
+                ' Give time for pending callbacks to see the disposed flag
+                System.Threading.Thread.Sleep(20)
                 RemoveHandler waveIn.DataAvailable, AddressOf OnDataAvailable
                 waveIn.Dispose()
                 waveIn = Nothing
             End If
 
-            ' Clear buffer queue
+            ' Clear both buffer queues
             While bufferQueue.TryDequeue(Nothing)
+            End While
+            While fftQueue.TryDequeue(Nothing)
             End While
 
             Logger.Instance.Debug("MicInputSource disposed", "MicInputSource")

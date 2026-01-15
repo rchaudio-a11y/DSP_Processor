@@ -238,26 +238,7 @@ Namespace UI.TabPanels
         Public Function GetSettings() As Managers.AudioDeviceSettings
             Dim settings = New Managers.AudioDeviceSettings()
 
-            ' Get selected driver type
-            If cmbAudioDriver.SelectedIndex >= 0 Then
-                Dim driverName = cmbAudioDriver.SelectedItem.ToString()
-                If [Enum].TryParse(driverName, settings.DriverType) Then
-                    ' Driver type set successfully
-                End If
-            End If
-
-            ' Get ACTUAL device index from DeviceInfo, not combo box index
-            If cmbInputDevices.SelectedIndex >= 0 Then
-                Dim devices = AudioIO.AudioInputManager.Instance.GetDevices(settings.DriverType)
-                If cmbInputDevices.SelectedIndex < devices.Count Then
-                    ' Use the DeviceIndex property from DeviceInfo (the real hardware index)
-                    settings.InputDeviceIndex = devices(cmbInputDevices.SelectedIndex).DeviceIndex
-                    Utils.Logger.Instance.Debug($"Selected device: ComboIndex={cmbInputDevices.SelectedIndex}, ActualDeviceIndex={settings.InputDeviceIndex}, Name={devices(cmbInputDevices.SelectedIndex).Name}", "AudioSettingsPanel")
-                Else
-                    ' Fallback to combo index if out of range
-                    settings.InputDeviceIndex = cmbInputDevices.SelectedIndex
-                End If
-            End If
+            settings.InputDeviceIndex = cmbInputDevices.SelectedIndex
 
             If cmbSampleRates.SelectedItem IsNot Nothing Then
                 settings.SampleRate = Integer.Parse(cmbSampleRates.SelectedItem.ToString())
@@ -281,35 +262,9 @@ Namespace UI.TabPanels
             suppressEvents = True
 
             Try
-                ' Driver Type
-                Dim driverIndex = cmbAudioDriver.Items.IndexOf(settings.DriverType.ToString())
-                If driverIndex >= 0 Then
-                    cmbAudioDriver.SelectedIndex = driverIndex
-                    ' This will trigger driver change and populate devices
-                End If
-                
-                ' Input Device - find device by DeviceIndex, not combo index
-                If settings.InputDeviceIndex >= 0 Then
-                    Dim devices = AudioIO.AudioInputManager.Instance.GetDevices(settings.DriverType)
-                    ' Find which combo box position has the device with matching DeviceIndex
-                    Dim comboIndex = -1
-                    For i = 0 To devices.Count - 1
-                        If devices(i).DeviceIndex = settings.InputDeviceIndex Then
-                            comboIndex = i
-                            Exit For
-                        End If
-                    Next
-                    
-                    If comboIndex >= 0 AndAlso comboIndex < cmbInputDevices.Items.Count Then
-                        cmbInputDevices.SelectedIndex = comboIndex
-                        Utils.Logger.Instance.Debug($"Loaded device: SavedDeviceIndex={settings.InputDeviceIndex}, ComboIndex={comboIndex}, Name={devices(comboIndex).Name}", "AudioSettingsPanel")
-                    Else
-                        ' Device not found, default to first device
-                        If cmbInputDevices.Items.Count > 0 Then
-                            cmbInputDevices.SelectedIndex = 0
-                            Utils.Logger.Instance.Warning($"Saved device index {settings.InputDeviceIndex} not found, defaulting to device 0", "AudioSettingsPanel")
-                        End If
-                    End If
+                ' Input Device
+                If settings.InputDeviceIndex >= 0 AndAlso settings.InputDeviceIndex < cmbInputDevices.Items.Count Then
+                    cmbInputDevices.SelectedIndex = settings.InputDeviceIndex
                 End If
 
                 ' Sample Rate
@@ -417,30 +372,9 @@ Namespace UI.TabPanels
                     AudioIO.AudioInputManager.Instance.CurrentDriver = selectedDriver
                     Utils.Logger.Instance.Info($"Audio driver changed to: {selectedDriver}", "AudioSettingsPanel")
 
-                    ' Load driver-specific default settings
+                    ' Refresh device list for new driver
                     suppressEvents = True
                     Try
-                        Dim defaults = Managers.AudioDeviceSettings.GetDefaultsForDriver(selectedDriver)
-                        
-                        ' Apply defaults to UI controls
-                        ' Sample Rate
-                        Dim rateIndex = Array.IndexOf({8000, 11025, 16000, 22050, 32000, 44100, 48000, 96000}, defaults.SampleRate)
-                        If rateIndex >= 0 Then cmbSampleRates.SelectedIndex = rateIndex
-                        
-                        ' Bit Depth
-                        Dim depthIndex = Array.IndexOf({8, 16, 24, 32}, defaults.BitDepth)
-                        If depthIndex >= 0 Then cmbBitDepths.SelectedIndex = depthIndex
-                        
-                        ' Channels
-                        cmbChannelMode.SelectedIndex = If(defaults.Channels = 1, 0, 1)
-                        
-                        ' Buffer Size
-                        Dim bufferIndex = Array.IndexOf({10, 20, 30, 50, 100, 200}, defaults.BufferMilliseconds)
-                        If bufferIndex >= 0 Then cmbBufferSize.SelectedIndex = bufferIndex
-                        
-                        Utils.Logger.Instance.Info($"Loaded defaults for {selectedDriver}: {defaults.SampleRate}Hz/{defaults.BitDepth}bit/{defaults.BufferMilliseconds}ms", "AudioSettingsPanel")
-                        
-                        ' Refresh device list for new driver
                         PopulateInputDevices()
                     Finally
                         suppressEvents = False
