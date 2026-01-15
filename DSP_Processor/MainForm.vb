@@ -18,9 +18,8 @@ Partial Public Class MainForm
     ' Audio Router (Phase 2.0)
     Private audioRouter As AudioIO.AudioRouter
 
-    ' ===== TEST: AudioPipelineRouter (Phase 1 Foundation - DORMANT) =====
-    ' Uncomment to test the router independently:
-    ' Private testRouter As AudioPipelineRouter
+    ' Audio Pipeline Router (Phase 2 Foundation - SHARED INSTANCE)
+    Private pipelineRouter As AudioPipelineRouter
 
     ' FFT processing for spectrum display (separate processors for INPUT and OUTPUT)
     Private fftProcessorInput As DSP.FFT.FFTProcessor
@@ -82,7 +81,8 @@ Partial Public Class MainForm
         AudioSettingsPanel1.LoadSettings(settingsManager.AudioSettings)
         InputTabPanel1.LoadSettings(settingsManager.MeterSettings)
 
-        ' Initialize AudioPipelinePanel
+        ' Initialize AudioPipelinePanel with injected router (prevents duplicate router instances)
+        AudioPipelinePanel1.SetRouter(pipelineRouter)
         AudioPipelinePanel1.Initialize()
 
         ' Initialize RoutingPanel
@@ -158,6 +158,11 @@ Partial Public Class MainForm
         audioRouter = New AudioIO.AudioRouter()
         audioRouter.Initialize()
         Logger.Instance.Info("AudioRouter created", "MainForm")
+
+        ' Create pipeline router (Phase 2 Foundation - shared instance)
+        pipelineRouter = New AudioPipelineRouter()
+        pipelineRouter.Initialize()
+        Logger.Instance.Info("AudioPipelineRouter created (shared instance)", "MainForm")
     End Sub
 
     Private Sub WireManagerEvents()

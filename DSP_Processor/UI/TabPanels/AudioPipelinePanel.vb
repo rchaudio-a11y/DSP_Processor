@@ -54,6 +54,7 @@ Namespace UI.TabPanels
 #Region "Fields"
 
         Private suppressEvents As Boolean = False
+        Private isDirty As Boolean = False  ' Track unsaved changes
         Private router As AudioPipelineRouter
 
 #End Region
@@ -62,27 +63,50 @@ Namespace UI.TabPanels
 
         Public Sub New()
             InitializeComponent()
-            InitializeRouter()
+            ' Router will be injected via SetRouter() from MainForm
         End Sub
 
 #End Region
 
 #Region "Initialization"
 
-        Private Sub InitializeRouter()
-            Try
-                ' Get or create router instance
-                router = New AudioPipelineRouter()
-                router.Initialize()
+''' <summary>Inject router instance from MainForm (prevents duplicate router instances)</summary>
+Public Sub SetRouter(routerInstance As AudioPipelineRouter)
+    If routerInstance Is Nothing Then
+        Throw New ArgumentNullException(NameOf(routerInstance))
+    End If
 
-                ' Subscribe to router events
-                AddHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
+    ' Unsubscribe from old router if any
+    If router IsNot Nothing Then
+        RemoveHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
+    End If
 
-            Catch ex As Exception
-                ' Log error but don't crash
-                Utils.Logger.Instance.Error("Failed to initialize router in panel", ex, "AudioPipelinePanel")
-            End Try
-        End Sub
+    ' Set new router
+    router = routerInstance
+
+    ' Subscribe to events
+    AddHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
+
+    Utils.Logger.Instance.Info("Router injected into AudioPipelinePanel", "AudioPipelinePanel")
+End Sub
+
+Private Sub InitializeRouter()
+    Try
+        ' DEPRECATED: Router is now injected via SetRouter()
+        ' This method kept for backward compatibility but should not be used
+        Utils.Logger.Instance.Warning("InitializeRouter() called - router should be injected via SetRouter()", "AudioPipelinePanel")
+
+        router = New AudioPipelineRouter()
+        router.Initialize()
+
+        ' Subscribe to router events
+        AddHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
+
+    Catch ex As Exception
+        ' Log error but don't crash
+        Utils.Logger.Instance.Error("Failed to initialize router in panel", ex, "AudioPipelinePanel")
+    End Try
+End Sub
 
         Private Sub InitializeComponent()
             Me.SuspendLayout()
@@ -339,7 +363,20 @@ Namespace UI.TabPanels
 
 #Region "Public Methods"
 
-        ''' <summary>Load configuration into UI controls</summary>
+''' <summary>Set configuration with automatic event suppression</summary>
+Private Sub SetConfiguration(config As PipelineConfiguration, Optional suppress As Boolean = True)
+    If config Is Nothing Then Return
+
+    Dim wasSuppress = suppressEvents
+    suppressEvents = suppress
+    Try
+        LoadConfiguration(config)
+    Finally
+        suppressEvents = wasSuppress
+    End Try
+End Sub
+
+''' <summary>Load configuration into UI controls</summary>
         Public Sub LoadConfiguration(config As PipelineConfiguration)
             If config Is Nothing Then Return
 
@@ -376,17 +413,19 @@ Namespace UI.TabPanels
             config.Processing.InputGain = trkInputGain.Value / 100.0F
             config.Processing.OutputGain = trkOutputGain.Value / 100.0F
 
-            ' Monitoring
+            ' Monitoring - use TypeOf for safety with value types
             config.Monitoring.EnableInputFFT = chkEnableInputFFT.Checked
-            If cmbInputFFTTap.SelectedItem IsNot Nothing Then
+            If cmbInputFFTTap.SelectedItem IsNot Nothing AndAlso TypeOf cmbInputFFTTap.SelectedItem Is TapPoint Then
                 config.Monitoring.InputFFTTap = DirectCast(cmbInputFFTTap.SelectedItem, TapPoint)
             End If
+
             config.Monitoring.EnableOutputFFT = chkEnableOutputFFT.Checked
-            If cmbOutputFFTTap.SelectedItem IsNot Nothing Then
+            If cmbOutputFFTTap.SelectedItem IsNot Nothing AndAlso TypeOf cmbOutputFFTTap.SelectedItem Is TapPoint Then
                 config.Monitoring.OutputFFTTap = DirectCast(cmbOutputFFTTap.SelectedItem, TapPoint)
             End If
+
             config.Monitoring.EnableLevelMeter = chkEnableLevelMeter.Checked
-            If cmbLevelMeterTap.SelectedItem IsNot Nothing Then
+            If cmbLevelMeterTap.SelectedItem IsNot Nothing AndAlso TypeOf cmbLevelMeterTap.SelectedItem Is TapPoint Then
                 config.Monitoring.LevelMeterTap = DirectCast(cmbLevelMeterTap.SelectedItem, TapPoint)
             End If
 
@@ -419,16 +458,7 @@ Namespace UI.TabPanels
                 End If
 
                 ' Populate tap point combos
-                Utils.Logger.Instance.Debug("Populating tap point combo boxes", "AudioPipelinePanel")
-                For Each tapPoint As TapPoint In [Enum].GetValues(GetType(TapPoint))
-                    cmbInputFFTTap.Items.Add(tapPoint)
-                    cmbOutputFFTTap.Items.Add(tapPoint)
-                    cmbLevelMeterTap.Items.Add(tapPoint)
-                Next
-                cmbInputFFTTap.SelectedIndex = 1 ' PreDSP
-                cmbOutputFFTTap.SelectedIndex = 3 ' PostDSP
-                cmbLevelMeterTap.SelectedIndex = 1 ' PreDSP
-                Utils.Logger.Instance.Debug("Tap points initialized: InputFFT=PreDSP, OutputFFT=PostDSP, Meter=PreDSP", "AudioPipelinePanel")
+                PopulateTapCombos()
 
                 ' Load current configuration
                 If router IsNot Nothing AndAlso router.CurrentConfiguration IsNot Nothing Then
@@ -445,6 +475,30 @@ Namespace UI.TabPanels
             End Try
         End Sub
 
+        ''' <summary>Populate all tap point combo boxes</summary>
+        Private Sub PopulateTapCombos()
+            Utils.Logger.Instance.Debug("Populating tap point combo boxes", "AudioPipelinePanel")
+
+            Dim tapPoints = [Enum].GetValues(GetType(TapPoint))
+
+            cmbInputFFTTap.Items.Clear()
+            cmbOutputFFTTap.Items.Clear()
+            cmbLevelMeterTap.Items.Clear()
+
+            For Each tapPoint As TapPoint In tapPoints
+                cmbInputFFTTap.Items.Add(tapPoint)
+                cmbOutputFFTTap.Items.Add(tapPoint)
+                cmbLevelMeterTap.Items.Add(tapPoint)
+            Next
+
+            ' Set default selections
+            cmbInputFFTTap.SelectedIndex = 1  ' PreDSP
+            cmbOutputFFTTap.SelectedIndex = 3 ' PostDSP
+            cmbLevelMeterTap.SelectedIndex = 1 ' PreDSP
+
+            Utils.Logger.Instance.Debug("Tap points initialized: InputFFT=PreDSP, OutputFFT=PostDSP, Meter=PreDSP", "AudioPipelinePanel")
+        End Sub
+
 #End Region
 
 #Region "Event Handlers"
@@ -455,6 +509,7 @@ Namespace UI.TabPanels
                 Return
             End If
             Utils.Logger.Instance.Info($"Setting changed: {sender?.GetType().Name}", "AudioPipelinePanel")
+            isDirty = True
             ApplyConfiguration()
         End Sub
 
@@ -559,6 +614,11 @@ Namespace UI.TabPanels
         End Sub
 
         Private Sub ApplyConfiguration()
+            If Not isDirty Then
+                Utils.Logger.Instance.Debug("ApplyConfiguration skipped - no changes", "AudioPipelinePanel")
+                Return
+            End If
+
             If router Is Nothing Then
                 Utils.Logger.Instance.Warning("ApplyConfiguration called but router is null", "AudioPipelinePanel")
                 Return
@@ -572,6 +632,9 @@ Namespace UI.TabPanels
             Utils.Logger.Instance.Debug($"Config: InputFFT={config.Monitoring.EnableInputFFT}, OutputFFT={config.Monitoring.EnableOutputFFT}, Recording={config.Destination.EnableRecording}", "AudioPipelinePanel")
 
             router.UpdateRouting(config)
+
+            ' Clear dirty flag after successful update
+            isDirty = False
 
             ' Raise event for MainForm
             Utils.Logger.Instance.Debug("Raising ConfigurationChanged event", "AudioPipelinePanel")
