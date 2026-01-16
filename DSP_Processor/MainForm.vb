@@ -14,16 +14,13 @@ Partial Public Class MainForm
     Private fileManager As FileManager
     Private recordingManager As RecordingManager
     Private playbackManager As PlaybackManager
+    Private spectrumManager As SpectrumManager ' Task 2.0.4: FFT processing
 
     ' Audio Router (Phase 2.0)
     Private audioRouter As AudioIO.AudioRouter
 
     ' Audio Pipeline Router (Phase 2 Foundation - SHARED INSTANCE)
     Private pipelineRouter As AudioPipelineRouter
-
-    ' FFT processing for spectrum display (separate processors for INPUT and OUTPUT)
-    Private fftProcessorInput As DSP.FFT.FFTProcessor
-    Private fftProcessorOutput As DSP.FFT.FFTProcessor
 
     ' Flag to prevent FFT queue buildup
     Private fftProcessingInProgress As Boolean = False
@@ -58,16 +55,9 @@ Partial Public Class MainForm
         playbackManager = New PlaybackManager()
         playbackManager.Initialize()
 
-        ' Create FFT processors for spectrum analysis (separate for INPUT and OUTPUT)
-        fftProcessorInput = New DSP.FFT.FFTProcessor(4096) With {
-            .SampleRate = 44100,
-            .WindowFunction = DSP.FFT.FFTProcessor.WindowType.Hann
-        }
-
-        fftProcessorOutput = New DSP.FFT.FFTProcessor(4096) With {
-            .SampleRate = 44100,
-            .WindowFunction = DSP.FFT.FFTProcessor.WindowType.Hann
-        }
+        ' Create spectrum manager (Task 2.0.4)
+        spectrumManager = New SpectrumManager()
+        spectrumManager.Initialize(4096, 44100)
 
         ' NOW wire up events (all objects exist!)
         WireManagerEvents()
@@ -356,9 +346,8 @@ Partial Public Class MainForm
         panelLED.BackColor = Color.Red
         lblStatus.Text = "Status: Recording"
 
-        ' Clear FFT buffers for fresh spectrum
-        fftProcessorInput.Clear()
-        fftProcessorOutput.Clear()
+        ' Clear FFT buffers for fresh spectrum (Task 2.0.4)
+        spectrumManager.Clear()
 
         ' Clear both PRE and POST spectrum displays
         SpectrumAnalyzerControl1.InputDisplay.Clear()
@@ -396,28 +385,14 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnRecordingBufferAvailable(sender As Object, e As AudioBufferEventArgs)
-        ' === PHASE 3: Route through AudioPipelineRouter ===
-        ' Router will handle:
-        ' 1. DSP processing (gain, future: EQ, compressor, etc.)
-        ' 2. Monitoring tap points (FFT, level meters)
-        ' 3. Destination routing (recording, playback)
-
-        ' SAFETY: Only route if form is fully loaded and pipeline router is initialized
-        If isFormFullyLoaded AndAlso pipelineRouter IsNot Nothing AndAlso pipelineRouter.IsInitialized Then
-            Try
-                ' Route buffer through pipeline router
-                pipelineRouter.RouteAudioBuffer(
-                    e.Buffer,
-                    Audio.Routing.AudioSourceType.Microphone,
-                    e.BitsPerSample,
-                    e.Channels,
-                    e.SampleRate)
-
-            Catch ex As Exception
-                ' Log but don't crash audio thread
-                Logger.Instance.Error("Error routing buffer through pipeline", ex, "MainForm")
-            End Try
-        End If
+        ' Route through AudioPipelineRouter (Task 2.0.3 - safety checks moved to router)
+        ' Router handles: DSP processing, FFT taps, monitoring, recording destination
+        pipelineRouter?.RouteAudioBuffer(
+            e.Buffer,
+            Audio.Routing.AudioSourceType.Microphone,
+            e.BitsPerSample,
+            e.Channels,
+            e.SampleRate)
 
         ' FAST PATH: Update meter immediately (must be real-time)
         ' NOTE: This is direct - not routed through pipeline for lowest latency
@@ -585,31 +560,10 @@ Partial Public Class MainForm
 
     Private Sub ApplySpectrumSettings(settings As Models.SpectrumSettings)
         Try
-            ' Apply FFT settings to processors
-            fftProcessorInput.FFTSize = settings.FFTSize
-            fftProcessorOutput.FFTSize = settings.FFTSize
+            ' Apply FFT settings to SpectrumManager (Task 2.0.4)
+            spectrumManager.ApplySettings(settings)
 
-            ' Apply window function to processors
-            Dim windowType As DSP.FFT.FFTProcessor.WindowType
-            Select Case settings.WindowFunction
-                Case "None"
-                    windowType = DSP.FFT.FFTProcessor.WindowType.None
-                Case "Hann"
-                    windowType = DSP.FFT.FFTProcessor.WindowType.Hann
-                Case "Hamming"
-                    windowType = DSP.FFT.FFTProcessor.WindowType.Hamming
-                Case "Blackman"
-                    windowType = DSP.FFT.FFTProcessor.WindowType.Blackman
-                Case Else
-                    windowType = DSP.FFT.FFTProcessor.WindowType.Hann
-            End Select
-            fftProcessorInput.WindowFunction = windowType
-            fftProcessorOutput.WindowFunction = windowType
-
-            ' NOTE: UI controls (combo boxes, trackbars, etc.) are now in SpectrumSettingsPanel
-            ' They are managed by that panel and updated via SpectrumSettingsPanel.LoadSettings()
-
-            ' Apply to spectrum displays
+            ' Apply to spectrum displays (UI only)
             Dim smoothingFactor = CSng(settings.Smoothing / 100)
             SpectrumAnalyzerControl1.InputDisplay.SmoothingFactor = smoothingFactor
             SpectrumAnalyzerControl1.OutputDisplay.SmoothingFactor = smoothingFactor
@@ -675,11 +629,8 @@ Partial Public Class MainForm
                 Services.LoggingServiceAdapter.Instance.LogInfo("Microphone disarmed for DSP playback")
             End If
 
-            ' Route through DSP pipeline (AudioRouter)
-            audioRouter.SelectedInputFile = fullPath
-            audioRouter.StartDSPPlayback()
-
-            ' TransportControl will be updated via PlaybackStarted event (event-driven!)
+            ' Play file through AudioRouter (Task 2.0.2 - encapsulated method)
+            audioRouter.PlayFile(fullPath)
 
             ' Start timer for FFT updates AND transport position
             TimerPlayback.Start()
@@ -1065,13 +1016,11 @@ Partial Public Class MainForm
                 Services.LoggingServiceAdapter.Instance.LogInfo($"OnDSPInputSamples: Event received! Count={callCount}, Samples={e.Count} bytes")
             End If
 
-            ' Feed RAW audio to INPUT display (BEFORE any processing)
-            fftProcessorInput.SampleRate = e.SampleRate
-            fftProcessorInput.AddSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels)
-            Dim spectrumInput = fftProcessorInput.CalculateSpectrum()
+            ' Process through SpectrumManager (Task 2.0.4)
+            Dim spectrumInput = spectrumManager.ProcessInputSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels, e.SampleRate)
 
             If spectrumInput IsNot Nothing AndAlso spectrumInput.Length > 0 Then
-                SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrumInput, e.SampleRate, fftProcessorInput.FFTSize)
+                SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrumInput, e.SampleRate, spectrumManager.FFTSize)
             Else
                 ' Log if spectrum is null/empty
                 If callCount Mod 10 = 0 Then
@@ -1094,13 +1043,11 @@ Partial Public Class MainForm
                 Services.LoggingServiceAdapter.Instance.LogInfo($"OnDSPOutputSamples: Event received! Count={callCount}, Samples={e.Count} bytes")
             End If
 
-            ' Feed PROCESSED audio to OUTPUT display (AFTER DSP processing)
-            fftProcessorOutput.SampleRate = e.SampleRate
-            fftProcessorOutput.AddSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels)
-            Dim spectrumOutput = fftProcessorOutput.CalculateSpectrum()
+            ' Process through SpectrumManager (Task 2.0.4)
+            Dim spectrumOutput = spectrumManager.ProcessOutputSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels, e.SampleRate)
 
             If spectrumOutput IsNot Nothing AndAlso spectrumOutput.Length > 0 Then
-                SpectrumAnalyzerControl1.OutputDisplay.UpdateSpectrum(spectrumOutput, e.SampleRate, fftProcessorOutput.FFTSize)
+                SpectrumAnalyzerControl1.OutputDisplay.UpdateSpectrum(spectrumOutput, e.SampleRate, spectrumManager.FFTSize)
             Else
                 ' Log if spectrum is null/empty
                 If callCount Mod 10 = 0 Then
@@ -1303,12 +1250,9 @@ Partial Public Class MainForm
                     ' Update RoutingPanel display
                     RoutingPanel1.SelectedFilePath = Path.GetFileName(selectedFile)
 
-                    ' Store in AudioRouter
-                    audioRouter.SelectedInputFile = selectedFile
-
-                    ' Start DSP playback immediately
+                    ' Play file through AudioRouter (Task 2.0.2 - encapsulated method)
                     Try
-                        audioRouter.StartDSPPlayback()
+                        audioRouter.PlayFile(selectedFile)
 
                         ' Update UI
                         panelLED.BackColor = Color.Magenta ' Magenta = DSP Processing
@@ -1346,12 +1290,11 @@ Partial Public Class MainForm
         ' Dispose managers
         recordingManager?.Dispose()
         audioRouter?.Dispose()
+        spectrumManager?.Dispose() ' Task 2.0.4
 
         ' Cleanup modules
         playbackManager?.Dispose()
         WaveformDisplayControl1?.Dispose()
-        fftProcessorInput?.Clear()
-        fftProcessorOutput?.Clear()
 
         ' Close logger
         Logger.Instance.Close()

@@ -107,7 +107,9 @@ Namespace AudioIO
         Public ReadOnly Property CurrentPosition As TimeSpan
             Get
                 If IsPlaying AndAlso _playbackStartTime <> DateTime.MinValue Then
-                    Return DateTime.Now - _playbackStartTime
+                    Dim elapsed = DateTime.Now - _playbackStartTime
+                    ' Cap position at total duration (don't show time past file length during buffer drain)
+                    Return If(elapsed > _playbackDuration, _playbackDuration, elapsed)
                 End If
                 Return TimeSpan.Zero
             End Get
@@ -215,6 +217,13 @@ Namespace AudioIO
         End Sub
 
         ''' <summary>
+        ''' Set output device (Task 2.0.2 - alias for SelectOutputDevice for consistency)
+        ''' </summary>
+        Public Sub SetOutputDevice(deviceIndex As Integer)
+            SelectOutputDevice(deviceIndex)
+        End Sub
+
+        ''' <summary>
         ''' Gets the currently selected output device index
         ''' </summary>
         Public Function GetSelectedOutputDevice() As Integer
@@ -223,6 +232,34 @@ Namespace AudioIO
             End If
             Return -1
         End Function
+
+        ''' <summary>
+        ''' Play a file through DSP pipeline (Task 2.0.2 - moved from MainForm)
+        ''' Encapsulates file loading and playback initiation
+        ''' </summary>
+        ''' <param name="filepath">Full path to audio file</param>
+        Public Sub PlayFile(filepath As String)
+            Try
+                Utils.Logger.Instance.Info($"PlayFile called: {IO.Path.GetFileName(filepath)}", "AudioRouter")
+
+                ' Validate file exists
+                If String.IsNullOrEmpty(filepath) OrElse Not IO.File.Exists(filepath) Then
+                    Throw New IO.FileNotFoundException($"Audio file not found: {filepath}")
+                End If
+
+                ' Set selected file
+                SelectedInputFile = filepath
+
+                ' Start DSP playback
+                StartDSPPlayback()
+
+                Utils.Logger.Instance.Info($"PlayFile completed: {IO.Path.GetFileName(filepath)}", "AudioRouter")
+
+            Catch ex As Exception
+                Utils.Logger.Instance.Error($"PlayFile failed: {ex.Message}", ex, "AudioRouter")
+                Throw
+            End Try
+        End Sub
 
         ''' <summary>
         ''' Start playing audio through DSP chain (file input only for now)
@@ -342,6 +379,11 @@ Namespace AudioIO
             Dim pcm16BlockAlign = inputFormat.Channels * 2 ' 2 bytes per PCM16 sample
             Dim inputLowSignal = dspThread.InputLowSignal
 
+            ' CRITICAL: Capture local reference to dspThread to prevent race condition
+            ' If StopDSPPlayback() sets dspThread=Nothing while feeder is running, we'd crash!
+            Dim localDspThread = dspThread
+            Dim localWaveOut = waveOut
+
             feederThread = New System.Threading.Thread(
                 Sub()
                     Try
@@ -371,7 +413,7 @@ Namespace AudioIO
 
                             ' Feed multiple blocks to fill input buffer back to healthy level
                             ' Target: refill to at least 50% capacity
-                            Dim inputCapacity = dspThread.InputAvailable()
+                            Dim inputCapacity = localDspThread.InputAvailable()
                             Dim targetFill = 176400 \ 2 ' 50% of 2-second buffer
 
                             While inputCapacity < targetFill AndAlso Not feederCancellation
@@ -388,7 +430,7 @@ Namespace AudioIO
                                 Dim pcm16Buffer = ConvertFloatToPCM16(floatBuffer, bytesRead, inputFormat.Channels)
 
                                 ' Write to input buffer
-                                Dim bytesWritten = dspThread.WriteInput(pcm16Buffer, 0, pcm16Buffer.Length)
+                                Dim bytesWritten = localDspThread.WriteInput(pcm16Buffer, 0, pcm16Buffer.Length)
 
                                 If bytesWritten < pcm16Buffer.Length Then
                                     ' Buffer full - exit burst
@@ -396,7 +438,7 @@ Namespace AudioIO
                                 End If
 
                                 blockCount += 1
-                                inputCapacity = dspThread.InputAvailable()
+                                inputCapacity = localDspThread.InputAvailable()
                             End While
                         End While
 
@@ -405,10 +447,26 @@ Namespace AudioIO
 
                         ' Raise PlaybackStopped if we finished the file naturally (triggers OnWaveOutStopped)
                         If reachedEOF Then
-                            Utils.Logger.Instance.Info("🎬 File feeder reached EOF - stopping WaveOut...", "AudioRouter")
-                            ' Stop waveOut which will trigger OnWaveOutStopped event
-                            If waveOut IsNot Nothing Then
-                                waveOut.Stop()
+                            Utils.Logger.Instance.Info("🎬 File feeder reached EOF - draining buffers before stopping...", "AudioRouter")
+
+                            ' CRITICAL FIX: Wait for DSP buffers to drain before stopping
+                            ' Use local reference to prevent race condition with StopDSPPlayback()
+                            Dim maxWaitMs = 5000 ' 5 seconds max wait
+                            Dim startWait = DateTime.Now
+
+                            ' Check if localDspThread is still valid before using it
+                            If localDspThread IsNot Nothing Then
+                                While localDspThread.InputAvailable() < 176400 AndAlso (DateTime.Now - startWait).TotalMilliseconds < maxWaitMs
+                                    System.Threading.Thread.Sleep(50) ' Check every 50ms
+                                End While
+                            End If
+
+                            Utils.Logger.Instance.Info($"Buffer drain complete after {(DateTime.Now - startWait).TotalMilliseconds:F0}ms - stopping WaveOut...", "AudioRouter")
+
+                            ' Now stop waveOut which will trigger OnWaveOutStopped event
+                            ' Use local reference to prevent race condition
+                            If localWaveOut IsNot Nothing Then
+                                localWaveOut.Stop()
                             End If
                         End If
 
