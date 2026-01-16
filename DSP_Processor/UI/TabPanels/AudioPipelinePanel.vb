@@ -34,9 +34,8 @@ Namespace UI.TabPanels
         Private chkEnableOutputFFT As CheckBox
         Private lblOutputFFTTap As Label
         Private cmbOutputFFTTap As ComboBox
-        Private chkEnableLevelMeter As CheckBox
-        Private lblLevelMeterTap As Label
-        Private cmbLevelMeterTap As ComboBox
+        ' REMOVED: chkEnableLevelMeter, lblLevelMeterTap, cmbLevelMeterTap
+        ' Level meter is always on for real-time accuracy - no need for enable/disable
 
         Private grpDestination As GroupBox
         Private chkEnableRecording As CheckBox
@@ -70,8 +69,8 @@ Namespace UI.TabPanels
 
 #Region "Initialization"
 
-''' <summary>Inject router instance from MainForm (prevents duplicate router instances)</summary>
-Public Sub SetRouter(routerInstance As AudioPipelineRouter)
+        ''' <summary>Inject router instance from MainForm (prevents duplicate router instances)</summary>
+        Public Sub SetRouter(routerInstance As AudioPipelineRouter)
     If routerInstance Is Nothing Then
         Throw New ArgumentNullException(NameOf(routerInstance))
     End If
@@ -253,7 +252,7 @@ End Sub
         Private Sub CreateMonitoringControls()
             grpMonitoring = New GroupBox With {
                 .Text = "Monitoring",
-                .Size = New Size(380, 190),
+                .Size = New Size(380, 145),
                 .ForeColor = Color.White
             }
 
@@ -301,32 +300,12 @@ End Sub
             }
             AddHandler cmbOutputFFTTap.SelectedIndexChanged, AddressOf OnSettingChanged
 
-            chkEnableLevelMeter = New CheckBox With {
-                .Text = "Enable Level Meter",
-                .Location = New Point(10, 145),
-                .Size = New Size(150, 20),
-                .ForeColor = Color.White
-            }
-            AddHandler chkEnableLevelMeter.CheckedChanged, AddressOf OnSettingChanged
-
-            lblLevelMeterTap = New Label With {
-                .Text = "Level Meter Tap:",
-                .Location = New Point(20, 170),
-                .Size = New Size(100, 20),
-                .ForeColor = Color.White
-            }
-
-            cmbLevelMeterTap = New ComboBox With {
-                .Location = New Point(130, 168),
-                .Size = New Size(230, 21),
-                .DropDownStyle = ComboBoxStyle.DropDownList
-            }
-            AddHandler cmbLevelMeterTap.SelectedIndexChanged, AddressOf OnSettingChanged
+            ' REMOVED: Level Meter controls (checkbox + combo)
+            ' Meter is always on - doesn't need UI controls
 
             grpMonitoring.Controls.AddRange(New Control() {
                 chkEnableInputFFT, lblInputFFTTap, cmbInputFFTTap,
-                chkEnableOutputFFT, lblOutputFFTTap, cmbOutputFFTTap,
-                chkEnableLevelMeter, lblLevelMeterTap, cmbLevelMeterTap
+                chkEnableOutputFFT, lblOutputFFTTap, cmbOutputFFTTap
             })
         End Sub
 
@@ -392,8 +371,7 @@ End Sub
                 cmbInputFFTTap.SelectedItem = config.Monitoring.InputFFTTap
                 chkEnableOutputFFT.Checked = config.Monitoring.EnableOutputFFT
                 cmbOutputFFTTap.SelectedItem = config.Monitoring.OutputFFTTap
-                chkEnableLevelMeter.Checked = config.Monitoring.EnableLevelMeter
-                cmbLevelMeterTap.SelectedItem = config.Monitoring.LevelMeterTap
+                ' REMOVED: Level meter controls (always on)
 
                 ' Destination
                 chkEnableRecording.Checked = config.Destination.EnableRecording
@@ -424,10 +402,10 @@ End Sub
                 config.Monitoring.OutputFFTTap = DirectCast(cmbOutputFFTTap.SelectedItem, TapPoint)
             End If
 
-            config.Monitoring.EnableLevelMeter = chkEnableLevelMeter.Checked
-            If cmbLevelMeterTap.SelectedItem IsNot Nothing AndAlso TypeOf cmbLevelMeterTap.SelectedItem Is TapPoint Then
-                config.Monitoring.LevelMeterTap = DirectCast(cmbLevelMeterTap.SelectedItem, TapPoint)
-            End If
+            ' REMOVED: Level meter controls (always enabled = True, always taps Pre-DSP)
+            ' Set defaults programmatically
+            config.Monitoring.EnableLevelMeter = True  ' Always on
+            config.Monitoring.LevelMeterTap = TapPoint.PreDSP  ' Always Pre-DSP for accuracy
 
             ' Destination
             config.Destination.EnableRecording = chkEnableRecording.Checked
@@ -483,20 +461,20 @@ End Sub
 
             cmbInputFFTTap.Items.Clear()
             cmbOutputFFTTap.Items.Clear()
-            cmbLevelMeterTap.Items.Clear()
+            ' REMOVED: cmbLevelMeterTap (meter always on, no UI control)
 
             For Each tapPoint As TapPoint In tapPoints
                 cmbInputFFTTap.Items.Add(tapPoint)
                 cmbOutputFFTTap.Items.Add(tapPoint)
-                cmbLevelMeterTap.Items.Add(tapPoint)
+                ' REMOVED: cmbLevelMeterTap
             Next
 
             ' Set default selections
             cmbInputFFTTap.SelectedIndex = 1  ' PreDSP
             cmbOutputFFTTap.SelectedIndex = 3 ' PostDSP
-            cmbLevelMeterTap.SelectedIndex = 1 ' PreDSP
+            ' REMOVED: cmbLevelMeterTap default (always PreDSP in code)
 
-            Utils.Logger.Instance.Debug("Tap points initialized: InputFFT=PreDSP, OutputFFT=PostDSP, Meter=PreDSP", "AudioPipelinePanel")
+            Utils.Logger.Instance.Debug("Tap points initialized: InputFFT=PreDSP, OutputFFT=PostDSP, Meter=PreDSP(fixed)", "AudioPipelinePanel")
         End Sub
 
 #End Region

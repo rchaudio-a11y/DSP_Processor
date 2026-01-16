@@ -217,13 +217,13 @@ Namespace UI.TabPanels
                 cmbChannelMode.Items.AddRange({"Mono (1)", "Stereo (2)"})
                 cmbChannelMode.SelectedIndex = 1 ' Default to Stereo
 
-                ' Buffer Sizes (milliseconds)
+                ' Buffer Sizes (milliseconds) - EXPANDED for fine-tuning
                 cmbBufferSize.Items.Clear()
-                Dim bufferSizes = New Integer() {10, 20, 30, 50, 100, 200}
+                Dim bufferSizes = New Integer() {10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200}
                 For Each bufferSize As Integer In bufferSizes
                     cmbBufferSize.Items.Add(bufferSize.ToString())
                 Next
-                cmbBufferSize.SelectedIndex = 1 ' Default to 20ms
+                cmbBufferSize.SelectedIndex = 2 ' Default to 20ms (was index 1, now index 2)
 
             Finally
                 suppressEvents = False
@@ -323,8 +323,8 @@ Namespace UI.TabPanels
                 ' Channels
                 cmbChannelMode.SelectedIndex = If(settings.Channels = 1, 0, 1)
 
-                ' Buffer Size
-                Dim bufferIndex = Array.IndexOf({10, 20, 30, 50, 100, 200}, settings.BufferMilliseconds)
+                ' Buffer Size - EXPANDED options for fine-tuning
+                Dim bufferIndex = Array.IndexOf({10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200}, settings.BufferMilliseconds)
                 If bufferIndex >= 0 Then cmbBufferSize.SelectedIndex = bufferIndex
 
             Finally

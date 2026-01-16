@@ -30,7 +30,7 @@ Namespace Recording
         Private currentIndex As Integer = 1
         Private recordingActive As Boolean = False
         Private lastProcessedBuffer As Byte() = Nothing
-
+        
         ' NEW: Loop mode state
         Private loopCurrentTake As Integer = 0
         Private loopDelayTimer As Stopwatch
@@ -153,7 +153,7 @@ Namespace Recording
                 StartRecording()
             End If
         End Sub
-
+        
         ''' <summary>
         ''' Start a loop recording session
         ''' </summary>
@@ -161,14 +161,14 @@ Namespace Recording
             If Options.Mode <> RecordingMode.LoopMode Then
                 Throw New InvalidOperationException("StartLoopRecording requires Options.Mode = LoopMode")
             End If
-
+            
             loopCurrentTake = 1
             isInLoopDelay = False
             Utils.Logger.Instance.Info($"Starting loop recording: {Options.LoopCount} takes × {Options.LoopDurationSeconds}s", "RecordingEngine")
             Services.LoggingServiceAdapter.Instance.LogInfo($"Loop mode: {Options.LoopCount} takes × {Options.LoopDurationSeconds}s")
             StartRecording()
         End Sub
-
+        
         ''' <summary>
         ''' Cancel loop recording (stop all remaining takes)
         ''' </summary>
@@ -180,75 +180,6 @@ Namespace Recording
             StopRecording()
         End Sub
 
-        ''' <summary>
-        ''' Process audio buffer from callback (REAL-TIME - no queue polling!)
-        ''' This is called directly from the audio driver callback with the buffer
-        ''' </summary>
-        Public Sub ProcessBuffer(buffer As Byte(), bytesRecorded As Integer)
-            If Not recordingActive Then Exit Sub
-
-            ' ASYNC: Enqueue buffer for background writing (FAST! No disk I/O on this thread!)
-            If _writeQueue.Count < MaxQueueDepth Then
-                ' Copy only valid data
-                Dim writeBuffer(bytesRecorded - 1) As Byte
-                Array.Copy(buffer, writeBuffer, bytesRecorded)
-                _writeQueue.Enqueue(writeBuffer)
-            Else
-                ' Queue full - log overflow (this means disk can't keep up!)
-                Interlocked.Increment(_queueOverflows)
-                Utils.Logger.Instance.Warning($"Write queue overflow! Depth={_writeQueue.Count}, dropping buffer", "RecordingEngine")
-            End If
-
-            ' Store buffer for metering (keep this synchronous for UI)
-            If bytesRecorded = buffer.Length Then
-                lastProcessedBuffer = buffer
-            Else
-                ' Partial buffer - copy only valid data
-                ReDim lastProcessedBuffer(bytesRecorded - 1)
-                Array.Copy(buffer, lastProcessedBuffer, bytesRecorded)
-            End If
-
-            ' Check auto-stop conditions based on mode
-            Select Case Options.Mode
-                Case RecordingMode.Manual
-                    ' No auto-stop, user must stop manually
-
-                Case RecordingMode.Timed
-                    ' Stop after specified duration
-                    If stopwatch.Elapsed.TotalSeconds >= Options.TimedDurationSeconds Then
-                        Utils.Logger.Instance.Info($"Timed recording complete: {stopwatch.Elapsed.TotalSeconds:F1}s", "RecordingEngine")
-                        Services.LoggingServiceAdapter.Instance.LogInfo($"Timed recording complete ({Options.TimedDurationSeconds}s)")
-                        StopRecording()
-                    End If
-
-                Case RecordingMode.LoopMode
-                    ' Stop after each take duration, then start delay
-                    If stopwatch.Elapsed.TotalSeconds >= Options.LoopDurationSeconds Then
-                        Utils.Logger.Instance.Info($"Loop take {loopCurrentTake} complete: {stopwatch.Elapsed.TotalSeconds:F1}s", "RecordingEngine")
-                        Services.LoggingServiceAdapter.Instance.LogInfo($"Take {loopCurrentTake} complete ({Options.LoopDurationSeconds}s)")
-                        StopRecording()
-
-                        ' Give file system time to fully close the file
-                        System.Threading.Thread.Sleep(100)
-
-                        If loopCurrentTake < Options.LoopCount Then
-                            ' Start delay before next take
-                            isInLoopDelay = True
-                            loopDelayTimer = Stopwatch.StartNew()
-                            Services.LoggingServiceAdapter.Instance.LogInfo($"Waiting {Options.LoopDelaySeconds}s before next take...")
-                        Else
-                            ' All takes complete
-                            loopCurrentTake = 0
-                            Utils.Logger.Instance.Info("All loop takes complete", "RecordingEngine")
-                        End If
-                    End If
-            End Select
-        End Sub
-
-        ''' <summary>
-        ''' DEPRECATED: Process using queue polling (legacy timer-driven mode)
-        ''' Use ProcessBuffer() instead for glitch-free callback-driven recording
-        ''' </summary>
         Public Sub Process()
             If Not recordingActive Then
                 ' Check if we're in loop delay
@@ -257,7 +188,7 @@ Namespace Recording
                         ' Delay complete, start next take
                         isInLoopDelay = False
                         loopCurrentTake += 1
-
+                        
                         If loopCurrentTake <= Options.LoopCount Then
                             Utils.Logger.Instance.Info($"Starting loop take {loopCurrentTake} of {Options.LoopCount}", "RecordingEngine")
                             Services.LoggingServiceAdapter.Instance.LogInfo($"Starting take {loopCurrentTake}/{Options.LoopCount}")
@@ -311,7 +242,7 @@ Namespace Recording
             Select Case Options.Mode
                 Case RecordingMode.Manual
                     ' No auto-stop, user must stop manually
-
+                    
                 Case RecordingMode.Timed
                     ' Stop after specified duration
                     If stopwatch.Elapsed.TotalSeconds >= Options.TimedDurationSeconds Then
@@ -319,17 +250,17 @@ Namespace Recording
                         Services.LoggingServiceAdapter.Instance.LogInfo($"Timed recording complete ({Options.TimedDurationSeconds}s)")
                         StopRecording()
                     End If
-
+                    
                 Case RecordingMode.LoopMode
                     ' Stop after each take duration, then start delay
                     If stopwatch.Elapsed.TotalSeconds >= Options.LoopDurationSeconds Then
                         Utils.Logger.Instance.Info($"Loop take {loopCurrentTake} complete: {stopwatch.Elapsed.TotalSeconds:F1}s", "RecordingEngine")
                         Services.LoggingServiceAdapter.Instance.LogInfo($"Take {loopCurrentTake} complete ({Options.LoopDurationSeconds}s)")
                         StopRecording()
-
+                        
                         ' Give file system time to fully close the file
                         System.Threading.Thread.Sleep(100)
-
+                        
                         If loopCurrentTake < Options.LoopCount Then
                             ' Start delay before next take
                             isInLoopDelay = True
@@ -350,25 +281,25 @@ Namespace Recording
         ''' </summary>
         Private Sub WriterThreadLoop()
             Utils.Logger.Instance.Info("Background writer thread started", "RecordingEngine")
-
+            
             While _writerRunning
                 Try
                     Dim writeBuffer As Byte() = Nothing
-
+                    
                     ' Try to dequeue a buffer (non-blocking)
                     If _writeQueue.TryDequeue(writeBuffer) Then
                         If writeBuffer IsNot Nothing AndAlso wavOut IsNot Nothing Then
                             ' TIME the write operation
                             _writerStopwatch.Restart()
-
+                            
                             ' Write to disk (on background thread, doesn't block audio!)
                             wavOut.Write(writeBuffer, writeBuffer.Length)
-
+                            
                             _writerStopwatch.Stop()
                             Dim elapsed = _writerStopwatch.Elapsed.TotalMilliseconds
                             _totalWriteTimeMs += elapsed
                             Interlocked.Increment(_writeCount)
-
+                            
                             ' Log slow writes (> 10ms on background thread is concerning)
                             If elapsed > 10.0 Then
                                 Utils.Logger.Instance.Warning($"SLOW disk write: {elapsed:F2}ms (background thread)", "RecordingEngine")
@@ -378,13 +309,13 @@ Namespace Recording
                         ' Queue empty, sleep briefly to avoid spinning
                         Thread.Sleep(1)
                     End If
-
+                    
                 Catch ex As Exception
                     Utils.Logger.Instance.Error("Error in writer thread", ex, "RecordingEngine")
                     ' Don't crash the thread, just log and continue
                 End Try
             End While
-
+            
             ' Flush remaining buffers on shutdown
             Utils.Logger.Instance.Info("Writer thread shutting down, flushing remaining buffers...", "RecordingEngine")
             Dim remaining As Integer = 0
@@ -399,11 +330,11 @@ Namespace Recording
                     End Try
                 End If
             End While
-
+            
             If remaining > 0 Then
                 Utils.Logger.Instance.Info($"Flushed {remaining} remaining buffers on shutdown", "RecordingEngine")
             End If
-
+            
             Utils.Logger.Instance.Info("Background writer thread stopped", "RecordingEngine")
         End Sub
 
@@ -414,7 +345,7 @@ Namespace Recording
             If _writerThread IsNot Nothing AndAlso _writerThread.IsAlive Then
                 Return  ' Already running
             End If
-
+            
             _writerRunning = True
             _writerThread = New Thread(AddressOf WriterThreadLoop) With {
                 .Name = "RecordingEngine Writer Thread",
@@ -422,7 +353,7 @@ Namespace Recording
                 .Priority = ThreadPriority.AboveNormal  ' High priority for disk I/O
             }
             _writerThread.Start()
-
+            
             Utils.Logger.Instance.Info("Background writer thread created and started", "RecordingEngine")
         End Sub
 
@@ -433,16 +364,16 @@ Namespace Recording
             If _writerThread Is Nothing OrElse Not _writerThread.IsAlive Then
                 Return  ' Not running
             End If
-
+            
             Utils.Logger.Instance.Info("Stopping background writer thread...", "RecordingEngine")
             _writerRunning = False
-
+            
             ' Wait for thread to finish (with timeout)
             If Not _writerThread.Join(5000) Then
                 Utils.Logger.Instance.Warning("Writer thread did not stop within timeout, aborting", "RecordingEngine")
                 _writerThread.Abort()
             End If
-
+            
             _writerThread = Nothing
             Utils.Logger.Instance.Info("Background writer thread stopped", "RecordingEngine")
         End Sub

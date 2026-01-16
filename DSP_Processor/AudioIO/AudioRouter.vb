@@ -42,6 +42,10 @@ Namespace AudioIO
         Private feederThread As System.Threading.Thread
         Private feederCancellation As Boolean = False ' Cancellation flag for feeder thread
 
+        ' Playback position tracking (for TransportControl integration)
+        Private _playbackStartTime As DateTime = DateTime.MinValue
+        Private _playbackDuration As TimeSpan = TimeSpan.Zero
+
 #End Region
 
 #Region "Properties"
@@ -99,6 +103,23 @@ Namespace AudioIO
             End Get
         End Property
 
+        ''' <summary>Gets current playback position (for TransportControl)</summary>
+        Public ReadOnly Property CurrentPosition As TimeSpan
+            Get
+                If IsPlaying AndAlso _playbackStartTime <> DateTime.MinValue Then
+                    Return DateTime.Now - _playbackStartTime
+                End If
+                Return TimeSpan.Zero
+            End Get
+        End Property
+
+        ''' <summary>Gets total duration of loaded file (for TransportControl)</summary>
+        Public ReadOnly Property TotalDuration As TimeSpan
+            Get
+                Return _playbackDuration
+            End Get
+        End Property
+
         ''' <summary>Gets the DSP thread for monitoring</summary>
         Public ReadOnly Property Thread As DSP.DSPThread
             Get
@@ -121,6 +142,12 @@ Namespace AudioIO
         Public Event OutputDestinationChanged As EventHandler(Of OutputDestinationType)
         Public Event PlaybackStopped As EventHandler
         Public Event PlaybackCompleted As EventHandler
+
+        ''' <summary>Raised when playback starts (for TransportControl integration)</summary>
+        Public Event PlaybackStarted As EventHandler(Of String)
+
+        ''' <summary>Raised periodically during playback to update position (for TransportControl)</summary>
+        Public Event PositionChanged As EventHandler(Of TimeSpan)
 
         ''' <summary>Raised when audio samples are available for FFT analysis (input)</summary>
         Public Event InputSamplesAvailable As EventHandler(Of AudioSamplesEventArgs)
@@ -283,10 +310,18 @@ Namespace AudioIO
                 ' Brief delay to let DSP worker fill output buffer
                 System.Threading.Thread.Sleep(100)
 
+                ' Calculate duration for position tracking (TransportControl)
+                _playbackDuration = fileReader.TotalTime
+                _playbackStartTime = DateTime.Now
+
                 ' Start playback
                 waveOut.Play()
 
                 Utils.Logger.Instance.Info("DSP playback started successfully", "AudioRouter")
+
+                ' Raise PlaybackStarted event (for TransportControl integration)
+                RaiseEvent PlaybackStarted(Me, IO.Path.GetFileName(_selectedInputFile))
+                Utils.Logger.Instance.Info($"PlaybackStarted event raised: {IO.Path.GetFileName(_selectedInputFile)}, Duration={_playbackDuration}", "AudioRouter")
 
             Catch ex As Exception
                 Utils.Logger.Instance.Error("Failed to start DSP playback", ex, "AudioRouter")
@@ -368,9 +403,13 @@ Namespace AudioIO
                         ' Log final stats ONCE after stopping
                         Utils.Logger.Instance.Info($"File feeder stopped: {blockCount} blocks written", "AudioRouter")
 
-                        ' Raise PlaybackCompleted if we finished the file naturally
+                        ' Raise PlaybackStopped if we finished the file naturally (triggers OnWaveOutStopped)
                         If reachedEOF Then
-                            RaiseEvent PlaybackCompleted(Me, EventArgs.Empty)
+                            Utils.Logger.Instance.Info("🎬 File feeder reached EOF - stopping WaveOut...", "AudioRouter")
+                            ' Stop waveOut which will trigger OnWaveOutStopped event
+                            If waveOut IsNot Nothing Then
+                                waveOut.Stop()
+                            End If
                         End If
 
                     Catch ex As System.Threading.ThreadAbortException
@@ -462,6 +501,10 @@ Namespace AudioIO
                     fileReader = Nothing
                 End If
 
+                ' Reset position tracking (TransportControl)
+                _playbackStartTime = DateTime.MinValue
+                _playbackDuration = TimeSpan.Zero
+
                 Utils.Logger.Instance.Info("DSP playback stopped successfully", "AudioRouter")
 
             Catch ex As Exception
@@ -469,14 +512,38 @@ Namespace AudioIO
             End Try
         End Sub
 
+        ''' <summary>
+        ''' Update position tracking and raise PositionChanged event (call from timer)
+        ''' Matches RecordingManager.UpdatePosition() pattern
+        ''' </summary>
+        Public Sub UpdatePosition()
+            If IsPlaying Then
+                RaiseEvent PositionChanged(Me, CurrentPosition)
+            End If
+        End Sub
+
 #End Region
 
 #Region "Private Methods"
 
         Private Sub OnWaveOutStopped(sender As Object, e As NAudio.Wave.StoppedEventArgs)
-            Utils.Logger.Instance.Info("WaveOut playback stopped", "AudioRouter")
-            StopDSPPlayback()
-            RaiseEvent PlaybackStopped(Me, EventArgs.Empty)
+            Try
+                Utils.Logger.Instance.Info("🎬 WaveOut playback stopped (file ended naturally)", "AudioRouter")
+                Utils.Logger.Instance.Info($"   Exception in event: {If(e.Exception IsNot Nothing, e.Exception.Message, "None")}", "AudioRouter")
+                
+                ' IMPORTANT: Raise PlaybackStopped event BEFORE calling StopDSPPlayback()
+                ' This allows MainForm to stop the timer before we clean up
+                Utils.Logger.Instance.Info("About to raise PlaybackStopped event...", "AudioRouter")
+                RaiseEvent PlaybackStopped(Me, EventArgs.Empty)
+                Utils.Logger.Instance.Info("✅ PlaybackStopped event raised successfully!", "AudioRouter")
+                
+                ' Now clean up resources
+                Utils.Logger.Instance.Info("Calling StopDSPPlayback() for cleanup...", "AudioRouter")
+                StopDSPPlayback()
+                Utils.Logger.Instance.Info("✅ Cleanup complete!", "AudioRouter")
+            Catch ex As Exception
+                Utils.Logger.Instance.Error("❌ ERROR in OnWaveOutStopped!", ex, "AudioRouter")
+            End Try
         End Sub
 
         ''' <summary>

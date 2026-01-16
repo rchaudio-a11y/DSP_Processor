@@ -20,6 +20,12 @@ Namespace AudioIO
         Private Const MAX_FFT_QUEUE_DEPTH As Integer = 5 ' Max 5 frames (~100ms) in FFT queue
         Private _disposed As Boolean = False ' Track disposal to prevent race conditions
 
+        ''' <summary>
+        ''' REAL-TIME CALLBACK: Fires when audio data arrives from driver
+        ''' Use this for glitch-free recording instead of polling
+        ''' </summary>
+        Public Event AudioDataAvailable As EventHandler(Of AudioCallbackEventArgs) Implements IInputSource.AudioDataAvailable
+
         Public Sub New(sampleRate As Integer, channels As String, bits As Integer, Optional deviceIndex As Integer = 0, Optional BufferMill As Integer = 20)
             sampleRateValue = sampleRate
             bitsValue = bits
@@ -67,7 +73,13 @@ Namespace AudioIO
                     ApplyVolume(copy, bitsValue)
                 End If
                 
-                ' CRITICAL PATH: Always enqueue to recording buffer (never drop!)
+                ' REAL-TIME: Raise event for callback-driven recording (GLITCH-FREE!)
+                RaiseEvent AudioDataAvailable(Me, New AudioCallbackEventArgs With {
+                    .Buffer = copy,
+                    .BytesRecorded = e.BytesRecorded
+                })
+                
+                ' LEGACY: Enqueue to recording buffer (for timer-driven polling - DEPRECATED)
                 bufferQueue.Enqueue(copy)
                 
                 ' FREEWHEELING PATH: Enqueue to FFT buffer (drop old frames if too deep)
@@ -89,7 +101,7 @@ Namespace AudioIO
                     
                     ' Warn every 5 seconds to avoid log spam
                     If (DateTime.Now - lastOverflowWarning).TotalSeconds > 5 Then
-                        Logger.Instance.Warning($"RECORDING buffer queue overflow! Queue size: {bufferQueue.Count}, Overflows: {bufferOverflowCount}. This may cause clicks/pops.", "MicInputSource")
+                        Logger.Instance.Warning($"RECORDING buffer queue overflow! Queue size: {bufferQueue.Count}, Overflows: {bufferOverflowCount}. Timer-driven polling cannot keep up! Use AudioDataAvailable event instead.", "MicInputSource")
                         lastOverflowWarning = DateTime.Now
                     End If
                 End If

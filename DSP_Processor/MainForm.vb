@@ -27,6 +27,12 @@ Partial Public Class MainForm
 
     ' Flag to prevent FFT queue buildup
     Private fftProcessingInProgress As Boolean = False
+    Private lastMonitoringEventTime As DateTime = DateTime.MinValue
+    Private monitoringThrottleMs As Integer = 50  ' Only fire monitoring events every 50ms
+
+    ' Form load state
+    Private isFormFullyLoaded As Boolean = False
+    Private WithEvents deferredArmTimer As Timer
 
     Private Sub MainForm_Load(sender As Object, e As EventArgs) Handles MyBase.Load
 
@@ -137,6 +143,14 @@ Partial Public Class MainForm
         ' Logger.Instance.Info("=== AudioPipelineRouter Test Complete ===", "MainForm")
 
         Logger.Instance.Info("DSP Processor started", "MainForm")
+
+        ' CRITICAL: Defer microphone arming until form is fully loaded and painted
+        ' This prevents audio thread from overwhelming the UI thread during initialization
+        deferredArmTimer = New Timer With {.Interval = 500}  ' 500ms delay
+        AddHandler deferredArmTimer.Tick, AddressOf DeferredArmTimer_Tick
+        deferredArmTimer.Start()
+
+        Services.LoggingServiceAdapter.Instance.LogInfo("Form load complete - microphone will arm in 500ms")
     End Sub
 
 #Region "Initialization"
@@ -184,9 +198,17 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub WirePlaybackEvents()
+        ' PlaybackManager events (currently unused - direct WAV playback)
         AddHandler playbackManager.PlaybackStarted, AddressOf OnPlaybackStarted
         AddHandler playbackManager.PlaybackStopped, AddressOf OnPlaybackStopped
         AddHandler playbackManager.PositionChanged, AddressOf OnPositionChanged
+
+        ' AudioRouter events (ACTUALLY USED - DSP playback)
+        AddHandler audioRouter.PlaybackStarted, AddressOf OnAudioRouterPlaybackStarted
+        AddHandler audioRouter.PlaybackStopped, AddressOf OnAudioRouterPlaybackStopped
+        AddHandler audioRouter.PositionChanged, AddressOf OnAudioRouterPositionChanged
+
+        Logger.Instance.Info("Playback events wired (PlaybackManager + AudioRouter)", "MainForm")
     End Sub
 
     Private Sub WireTransportEvents()
@@ -210,6 +232,10 @@ Partial Public Class MainForm
         AddHandler audioRouter.InputSamplesAvailable, AddressOf OnDSPInputSamples
         AddHandler audioRouter.OutputSamplesAvailable, AddressOf OnDSPOutputSamples
         AddHandler audioRouter.PlaybackCompleted, AddressOf OnPlaybackCompleted
+
+        ' Wire up FFT Monitor event (Phase 3 - NEW!)
+        ' Single throttled event replaces old BufferForMonitoring
+        AddHandler pipelineRouter.FFTMonitor.SpectrumReady, AddressOf OnSpectrumReady
     End Sub
 
     Private Sub WireAudioSettingsPanel()
@@ -242,6 +268,29 @@ Partial Public Class MainForm
         Logger.Instance.Info("SpectrumSettingsPanel wired", "MainForm")
     End Sub
 
+    ''' <summary>Deferred microphone arming - called 500ms after form load completes</summary>
+    Private Sub DeferredArmTimer_Tick(sender As Object, e As EventArgs) Handles deferredArmTimer.Tick
+        ' Stop the timer
+        deferredArmTimer.Stop()
+        deferredArmTimer.Dispose()
+
+        ' Mark form as fully loaded
+        isFormFullyLoaded = True
+
+        ' Now arm the microphone
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo("Arming microphone (deferred)")
+            recordingManager.ArmMicrophone()
+            Services.LoggingServiceAdapter.Instance.LogInfo("Microphone armed successfully")
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to arm microphone: {ex.Message}", ex)
+            MessageBox.Show($"Warning: Failed to initialize audio input.{Environment.NewLine}{ex.Message}", "Audio Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+        End Try
+
+        ' Update UI
+        lblStatus.Text = "Status: Ready (Mic Armed)"
+    End Sub
+
 #End Region
 
 #Region "Manager Event Handlers"
@@ -262,19 +311,14 @@ Partial Public Class MainForm
         ' RoutingPanel already initialized in MainForm_Load
         ' Output devices populated via InitializeRoutingPanel()
 
-        ' Now arm the microphone
-        Try
-            recordingManager.ArmMicrophone()
-        Catch ex As Exception
-            Services.LoggingServiceAdapter.Instance.LogError($"Failed to arm microphone: {ex.Message}", ex)
-            MessageBox.Show($"Warning: Failed to initialize audio input.{Environment.NewLine}{ex.Message}", "Audio Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)
-        End Try
+        ' DEFER: Don't arm microphone here - it will be armed after form finishes loading
+        ' This prevents audio thread from firing events while form is still painting
 
         ' Refresh file list
         fileManager.RefreshFileList()
 
         ' Update UI state
-        lblStatus.Text = "Status: Ready (Mic Armed)"
+        lblStatus.Text = "Status: Initializing (Please wait...)"
         btnStopPlayback.Enabled = False
         TimerMeters.Start()
     End Sub
@@ -352,51 +396,37 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnRecordingBufferAvailable(sender As Object, e As AudioBufferEventArgs)
+        ' === PHASE 3: Route through AudioPipelineRouter ===
+        ' Router will handle:
+        ' 1. DSP processing (gain, future: EQ, compressor, etc.)
+        ' 2. Monitoring tap points (FFT, level meters)
+        ' 3. Destination routing (recording, playback)
+
+        ' SAFETY: Only route if form is fully loaded and pipeline router is initialized
+        If isFormFullyLoaded AndAlso pipelineRouter IsNot Nothing AndAlso pipelineRouter.IsInitialized Then
+            Try
+                ' Route buffer through pipeline router
+                pipelineRouter.RouteAudioBuffer(
+                    e.Buffer,
+                    Audio.Routing.AudioSourceType.Microphone,
+                    e.BitsPerSample,
+                    e.Channels,
+                    e.SampleRate)
+
+            Catch ex As Exception
+                ' Log but don't crash audio thread
+                Logger.Instance.Error("Error routing buffer through pipeline", ex, "MainForm")
+            End Try
+        End If
+
         ' FAST PATH: Update meter immediately (must be real-time)
+        ' NOTE: This is direct - not routed through pipeline for lowest latency
         Try
             Dim levelData = AudioLevelMeter.AnalyzeSamples(e.Buffer, e.BitsPerSample, e.Channels)
             meterRecording.SetLevel(levelData.PeakDB, levelData.RMSDB, levelData.IsClipping)
         Catch
             ' Ignore metering errors
         End Try
-
-        ' ASYNC PATH: FFT processing off the audio thread (can drop frames if too slow)
-        ' Skip if already processing to prevent queue buildup
-        If Not fftProcessingInProgress Then
-            fftProcessingInProgress = True
-
-            ' Make a copy of the buffer for async processing
-            Dim bufferCopy(e.Buffer.Length - 1) As Byte
-            Array.Copy(e.Buffer, bufferCopy, e.Buffer.Length)
-            Dim sampleRate = e.SampleRate
-            Dim bitsPerSample = e.BitsPerSample
-            Dim channels = e.Channels
-
-            ' Fire and forget - process FFT on background thread
-            Task.Run(Sub()
-                         Try
-                             ' Add samples and calculate spectrum (CPU-intensive)
-                             fftProcessorInput.SampleRate = sampleRate
-                             fftProcessorInput.AddSamples(bufferCopy, bufferCopy.Length, bitsPerSample, channels)
-                             Dim spectrum = fftProcessorInput.CalculateSpectrum()
-
-                             If spectrum IsNot Nothing AndAlso spectrum.Length > 0 Then
-                                 ' Update UI on UI thread
-                                 Me.BeginInvoke(New Action(Sub()
-                                                               Try
-                                                                   SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrum, sampleRate, fftProcessorInput.FFTSize)
-                                                               Catch
-                                                                   ' Ignore UI update errors
-                                                               End Try
-                                                           End Sub))
-                             End If
-                         Catch
-                             ' Ignore FFT errors (freewheeling - can drop frames)
-                         Finally
-                             fftProcessingInProgress = False
-                         End Try
-                     End Sub)
-        End If
     End Sub
 
     Private Sub OnMicrophoneArmed(sender As Object, isArmed As Boolean)
@@ -608,8 +638,8 @@ Partial Public Class MainForm
         ' Update settings manager
         settingsManager.RecordingOptions = options
 
-        ' Apply to recorder
-        recordingManager.Options = options
+        ' Apply to RecordingManager (uses new method from Task 2.0.1)
+        recordingManager.ApplyRecordingOptions(options)
 
         ' Save settings
         settingsManager.SaveAll()
@@ -649,14 +679,10 @@ Partial Public Class MainForm
             audioRouter.SelectedInputFile = fullPath
             audioRouter.StartDSPPlayback()
 
-            panelLED.BackColor = Color.Magenta ' Magenta = DSP Processing
-            lblStatus.Text = $"Status: DSP Playback - {fileName}"
+            ' TransportControl will be updated via PlaybackStarted event (event-driven!)
 
-            ' Start timer for FFT updates
+            ' Start timer for FFT updates AND transport position
             TimerPlayback.Start()
-
-            ' Enable stop button
-            btnStopPlayback.Enabled = True
 
             Services.LoggingServiceAdapter.Instance.LogInfo($"DSP playback started: {fileName}")
 
@@ -803,8 +829,10 @@ Partial Public Class MainForm
         ElseIf audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
             Services.LoggingServiceAdapter.Instance.LogInfo("Stopping DSP playback...")
             audioRouter.StopDSPPlayback()
-            panelLED.BackColor = Color.Yellow
-            lblStatus.Text = "Status: Ready (Mic Armed)"
+
+            ' TransportControl will be updated via PlaybackStopped event (event-driven!)
+
+            TimerPlayback.Stop()
             Services.LoggingServiceAdapter.Instance.LogInfo("DSP playback stopped")
         ElseIf recordingManager.IsRecording Then
             Services.LoggingServiceAdapter.Instance.LogInfo("Stopping recording...")
@@ -876,6 +904,20 @@ Partial Public Class MainForm
         ' Start the timer to update playback position
         TimerPlayback.Start()
 
+        ' FIX Issue #2: Set transport state to Playing (lights up indicator!)
+        transportControl.State = UI.TransportControl.TransportState.Playing
+
+        ' FIX Issue #1: Set track duration so time display works
+        If playbackManager IsNot Nothing Then
+            transportControl.TrackDuration = playbackManager.TotalDuration
+            transportControl.TrackPosition = TimeSpan.Zero
+        End If
+
+        ' DIAGNOSTIC: Log playback start with all details
+        Logger.Instance.Info($"🎵 Playback started: {Path.GetFileName(filepath)}", "MainForm")
+        Logger.Instance.Info($"   Duration={playbackManager?.TotalDuration}, IsPlaying={playbackManager?.IsPlaying}", "MainForm")
+        Logger.Instance.Info($"   Timer started, State set to Playing", "MainForm")
+
         ' Update UI
         panelLED.BackColor = Color.RoyalBlue
         lblStatus.Text = $"Status: Playing {Path.GetFileName(filepath)}"
@@ -883,27 +925,36 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnPlaybackStopped(sender As Object, e As NAudio.Wave.StoppedEventArgs)
+        ' FIX Issue #2: Reset transport state (turns off indicator!)
+        transportControl.State = UI.TransportControl.TransportState.Stopped
+
         panelLED.BackColor = DarkTheme.SuccessGreen
         lblStatus.Text = "Status: Ready (Mic Armed)"
 
         TimerPlayback.Stop()
         progressPlayback.Value = 0
         btnStopPlayback.Enabled = False
+
+        ' FIX Issue #1: Reset track position/duration
+        transportControl.TrackPosition = TimeSpan.Zero
+        transportControl.TrackDuration = TimeSpan.Zero
     End Sub
 
     Private Sub TimerPlayback_Tick(sender As Object, e As EventArgs) Handles TimerPlayback.Tick
-        ' Update regular playback position
-        If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
-            playbackManager.UpdatePosition()
-            transportControl.TrackPosition = playbackManager.CurrentPosition
-            transportControl.TrackDuration = playbackManager.TotalDuration
+        ' DIAGNOSTIC: Log timer ticks (every 30 ticks = ~0.5s)
+        Static tickCount As Integer = 0
+        tickCount += 1
+        If tickCount Mod 30 = 0 Then
+            Logger.Instance.Debug($"⏱️ TimerPlayback_Tick #{tickCount}, IsPlaying={playbackManager?.IsPlaying}, DSP={audioRouter?.IsPlaying}", "MainForm")
+        End If
 
-            ' DIAGNOSTIC: Log playback position every 30 ticks (~0.5 seconds)
-            Static tickCount As Integer = 0
-            tickCount += 1
-            If tickCount Mod 30 = 0 Then
-                Logger.Instance.Debug($"Playback position: {playbackManager.CurrentPosition} / {playbackManager.TotalDuration}", "MainForm")
-            End If
+        ' Update playback position (PlaybackManager OR AudioRouter) - EVENT-DRIVEN!
+        If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
+            ' PlaybackManager playback (direct WAV)
+            playbackManager.UpdatePosition()
+        ElseIf audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
+            ' AudioRouter/DSP playback - call UpdatePosition() which raises PositionChanged event!
+            audioRouter.UpdatePosition()
         End If
 
         ' Update DSP BOTH input (PRE) and output (POST) samples for FFT comparison at 60 Hz
@@ -912,11 +963,79 @@ Partial Public Class MainForm
             audioRouter.UpdateOutputSamples() ' POST-DSP (processed audio)
         End If
 
-        UpdateTransportState()
+        ' REMOVED UpdateTransportState() - events handle state now!
+        ' UpdateTransportState was overriding event-driven state changes causing race condition
     End Sub
 
     Private Sub OnPositionChanged(sender As Object, position As TimeSpan)
         Dim total = playbackManager.TotalDuration
+        If total.TotalMilliseconds > 0 Then
+            Dim pct = CInt((position.TotalMilliseconds / total.TotalMilliseconds) * 1000)
+            progressPlayback.Value = Math.Min(1000, Math.Max(0, pct))
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' AudioRouter playback started (DSP playback) - matches RecordingManager pattern
+    ''' </summary>
+    Private Sub OnAudioRouterPlaybackStarted(sender As Object, filename As String)
+        Logger.Instance.Info($"🎵 AudioRouter playback started: {filename}", "MainForm")
+
+        ' Update TransportControl (event-driven, like RecordingManager!)
+        transportControl.State = UI.TransportControl.TransportState.Playing
+        transportControl.TrackDuration = audioRouter.TotalDuration
+        transportControl.TrackPosition = TimeSpan.Zero
+
+        ' Update UI
+        panelLED.BackColor = Color.Magenta ' Magenta = DSP Processing
+        lblStatus.Text = $"Status: DSP Playback - {filename}"
+        btnStopPlayback.Enabled = True
+    End Sub
+
+    ''' <summary>
+    ''' AudioRouter playback stopped (DSP playback) - matches RecordingManager pattern
+    ''' </summary>
+    Private Sub OnAudioRouterPlaybackStopped(sender As Object, e As EventArgs)
+        Try
+            Logger.Instance.Info("🛑 AudioRouter playback stopped - HANDLER CALLED!", "MainForm")
+
+            ' STOP THE TIMER! (Important when file ends naturally)
+            Logger.Instance.Info("Stopping timer...", "MainForm")
+            TimerPlayback.Stop()
+            Logger.Instance.Info("✅ Timer stopped!", "MainForm")
+
+            ' RE-ARM MICROPHONE (was disarmed during playback to prevent feedback)
+            Logger.Instance.Info("Re-arming microphone...", "MainForm")
+            If recordingManager IsNot Nothing Then
+                recordingManager.ArmMicrophone()
+                Logger.Instance.Info("✅ Microphone re-armed!", "MainForm")
+            End If
+
+            ' Update TransportControl (event-driven, like RecordingManager!)
+            transportControl.State = UI.TransportControl.TransportState.Stopped
+            transportControl.TrackPosition = TimeSpan.Zero
+            transportControl.TrackDuration = TimeSpan.Zero
+
+            ' Update UI
+            panelLED.BackColor = Color.Yellow ' Yellow = Armed
+            lblStatus.Text = "Status: Ready (Mic Armed)"
+            btnStopPlayback.Enabled = False
+
+            Logger.Instance.Info("✅ Playback stopped handler complete!", "MainForm")
+        Catch ex As Exception
+            Logger.Instance.Error("❌ ERROR in OnAudioRouterPlaybackStopped!", ex, "MainForm")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' AudioRouter position updated (DSP playback) - matches RecordingManager pattern
+    ''' </summary>
+    Private Sub OnAudioRouterPositionChanged(sender As Object, position As TimeSpan)
+        ' Update TransportControl (event-driven, like RecordingManager!)
+        transportControl.TrackPosition = position
+
+        ' Update progress bar
+        Dim total = audioRouter.TotalDuration
         If total.TotalMilliseconds > 0 Then
             Dim pct = CInt((position.TotalMilliseconds / total.TotalMilliseconds) * 1000)
             progressPlayback.Value = Math.Min(1000, Math.Max(0, pct))
@@ -1047,6 +1166,38 @@ Partial Public Class MainForm
         If maxSample < 0.00001F Then Return -96.0F ' Silence threshold
         Return 20.0F * Math.Log10(maxSample)
     End Function
+
+    ''' <summary>
+    ''' Handle spectrum ready event from FFT monitor thread (Phase 3 - NEW!)
+    ''' This replaces the old OnPipelineMonitoring event handler.
+    ''' Already throttled to 20 FPS by FFT thread - no throttling needed here!
+    ''' </summary>
+    Private Sub OnSpectrumReady(sender As Object, e As DSP.FFT.SpectrumReadyEventArgs)
+        ' Simple UI update - already throttled by FFT thread
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(New Action(Sub() UpdateSpectrum(e)))
+        Else
+            UpdateSpectrum(e)
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' Update spectrum display on UI thread (Phase 3 - NEW!)
+    ''' </summary>
+    Private Sub UpdateSpectrum(e As DSP.FFT.SpectrumReadyEventArgs)
+        Try
+            If e.TapPoint = Audio.Routing.TapPoint.PreDSP Then
+                ' Pre-DSP = Input display (raw audio)
+                SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(e.Spectrum, e.SampleRate, e.FFTSize)
+            Else
+                ' Post-DSP = Output display (processed audio)
+                SpectrumAnalyzerControl1.OutputDisplay.UpdateSpectrum(e.Spectrum, e.SampleRate, e.FFTSize)
+            End If
+        Catch ex As Exception
+            ' Ignore UI errors (don't crash on spectrum update failure)
+            Logger.Instance.Debug($"UpdateSpectrum error: {ex.Message}", "MainForm")
+        End Try
+    End Sub
 
 #End Region
 

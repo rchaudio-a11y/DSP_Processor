@@ -17,6 +17,16 @@ Namespace AudioIO
         Implements IAudioEngine
         Implements IInputSource
 
+#Region "Events"
+
+        ''' <summary>
+        ''' REAL-TIME CALLBACK: Fires when audio data arrives from driver
+        ''' Use this for glitch-free recording instead of polling
+        ''' </summary>
+        Public Event AudioDataAvailable As EventHandler(Of AudioCallbackEventArgs) Implements IInputSource.AudioDataAvailable
+
+#End Region
+
 #Region "Private Fields"
 
         Private _wasapiCapture As WasapiCapture
@@ -322,7 +332,13 @@ Namespace AudioIO
                     ApplyVolume(convertedBuffer, convertedBuffer.Length)
                 End If
                 
-                ' CRITICAL PATH: Always enqueue to recording queue (never drop!)
+                ' REAL-TIME: Raise event for callback-driven recording (GLITCH-FREE!)
+                RaiseEvent AudioDataAvailable(Me, New AudioCallbackEventArgs With {
+                    .Buffer = convertedBuffer,
+                    .BytesRecorded = convertedBuffer.Length
+                })
+                
+                ' LEGACY: Enqueue to recording queue (for timer-driven polling - DEPRECATED)
                 bufferQueue.Enqueue(convertedBuffer)
                 
                 ' FREEWHEELING PATH: Drop old frames if FFT queue full

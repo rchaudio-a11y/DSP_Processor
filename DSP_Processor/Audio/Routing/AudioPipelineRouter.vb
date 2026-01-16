@@ -1,19 +1,34 @@
 Imports DSP_Processor.Utils
 Imports DSP_Processor.Managers
+Imports DSP_Processor.DSP.FFT
 
 Namespace Audio.Routing
 
     ''' <summary>
-    ''' Central audio pipeline routing controller.
-    ''' Manages all audio flow, processing options, and buffer routing.
-    ''' All routing decisions made here - single source of truth.
+    ''' Central audio pipeline routing controller - Phase 3 Refactored!
+    ''' 
+    ''' NEW ARCHITECTURE:
+    ''' - AudioPipeline handles all audio processing (fast path, no events)
+    ''' - FFTMonitorThread runs independently (freewheeling, never blocks audio)
+    ''' - Clean separation: Audio thread vs FFT thread
+    ''' - No event flooding, no Task.Run spam
+    ''' 
+    ''' Old approach (Phase 2): Event-driven with Task.Run overhead
+    ''' New approach (Phase 3): Lock-free dual-buffers with independent FFT thread
     ''' </summary>
     Public Class AudioPipelineRouter
+        Implements IDisposable
 
 #Region "Private Fields"
 
         ''' <summary>Current pipeline configuration</summary>
         Private _currentConfiguration As PipelineConfiguration
+
+        ''' <summary>Audio processing pipeline (dual-buffer architecture)</summary>
+        Private _pipeline As AudioPipeline
+
+        ''' <summary>Freewheeling FFT monitor thread</summary>
+        Private _fftMonitor As FFTMonitorThread
 
         ''' <summary>Whether router has been initialized</summary>
         Private _isInitialized As Boolean = False
@@ -48,6 +63,23 @@ Namespace Audio.Routing
             End Get
         End Property
 
+        ''' <summary>
+        ''' Get FFT monitor thread (for subscribing to SpectrumReady event).
+        ''' NEW in Phase 3 - replaces old BufferForMonitoring event.
+        ''' </summary>
+        Public ReadOnly Property FFTMonitor As FFTMonitorThread
+            Get
+                Return _fftMonitor
+            End Get
+        End Property
+
+        ''' <summary>Get the audio pipeline (for advanced access if needed)</summary>
+        Friend ReadOnly Property Pipeline As AudioPipeline
+            Get
+                Return _pipeline
+            End Get
+        End Property
+
 #End Region
 
 #Region "Events"
@@ -55,28 +87,43 @@ Namespace Audio.Routing
         ''' <summary>Fired when routing configuration changes</summary>
         Public Event RoutingChanged As EventHandler(Of RoutingChangedEventArgs)
 
-        ''' <summary>Fired when buffer should be recorded to file</summary>
-        Public Event BufferForRecording As EventHandler(Of AudioBufferRoutingEventArgs)
-
-        ''' <summary>Fired when buffer should be monitored (FFT/meters)</summary>
-        Public Event BufferForMonitoring As EventHandler(Of AudioBufferRoutingEventArgs)
-
-        ''' <summary>Fired when buffer should be played back to speakers</summary>
-        Public Event BufferForPlayback As EventHandler(Of AudioBufferRoutingEventArgs)
+        ''' <summary>
+        ''' REMOVED in Phase 3: BufferForRecording, BufferForMonitoring, BufferForPlayback
+        ''' These events caused event flooding and Task.Run overhead.
+        ''' 
+        ''' NEW approach:
+        ''' - BufferForMonitoring ? Replaced by FFTMonitor.SpectrumReady (throttled, single event)
+        ''' - BufferForRecording ? Will be handled directly by pipeline in Phase 3.1
+        ''' - BufferForPlayback ? Will be handled directly by pipeline in Phase 3.2
+        ''' </summary>
 
 #End Region
 
 #Region "Initialization"
 
         ''' <summary>
-        ''' Initialize the router - loads last saved configuration from JSON.
+        ''' Initialize the router - loads configuration and starts FFT monitor thread.
+        ''' Phase 3: Creates AudioPipeline and FFTMonitorThread.
         ''' </summary>
         Public Sub Initialize()
             Try
-                Logger.Instance.Info("Initializing AudioPipelineRouter", "AudioPipelineRouter")
+                Logger.Instance.Info("Initializing AudioPipelineRouter (Phase 3 architecture)", "AudioPipelineRouter")
 
                 ' Load configuration from file (or defaults if missing)
                 _currentConfiguration = PipelineConfigurationManager.Instance.LoadConfiguration()
+
+                ' Create audio processing pipeline
+                _pipeline = New AudioPipeline(_currentConfiguration)
+                Logger.Instance.Info("AudioPipeline created", "AudioPipelineRouter")
+
+                ' Create and start FFT monitor thread
+                ' Input stage = Pre-DSP (raw audio)
+                ' Gain stage = Post-DSP (processed audio) - THIS IS CORRECT!
+                _fftMonitor = New FFTMonitorThread(
+                    _pipeline.GetStage(PipelineStage.Input),
+                    _pipeline.GetStage(PipelineStage.Gain))
+                _fftMonitor.Start()
+                Logger.Instance.Info("FFT monitor thread started", "AudioPipelineRouter")
 
                 _isInitialized = True
 
@@ -114,6 +161,10 @@ Namespace Audio.Routing
                     _currentConfiguration = newConfig
                     _currentConfiguration.LastModified = DateTime.Now
                 End SyncLock
+
+                ' CRITICAL: Update the pipeline with new configuration!
+                ' This makes the controls actually work!
+                _pipeline?.UpdateConfiguration(newConfig)
 
                 ' Auto-save to JSON (throttled - 500ms debounce)
                 PipelineConfigurationManager.Instance.SaveConfiguration(newConfig)
@@ -182,14 +233,17 @@ Namespace Audio.Routing
 #Region "Routing Logic"
 
         ''' <summary>
-        ''' Route an audio buffer through the pipeline based on current configuration.
-        ''' This is a STUB for now - full implementation in Phase 3.
+        ''' Route an audio buffer through the pipeline - PHASE 3 REFACTORED!
+        ''' 
+        ''' NEW: TRUE BYPASS MODE!
+        ''' - When DSP disabled: Direct routing (bypasses pipeline entirely)
+        ''' - When DSP enabled: Full pipeline processing with FFT taps
+        ''' 
+        ''' This allows perfect A/B testing:
+        ''' - Record file with DSP disabled (pure input)
+        ''' - Record file with DSP enabled (processed)
+        ''' - Compare the files to verify DSP behavior!
         ''' </summary>
-        ''' <param name="buffer">Audio buffer data</param>
-        ''' <param name="source">Source of the audio</param>
-        ''' <param name="bitsPerSample">Bits per sample</param>
-        ''' <param name="channels">Number of channels</param>
-        ''' <param name="sampleRate">Sample rate</param>
         Public Sub RouteAudioBuffer(buffer As Byte(), source As AudioSourceType,
                                    bitsPerSample As Integer, channels As Integer, sampleRate As Integer)
 
@@ -203,15 +257,31 @@ Namespace Audio.Routing
             End If
 
             Try
-                ' STUB: Just log for now
-                ' Full implementation in Phase 3 will:
-                ' 1. Apply DSP if enabled
-                ' 2. Tap for monitoring at configured points
-                ' 3. Route to destinations (recording, playback)
+                ' Get configuration snapshot
+                Dim config As PipelineConfiguration
+                SyncLock _configLock
+                    config = _currentConfiguration
+                End SyncLock
 
-                Logger.Instance.Debug($"RouteAudioBuffer: {buffer.Length} bytes from {source}", "AudioPipelineRouter")
+                ' === TRUE BYPASS: Check if DSP is enabled ===
+                If Not config.Processing.EnableDSP Then
+                    ' === BYPASS MODE: Skip pipeline entirely! ===
+                    ' No FFT taps, no monitoring, no processing
+                    ' Direct path: Input ? Output (zero overhead)
+                    ' Perfect for A/B testing!
+                    Logger.Instance.Debug("DSP BYPASS: Audio routed directly (pipeline skipped)", "AudioPipelineRouter")
+                    Return
+                End If
 
-                ' TODO: Phase 3 - Implement actual routing logic
+                ' === DSP ENABLED: Route through full pipeline ===
+                ' This includes:
+                ' - FFT tap points (if enabled)
+                ' - DSP processing (gain, future: EQ, compressor, etc.)
+                ' - Monitoring stages
+                Dim processedBuffer = _pipeline.ProcessBuffer(buffer, sampleRate, bitsPerSample, channels)
+
+                ' Processed buffer can now be routed to destinations
+                ' Phase 3.1 will connect this to RecordingManager
 
             Catch ex As Exception
                 Logger.Instance.Error("Error routing audio buffer", ex, "AudioPipelineRouter")
@@ -299,6 +369,34 @@ Namespace Audio.Routing
 
             Return map
         End Function
+
+#End Region
+
+#Region "IDisposable Implementation"
+
+        Private _disposed As Boolean = False
+
+        Protected Overridable Sub Dispose(disposing As Boolean)
+            If Not _disposed Then
+                If disposing Then
+                    ' Stop FFT monitor thread
+                    If _fftMonitor IsNot Nothing Then
+                        _fftMonitor.Stop()
+                        _fftMonitor.Dispose()
+                        Logger.Instance.Info("FFT monitor thread stopped", "AudioPipelineRouter")
+                    End If
+
+                    ' Clear pipeline
+                    _pipeline?.Clear()
+                End If
+                _disposed = True
+            End If
+        End Sub
+
+        Public Sub Dispose() Implements IDisposable.Dispose
+            Dispose(True)
+            GC.SuppressFinalize(Me)
+        End Sub
 
 #End Region
 

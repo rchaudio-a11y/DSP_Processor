@@ -39,13 +39,21 @@ Namespace Managers
 
         Private mic As IInputSource ' Can be MicInputSource or WasapiEngine
         Private recorder As RecordingEngine
-        Private processingTimer As Timer
+        ' REMOVED: processingTimer - replaced with callback-driven recording
         Private _isArmed As Boolean = False
         Private _isRecording As Boolean = False
 
         ' Settings
         Private audioSettings As AudioDeviceSettings
         Private recordingOptions As RecordingOptions
+
+        ' DIAGNOSTIC: Performance tracking for recorder.Process() timing (kept for callback monitoring)
+        Private ReadOnly _processingStopwatch As New Diagnostics.Stopwatch()
+        Private _totalProcessingTimeMs As Double = 0
+        Private _processCallCount As Long = 0
+        Private _slowCallCount As Long = 0  ' Calls > 1ms
+        Private _verySlowCallCount As Long = 0  ' Calls > 5ms
+        Private _lastStatsLogTime As DateTime = DateTime.MinValue
 
 #End Region
 
@@ -164,18 +172,18 @@ Namespace Managers
 
                 ' Get device info for selected driver and device index
                 Dim devices = AudioIO.AudioInputManager.Instance.GetDevices(audioSettings.DriverType)
-                
+
                 If devices.Count = 0 Then
                     Throw New InvalidOperationException($"No {audioSettings.DriverType} devices available")
                 End If
-                
+
                 If audioSettings.InputDeviceIndex < 0 Or audioSettings.InputDeviceIndex >= devices.Count Then
                     Throw New ArgumentOutOfRangeException($"Device index {audioSettings.InputDeviceIndex} is out of range. Only {devices.Count} devices available.")
                 End If
-                
+
                 Dim selectedDevice = devices(audioSettings.InputDeviceIndex)
                 Logger.Instance.Info($"Selected device: {selectedDevice.Name}", "RecordingManager")
-                
+
                 ' Check driver type and create appropriate engine
                 Select Case audioSettings.DriverType
                     Case AudioIO.DriverType.WaveIn
@@ -187,26 +195,26 @@ Namespace Managers
                             audioSettings.BitDepth,
                             audioSettings.InputDeviceIndex,
                             audioSettings.BufferMilliseconds)
-                        
+
                     Case AudioIO.DriverType.WASAPI
                         ' WASAPI: Use WasapiEngine (low-latency, professional audio)
                         Logger.Instance.Info("Using WASAPI for audio capture", "RecordingManager")
-                        
+
                         Dim wasapiEngine = New WasapiEngine(
                             selectedDevice,
                             audioSettings.SampleRate,
                             audioSettings.Channels,
                             audioSettings.BitDepth,
                             audioSettings.BufferMilliseconds)
-                        
+
                         ' Start WASAPI capture
                         wasapiEngine.Start()
-                        
+
                         mic = wasapiEngine
-                        
+
                         ' Log the actual format WASAPI is using (may differ from requested)
                         Logger.Instance.Info($"WASAPI engine created: {selectedDevice.Name}, requested: {audioSettings.SampleRate}Hz, actual: {wasapiEngine.SampleRate}Hz/{wasapiEngine.BitsPerSample}bit", "RecordingManager")
-                        
+
                     Case Else
                         Throw New NotSupportedException($"Driver type {audioSettings.DriverType} is not supported")
                 End Select
@@ -218,10 +226,10 @@ Namespace Managers
                     DirectCast(mic, WasapiEngine).Volume = 1.0F
                 End If
 
-                ' Start processing timer (20ms intervals - must be <= buffer size)
-                ' Keep at 20ms for responsiveness even if buffer is larger
-                processingTimer = New Timer(AddressOf ProcessingTimer_Tick, Nothing, 0, 20)
-                Logger.Instance.Debug($"Processing timer: 20ms intervals, Buffer: {audioSettings.BufferMilliseconds}ms", "RecordingManager")
+                ' CALLBACK-DRIVEN RECORDING: Subscribe to real-time audio callback
+                ' This eliminates timer jitter and buffer queue overflows
+                AddHandler mic.AudioDataAvailable, AddressOf OnAudioDataAvailable
+                Logger.Instance.Info("Subscribed to AudioDataAvailable callback (glitch-free recording mode)", "RecordingManager")
 
                 _isArmed = True
                 RaiseEvent MicrophoneArmed(Me, True)
@@ -241,11 +249,13 @@ Namespace Managers
 
                 Logger.Instance.Info("Disarming microphone...", "RecordingManager")
 
-                ' Stop timer FIRST to prevent race conditions
-                processingTimer?.Dispose()
-                processingTimer = Nothing
+                ' Unsubscribe from callback FIRST to prevent race conditions
+                If mic IsNot Nothing Then
+                    RemoveHandler mic.AudioDataAvailable, AddressOf OnAudioDataAvailable
+                    Logger.Instance.Info("Unsubscribed from AudioDataAvailable callback", "RecordingManager")
+                End If
 
-                ' Give time for any pending timer events to complete
+                ' Give time for any pending callbacks to complete
                 System.Threading.Thread.Sleep(50)
 
                 ' Dispose mic and wait for cleanup
@@ -255,7 +265,7 @@ Namespace Managers
                     End If
                     mic = Nothing
                 End If
-                
+
                 ' Another small delay to ensure disposal is complete
                 System.Threading.Thread.Sleep(50)
 
@@ -289,7 +299,7 @@ Namespace Managers
                 ' DON'T clear buffers - we WANT the pre-filled audio from mic arming!
                 ' This is the whole point of arming the mic early - to avoid losing the first second
                 ' mic?.ClearBuffers() ' REMOVED - was causing first second loss!
-                
+
                 ' DIAGNOSTIC: Log buffer queue size
                 If mic IsNot Nothing Then
                     Logger.Instance.Info($"Starting recording with pre-filled mic buffer", "RecordingManager")
@@ -354,11 +364,100 @@ Namespace Managers
             End Try
         End Sub
 
+        ''' <summary>
+        ''' Apply recording options (moved from MainForm)
+        ''' </summary>
+        Public Sub ApplyRecordingOptions(options As RecordingOptions)
+            Try
+                Logger.Instance.Info($"Applying recording options: {options.Mode} mode", "RecordingManager")
+
+                ' Update internal options
+                recordingOptions = options
+
+                ' Apply to recorder if it exists
+                If recorder IsNot Nothing Then
+                    recorder.Options = options
+                End If
+
+                Logger.Instance.Info("Recording options applied successfully", "RecordingManager")
+            Catch ex As Exception
+                Logger.Instance.Error("Failed to apply recording options", ex, "RecordingManager")
+                Throw
+            End Try
+        End Sub
+
+        ''' <summary>
+        ''' Apply audio settings (moved from MainForm)
+        ''' Re-arms microphone with new settings if currently armed
+        ''' </summary>
+        Public Sub ApplyAudioSettings(settings As AudioDeviceSettings)
+            Try
+                Logger.Instance.Info($"Applying audio settings: {settings.DriverType}, {settings.SampleRate}Hz", "RecordingManager")
+
+                ' Update internal settings
+                audioSettings = settings
+
+                ' If mic is armed, re-arm with new settings
+                If _isArmed Then
+                    Logger.Instance.Info("Microphone is armed, re-arming with new settings...", "RecordingManager")
+                    DisarmMicrophone()
+                    System.Threading.Thread.Sleep(100) ' Wait for cleanup
+                    ArmMicrophone()
+                Else
+                    Logger.Instance.Info("Microphone not armed, settings will be applied on next arm", "RecordingManager")
+                End If
+
+                Logger.Instance.Info("Audio settings applied successfully", "RecordingManager")
+            Catch ex As Exception
+                Logger.Instance.Error("Failed to apply audio settings", ex, "RecordingManager")
+                Throw
+            End Try
+        End Sub
+
 #End Region
 
 #Region "Private Methods"
 
-        Private Sub ProcessingTimer_Tick(state As Object)
+        ''' <summary>
+        ''' REAL-TIME AUDIO CALLBACK: Called by driver when audio data arrives
+        ''' This is synchronous with audio delivery - NO TIMER JITTER!
+        ''' </summary>
+        Private Sub OnAudioDataAvailable(sender As Object, e As AudioIO.AudioCallbackEventArgs)
+            Try
+                ' If recording is active, pass buffer DIRECTLY to recorder (no queue polling!)
+                ' This ensures audio is processed at exact rate it arrives (glitch-free!)
+                If recorder IsNot Nothing AndAlso recorder.IsRecording Then
+                    recorder.ProcessBuffer(e.Buffer, e.BytesRecorded)
+                    
+                    ' Raise time update (do this periodically, not on every callback)
+                    Static lastTimeUpdate As DateTime = DateTime.MinValue
+                    If (DateTime.Now - lastTimeUpdate).TotalMilliseconds >= 100 Then
+                        RaiseEvent RecordingTimeUpdated(Me, recorder.RecordingDuration)
+                        lastTimeUpdate = DateTime.Now
+                    End If
+                End If
+                
+                ' Always raise BufferAvailable for FFT/metering
+                ' Use the buffer from the callback (already copied by driver layer)
+                Dim args As New AudioBufferEventArgs With {
+                    .Buffer = e.Buffer,
+                    .BitsPerSample = mic.BitsPerSample,
+                    .Channels = mic.Channels,
+                    .SampleRate = mic.SampleRate
+                }
+                RaiseEvent BufferAvailable(Me, args)
+                
+            Catch ex As Exception
+                Logger.Instance.Error("Error in audio callback", ex, "RecordingManager")
+                ' Don't crash the audio thread!
+            End Try
+        End Sub
+
+''' <summary>
+''' DEPRECATED: Timer-driven processing (replaced by OnAudioDataAvailable callback)
+''' Kept for reference but no longer used
+''' </summary>
+Private Sub ProcessingTimer_Tick(state As Object)
             Try
                 ' Track if we were recording before Process() call
                 Dim wasRecording = _isRecording AndAlso recorder IsNot Nothing AndAlso recorder.IsRecording
@@ -388,19 +487,47 @@ Namespace Managers
                     End If
                     
                     ' Now call Process() for recording (adaptive rate)
-                    Dim processCount As Integer = 4  ' Default
+                    ' REDUCED: Max processCount from 16 ? 8 to reduce burst load
+                    Dim processCount As Integer = 2  ' Reduced from 4
                     
                     If currentQueueDepth > 100 Then
-                        processCount = 16
+                        processCount = 8  ' Reduced from 16
                     ElseIf currentQueueDepth > 50 Then
-                        processCount = 12
+                        processCount = 6  ' Reduced from 12
                     ElseIf currentQueueDepth > 20 Then
-                        processCount = 8
+                        processCount = 4  ' Reduced from 8
                     End If
                     
+                    ' DIAGNOSTIC: Time the processing loop
+                    Dim loopStartTime = _processingStopwatch.Elapsed.TotalMilliseconds
+                    
                     For i = 1 To processCount
+                        ' Time each individual Process() call
+                        _processingStopwatch.Restart()
                         recorder.Process()
+                        _processingStopwatch.Stop()
+                        
+                        Dim elapsed = _processingStopwatch.Elapsed.TotalMilliseconds
+                        _totalProcessingTimeMs += elapsed
+                        _processCallCount += 1
+                        
+                        ' Track slow calls
+                        If elapsed > 5.0 Then
+                            _verySlowCallCount += 1
+                            Logger.Instance.Warning($"VERY SLOW Process() call: {elapsed:F2}ms (threshold: 5ms)", "RecordingManager")
+                        ElseIf elapsed > 1.0 Then
+                            _slowCallCount += 1
+                            Logger.Instance.Warning($"SLOW Process() call: {elapsed:F2}ms (threshold: 1ms)", "RecordingManager")
+                        End If
                     Next
+                    
+                    Dim loopEndTime = _processingStopwatch.Elapsed.TotalMilliseconds
+                    Dim totalLoopTime = loopEndTime - loopStartTime
+                    
+                    ' Log if loop took longer than timer interval (10ms)
+                    If totalLoopTime > 10.0 Then
+                        Logger.Instance.Warning($"Process() loop EXCEEDED timer interval: {totalLoopTime:F2}ms (count={processCount}, depth={currentQueueDepth})", "RecordingManager")
+                    End If
 
                     ' Check if recording just stopped (loop take completed)
                     Dim isRecording = recorder.IsRecording
@@ -412,6 +539,17 @@ Namespace Managers
 
                     ' Raise time update
                     RaiseEvent RecordingTimeUpdated(Me, recorder.RecordingDuration)
+
+                    ' DIAGNOSTIC: Log performance stats every 10 seconds
+                    Dim now = DateTime.Now
+                    If (now - _lastStatsLogTime).TotalSeconds >= 10 Then
+                        _lastStatsLogTime = now
+                        If _processCallCount > 0 Then
+                            Dim avgTime = _totalProcessingTimeMs / _processCallCount
+                            Logger.Instance.Info($"Process() Performance: Calls={_processCallCount}, Avg={avgTime:F3}ms, Slow(>1ms)={_slowCallCount}, VerySlow(>5ms)={_verySlowCallCount}", "RecordingManager")
+                        End If
+                    End If
+
 
                     ' FREEWHEELING FFT PATH: Read from separate FFT queue
                     ' This doesn't block recording and can drop frames if UI is slow
@@ -451,17 +589,17 @@ Namespace Managers
                         currentQueueDepth = DirectCast(mic, WasapiEngine).BufferQueueCount
                     End If
                     
-                    ' If queue building, drain AGGRESSIVELY
-                    Dim drainCount As Integer = 4  ' Default
+                    ' If queue building, drain AGGRESSIVELY (but reduced max)
+                    Dim drainCount As Integer = 2  ' Reduced from 4
                     
                     If currentQueueDepth > 100 Then
-                        drainCount = 20  ' Maximum aggressive
+                        drainCount = 10  ' Reduced from 20
                     ElseIf currentQueueDepth > 50 Then
-                        drainCount = 16
+                        drainCount = 8   ' Reduced from 16
                     ElseIf currentQueueDepth > 20 Then
-                        drainCount = 12
+                        drainCount = 6   ' Reduced from 12
                     ElseIf currentQueueDepth > 10 Then
-                        drainCount = 8
+                        drainCount = 4   ' Reduced from 8
                     End If
                     
                     ' Drain at adaptive rate
@@ -499,7 +637,7 @@ Namespace Managers
             StopRecording()
             DisarmMicrophone()
 
-            processingTimer?.Dispose()
+            ' REMOVED: processingTimer?.Dispose() - no longer using timer
             ' Note: RecordingEngine doesn't implement IDisposable, no disposal needed
 
             Logger.Instance.Info("RecordingManager disposed", "RecordingManager")
