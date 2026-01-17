@@ -295,7 +295,7 @@ Partial Class MainForm
         tabInput.Location = New Point(4, 54)
         tabInput.Name = "tabInput"
         tabInput.Padding = New Padding(3)
-        tabInput.Size = New Size(446, 793)
+        tabInput.Size = New Size(192, 42)
         tabInput.TabIndex = 5
         tabInput.Text = "🎚️ Input"
         ' 
@@ -307,7 +307,7 @@ Partial Class MainForm
         InputTabPanel1.ForeColor = Color.FromArgb(CByte(241), CByte(241), CByte(241))
         InputTabPanel1.Location = New Point(3, 3)
         InputTabPanel1.Name = "InputTabPanel1"
-        InputTabPanel1.Size = New Size(440, 787)
+        InputTabPanel1.Size = New Size(186, 36)
         InputTabPanel1.TabIndex = 0
         ' 
         ' tabRecording
@@ -336,10 +336,10 @@ Partial Class MainForm
         ' 
         tabPipeline.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabPipeline.Controls.Add(AudioPipelinePanel1)
-        tabPipeline.Location = New Point(4, 79)
+        tabPipeline.Location = New Point(4, 54)
         tabPipeline.Name = "tabPipeline"
         tabPipeline.Padding = New Padding(3)
-        tabPipeline.Size = New Size(192, 17)
+        tabPipeline.Size = New Size(446, 793)
         tabPipeline.TabIndex = 8
         tabPipeline.Text = "🔀 Pipeline"
         ' 
@@ -350,7 +350,7 @@ Partial Class MainForm
         AudioPipelinePanel1.Dock = DockStyle.Fill
         AudioPipelinePanel1.Location = New Point(3, 3)
         AudioPipelinePanel1.Name = "AudioPipelinePanel1"
-        AudioPipelinePanel1.Size = New Size(186, 11)
+        AudioPipelinePanel1.Size = New Size(440, 787)
         AudioPipelinePanel1.TabIndex = 0
         ' 
         ' tabSpectrum

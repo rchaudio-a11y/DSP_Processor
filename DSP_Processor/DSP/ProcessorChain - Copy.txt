@@ -1,0 +1,247 @@
+Imports NAudio.Wave
+
+Namespace DSP
+
+    ''' <summary>
+    ''' Manages a chain of DSP processors in sequence.
+    ''' Audio passes through each enabled processor in order.
+    ''' </summary>
+    Public Class ProcessorChain
+        Implements IDisposable
+
+#Region "Private Fields"
+
+        Private ReadOnly processors As New List(Of ProcessorBase)
+        Private ReadOnly lockObj As New Object()
+        Private _bypassed As Boolean = False
+        Private disposed As Boolean = False
+
+#End Region
+
+#Region "Properties"
+
+        ''' <summary>Gets the wave format for this processor chain</summary>
+        Public ReadOnly Property Format As WaveFormat
+
+        ''' <summary>Gets or sets whether the entire chain is bypassed</summary>
+        Public Property Bypassed As Boolean
+            Get
+                SyncLock lockObj
+                    Return _bypassed
+                End SyncLock
+            End Get
+            Set(value As Boolean)
+                SyncLock lockObj
+                    _bypassed = value
+                End SyncLock
+            End Set
+        End Property
+
+        ''' <summary>Gets the number of processors in the chain</summary>
+        Public ReadOnly Property Count As Integer
+            Get
+                SyncLock lockObj
+                    Return processors.Count
+                End SyncLock
+            End Get
+        End Property
+
+        ''' <summary>Gets whether the chain is empty</summary>
+        Public ReadOnly Property IsEmpty As Boolean
+            Get
+                Return Count = 0
+            End Get
+        End Property
+
+#End Region
+
+#Region "Constructor"
+
+        ''' <summary>
+        ''' Creates a new processor chain with specified format
+        ''' </summary>
+        ''' <param name="format">Wave format to process</param>
+        Public Sub New(format As WaveFormat)
+            If format Is Nothing Then
+                Throw New ArgumentNullException(NameOf(format))
+            End If
+            Me.Format = format
+        End Sub
+
+#End Region
+
+#Region "Public Methods"
+
+        ''' <summary>
+        ''' Adds a processor to the end of the chain
+        ''' </summary>
+        ''' <param name="processor">Processor to add</param>
+        Public Sub AddProcessor(processor As ProcessorBase)
+            If processor Is Nothing Then
+                Throw New ArgumentNullException(NameOf(processor))
+            End If
+
+            SyncLock lockObj
+                processors.Add(processor)
+            End SyncLock
+        End Sub
+
+        ''' <summary>
+        ''' Inserts a processor at the specified index
+        ''' </summary>
+        ''' <param name="index">Index to insert at</param>
+        ''' <param name="processor">Processor to insert</param>
+        Public Sub InsertProcessor(index As Integer, processor As ProcessorBase)
+            If processor Is Nothing Then
+                Throw New ArgumentNullException(NameOf(processor))
+            End If
+
+            SyncLock lockObj
+                processors.Insert(index, processor)
+            End SyncLock
+        End Sub
+
+        ''' <summary>
+        ''' Removes a processor from the chain
+        ''' </summary>
+        ''' <param name="processor">Processor to remove</param>
+        ''' <returns>True if removed</returns>
+        Public Function RemoveProcessor(processor As ProcessorBase) As Boolean
+            If processor Is Nothing Then Return False
+
+            SyncLock lockObj
+                Return processors.Remove(processor)
+            End SyncLock
+        End Function
+
+        ''' <summary>
+        ''' Removes a processor at the specified index
+        ''' </summary>
+        ''' <param name="index">Index to remove at</param>
+        Public Sub RemoveProcessorAt(index As Integer)
+            SyncLock lockObj
+                processors.RemoveAt(index)
+            End SyncLock
+        End Sub
+
+        ''' <summary>
+        ''' Clears all processors from the chain
+        ''' </summary>
+        Public Sub Clear()
+            SyncLock lockObj
+                processors.Clear()
+            End SyncLock
+        End Sub
+
+        ''' <summary>
+        ''' Gets a processor by index
+        ''' </summary>
+        ''' <param name="index">Index of processor</param>
+        ''' <returns>Processor at index</returns>
+        Public Function GetProcessor(index As Integer) As ProcessorBase
+            SyncLock lockObj
+                Return processors(index)
+            End SyncLock
+        End Function
+
+        ''' <summary>
+        ''' Processes audio through the entire chain
+        ''' </summary>
+        ''' <param name="buffer">Audio buffer to process</param>
+        Public Sub Process(buffer As AudioBuffer)
+            If disposed Then
+                Throw New ObjectDisposedException(NameOf(ProcessorChain))
+            End If
+
+            If buffer Is Nothing Then
+                Throw New ArgumentNullException(NameOf(buffer))
+            End If
+
+            ' If bypassed, do nothing
+            If _bypassed Then Return
+
+            SyncLock lockObj
+                ' Process through each processor in sequence
+                For Each processor In processors
+                    If processor IsNot Nothing AndAlso processor.Enabled AndAlso Not processor.Bypassed Then
+                        Try
+                            processor.Process(buffer)
+                        Catch ex As Exception
+                            ' Log error but continue processing
+                            Utils.Logger.Instance.Error($"Processor '{processor.Name}' failed", ex, "ProcessorChain")
+                        End Try
+                    End If
+                Next
+            End SyncLock
+        End Sub
+
+        ''' <summary>
+        ''' Resets all processors in the chain
+        ''' </summary>
+        Public Sub Reset()
+            SyncLock lockObj
+                For Each processor In processors
+                    If processor IsNot Nothing Then
+                        Try
+                            processor.Reset()
+                        Catch ex As Exception
+                            Utils.Logger.Instance.Error($"Failed to reset processor '{processor.Name}'", ex, "ProcessorChain")
+                        End Try
+                    End If
+                Next
+            End SyncLock
+        End Sub
+
+        ''' <summary>
+        ''' Gets a snapshot of all processors (for UI display)
+        ''' </summary>
+        ''' <returns>Array of processors</returns>
+        Public Function GetProcessors() As ProcessorBase()
+            SyncLock lockObj
+                Return processors.ToArray()
+            End SyncLock
+        End Function
+
+        ''' <summary>
+        ''' Gets the total latency of all enabled processors in the chain (in samples)
+        ''' </summary>
+        ''' <returns>Total latency in samples</returns>
+        Public Function GetTotalLatency() As Integer
+            SyncLock lockObj
+                Dim totalLatency As Integer = 0
+                For Each processor In processors
+                    If processor IsNot Nothing AndAlso processor.Enabled AndAlso Not processor.Bypassed Then
+                        totalLatency += processor.LatencySamples
+                    End If
+                Next
+                Return totalLatency
+            End SyncLock
+        End Function
+
+#End Region
+
+#Region "IDisposable"
+
+        Public Sub Dispose() Implements IDisposable.Dispose
+            If Not disposed Then
+                SyncLock lockObj
+                    For Each processor In processors
+                        If processor IsNot Nothing Then
+                            Try
+                                processor.Dispose()
+                            Catch ex As Exception
+                                Utils.Logger.Instance.Error($"Failed to dispose processor", ex, "ProcessorChain")
+                            End Try
+                        End If
+                    Next
+                    processors.Clear()
+                End SyncLock
+                disposed = True
+            End If
+        End Sub
+
+#End Region
+
+    End Class
+
+End Namespace

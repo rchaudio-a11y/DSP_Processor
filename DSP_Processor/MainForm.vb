@@ -242,6 +242,13 @@ Partial Public Class MainForm
     Private Sub WireAudioPipelinePanel()
         ' Wire up AudioPipelinePanel event
         AddHandler AudioPipelinePanel1.ConfigurationChanged, AddressOf OnPipelineConfigurationChanged
+
+        ' Inject RecordingManager for real-time gain control
+        If recordingManager IsNot Nothing Then
+            AudioPipelinePanel1.SetRecordingManager(recordingManager)
+            Logger.Instance.Info("RecordingManager injected into AudioPipelinePanel", "MainForm")
+        End If
+
         Logger.Instance.Info("AudioPipelinePanel wired", "MainForm")
     End Sub
 

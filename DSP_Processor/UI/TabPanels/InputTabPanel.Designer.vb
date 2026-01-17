@@ -21,439 +21,392 @@ Namespace UI.TabPanels
 
         <System.Diagnostics.DebuggerStepThrough()>
         Private Sub InitializeComponent()
-            Me.tableLayoutPanel = New System.Windows.Forms.TableLayoutPanel()
-            Me.Label1 = New System.Windows.Forms.Label()
-            Me.trackInputVolume = New System.Windows.Forms.TrackBar()
-            Me.lblInputVolumeValue = New System.Windows.Forms.Label()
-            Me.chkLinkToPlayback = New System.Windows.Forms.CheckBox()
-            Me.Label2 = New System.Windows.Forms.Label()
-            Me.lblPeakHold = New System.Windows.Forms.Label()
-            Me.cmbPeakHold = New System.Windows.Forms.ComboBox()
-            Me.lblPeakDecay = New System.Windows.Forms.Label()
-            Me.cmbPeakDecay = New System.Windows.Forms.ComboBox()
-            Me.Label3 = New System.Windows.Forms.Label()
-            Me.lblRmsWindow = New System.Windows.Forms.Label()
-            Me.cmbRmsWindow = New System.Windows.Forms.ComboBox()
-            Me.lblAttack = New System.Windows.Forms.Label()
-            Me.cmbAttack = New System.Windows.Forms.ComboBox()
-            Me.lblRelease = New System.Windows.Forms.Label()
-            Me.cmbRelease = New System.Windows.Forms.ComboBox()
-            Me.Label4 = New System.Windows.Forms.Label()
-            Me.lblClipThreshold = New System.Windows.Forms.Label()
-            Me.cmbClipThreshold = New System.Windows.Forms.ComboBox()
-            Me.lblClipHold = New System.Windows.Forms.Label()
-            Me.cmbClipHold = New System.Windows.Forms.ComboBox()
-            Me.Label5 = New System.Windows.Forms.Label()
-            Me.btnFastResponse = New System.Windows.Forms.Button()
-            Me.btnSlowResponse = New System.Windows.Forms.Button()
-            Me.btnBroadcast = New System.Windows.Forms.Button()
-            Me.btnReset = New System.Windows.Forms.Button()
-            Me.tableLayoutPanel.SuspendLayout()
-            CType(Me.trackInputVolume, System.ComponentModel.ISupportInitialize).BeginInit()
-            Me.SuspendLayout()
-            '
-            'tableLayoutPanel
-            '
-            Me.tableLayoutPanel.AutoScroll = True
-            Me.tableLayoutPanel.ColumnCount = 2
-            Me.tableLayoutPanel.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130.0!))
-            Me.tableLayoutPanel.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
-            Me.tableLayoutPanel.Controls.Add(Me.Label1, 0, 0)
-            Me.tableLayoutPanel.Controls.Add(Me.trackInputVolume, 0, 1)
-            Me.tableLayoutPanel.Controls.Add(Me.lblInputVolumeValue, 1, 1)
-            Me.tableLayoutPanel.Controls.Add(Me.chkLinkToPlayback, 0, 2)
-            Me.tableLayoutPanel.Controls.Add(Me.Label2, 0, 3)
-            Me.tableLayoutPanel.Controls.Add(Me.lblPeakHold, 0, 4)
-            Me.tableLayoutPanel.Controls.Add(Me.cmbPeakHold, 1, 4)
-            Me.tableLayoutPanel.Controls.Add(Me.lblPeakDecay, 0, 5)
-            Me.tableLayoutPanel.Controls.Add(Me.cmbPeakDecay, 1, 5)
-            Me.tableLayoutPanel.Controls.Add(Me.Label3, 0, 6)
-            Me.tableLayoutPanel.Controls.Add(Me.lblRmsWindow, 0, 7)
-            Me.tableLayoutPanel.Controls.Add(Me.cmbRmsWindow, 1, 7)
-            Me.tableLayoutPanel.Controls.Add(Me.lblAttack, 0, 8)
-            Me.tableLayoutPanel.Controls.Add(Me.cmbAttack, 1, 8)
-            Me.tableLayoutPanel.Controls.Add(Me.lblRelease, 0, 9)
-            Me.tableLayoutPanel.Controls.Add(Me.cmbRelease, 1, 9)
-            Me.tableLayoutPanel.Controls.Add(Me.Label4, 0, 10)
-            Me.tableLayoutPanel.Controls.Add(Me.lblClipThreshold, 0, 11)
-            Me.tableLayoutPanel.Controls.Add(Me.cmbClipThreshold, 1, 11)
-            Me.tableLayoutPanel.Controls.Add(Me.lblClipHold, 0, 12)
-            Me.tableLayoutPanel.Controls.Add(Me.cmbClipHold, 1, 12)
-            Me.tableLayoutPanel.Controls.Add(Me.Label5, 0, 13)
-            Me.tableLayoutPanel.Controls.Add(Me.btnFastResponse, 0, 14)
-            Me.tableLayoutPanel.Controls.Add(Me.btnSlowResponse, 1, 14)
-            Me.tableLayoutPanel.Controls.Add(Me.btnBroadcast, 0, 15)
-            Me.tableLayoutPanel.Controls.Add(Me.btnReset, 1, 15)
-            Me.tableLayoutPanel.Dock = System.Windows.Forms.DockStyle.Fill
-            Me.tableLayoutPanel.Location = New System.Drawing.Point(0, 0)
-            Me.tableLayoutPanel.Name = "tableLayoutPanel"
-            Me.tableLayoutPanel.Padding = New System.Windows.Forms.Padding(10)
-            Me.tableLayoutPanel.RowCount = 16
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 60.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 35.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 35.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 35.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 35.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 35.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 35.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 35.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 35.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40.0!))
-            Me.tableLayoutPanel.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40.0!))
-            Me.tableLayoutPanel.Size = New System.Drawing.Size(360, 670)
-            Me.tableLayoutPanel.TabIndex = 0
-            '
-            'Label1
-            '
-            Me.Label1.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.Label1.AutoSize = True
-            Me.tableLayoutPanel.SetColumnSpan(Me.Label1, 2)
-            Me.Label1.Font = New System.Drawing.Font("Segoe UI", 9.75!, System.Drawing.FontStyle.Bold)
-            Me.Label1.ForeColor = System.Drawing.Color.FromArgb(CType(CType(255, Byte), Integer), CType(CType(200, Byte), Integer), CType(CType(100, Byte), Integer))
-            Me.Label1.Location = New System.Drawing.Point(13, 15)
-            Me.Label1.Name = "Label1"
-            Me.Label1.Size = New System.Drawing.Size(111, 23)
-            Me.Label1.TabIndex = 0
-            Me.Label1.Text = "Input Volume"
-            '
-            'trackInputVolume
-            '
-            Me.trackInputVolume.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.trackInputVolume.Location = New System.Drawing.Point(13, 42)
-            Me.trackInputVolume.Maximum = 200
-            Me.trackInputVolume.Name = "trackInputVolume"
-            Me.trackInputVolume.Size = New System.Drawing.Size(124, 56)
-            Me.trackInputVolume.TabIndex = 1
-            Me.trackInputVolume.TickFrequency = 25
-            Me.trackInputVolume.Value = 100
-            '
-            'lblInputVolumeValue
-            '
-            Me.lblInputVolumeValue.Anchor = System.Windows.Forms.AnchorStyles.Right
-            Me.lblInputVolumeValue.AutoSize = True
-            Me.lblInputVolumeValue.Font = New System.Drawing.Font("Segoe UI", 12.0!, System.Drawing.FontStyle.Bold)
-            Me.lblInputVolumeValue.ForeColor = System.Drawing.Color.Cyan
-            Me.lblInputVolumeValue.Location = New System.Drawing.Point(277, 58)
-            Me.lblInputVolumeValue.Name = "lblInputVolumeValue"
-            Me.lblInputVolumeValue.Size = New System.Drawing.Size(70, 28)
-            Me.lblInputVolumeValue.TabIndex = 2
-            Me.lblInputVolumeValue.Text = "100%"
-            '
-            'chkLinkToPlayback
-            '
-            Me.chkLinkToPlayback.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.chkLinkToPlayback.AutoSize = True
-            Me.tableLayoutPanel.SetColumnSpan(Me.chkLinkToPlayback, 2)
-            Me.chkLinkToPlayback.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.chkLinkToPlayback.ForeColor = System.Drawing.Color.White
-            Me.chkLinkToPlayback.Location = New System.Drawing.Point(13, 95)
-            Me.chkLinkToPlayback.Name = "chkLinkToPlayback"
-            Me.chkLinkToPlayback.Size = New System.Drawing.Size(179, 24)
-            Me.chkLinkToPlayback.TabIndex = 3
-            Me.chkLinkToPlayback.Text = "Link to Playback Volume"
-            Me.chkLinkToPlayback.UseVisualStyleBackColor = True
-            '
-            'Label2
-            '
-            Me.Label2.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.Label2.AutoSize = True
-            Me.tableLayoutPanel.SetColumnSpan(Me.Label2, 2)
-            Me.Label2.Font = New System.Drawing.Font("Segoe UI", 9.75!, System.Drawing.FontStyle.Bold)
-            Me.Label2.ForeColor = System.Drawing.Color.FromArgb(CType(CType(255, Byte), Integer), CType(CType(200, Byte), Integer), CType(CType(100, Byte), Integer))
-            Me.Label2.Location = New System.Drawing.Point(13, 138)
-            Me.Label2.Name = "Label2"
-            Me.Label2.Size = New System.Drawing.Size(123, 23)
-            Me.Label2.TabIndex = 4
-            Me.Label2.Text = "Peak Behavior"
-            '
-            'lblPeakHold
-            '
-            Me.lblPeakHold.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.lblPeakHold.AutoSize = True
-            Me.lblPeakHold.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.lblPeakHold.ForeColor = System.Drawing.Color.White
-            Me.lblPeakHold.Location = New System.Drawing.Point(13, 172)
-            Me.lblPeakHold.Name = "lblPeakHold"
-            Me.lblPeakHold.Size = New System.Drawing.Size(118, 20)
-            Me.lblPeakHold.TabIndex = 5
-            Me.lblPeakHold.Text = "Peak Hold Time:"
-            '
-            'cmbPeakHold
-            '
-            Me.cmbPeakHold.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.cmbPeakHold.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
-            Me.cmbPeakHold.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-            Me.cmbPeakHold.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.cmbPeakHold.ForeColor = System.Drawing.Color.White
-            Me.cmbPeakHold.FormattingEnabled = True
-            Me.cmbPeakHold.Location = New System.Drawing.Point(143, 168)
-            Me.cmbPeakHold.Name = "cmbPeakHold"
-            Me.cmbPeakHold.Size = New System.Drawing.Size(204, 28)
-            Me.cmbPeakHold.TabIndex = 6
-            '
-            'lblPeakDecay
-            '
-            Me.lblPeakDecay.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.lblPeakDecay.AutoSize = True
-            Me.lblPeakDecay.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.lblPeakDecay.ForeColor = System.Drawing.Color.White
-            Me.lblPeakDecay.Location = New System.Drawing.Point(13, 207)
-            Me.lblPeakDecay.Name = "lblPeakDecay"
-            Me.lblPeakDecay.Size = New System.Drawing.Size(123, 20)
-            Me.lblPeakDecay.TabIndex = 7
-            Me.lblPeakDecay.Text = "Peak Decay Rate:"
-            '
-            'cmbPeakDecay
-            '
-            Me.cmbPeakDecay.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.cmbPeakDecay.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
-            Me.cmbPeakDecay.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-            Me.cmbPeakDecay.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.cmbPeakDecay.ForeColor = System.Drawing.Color.White
-            Me.cmbPeakDecay.FormattingEnabled = True
-            Me.cmbPeakDecay.Location = New System.Drawing.Point(143, 203)
-            Me.cmbPeakDecay.Name = "cmbPeakDecay"
-            Me.cmbPeakDecay.Size = New System.Drawing.Size(204, 28)
-            Me.cmbPeakDecay.TabIndex = 8
-            '
-            'Label3
-            '
-            Me.Label3.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.Label3.AutoSize = True
-            Me.tableLayoutPanel.SetColumnSpan(Me.Label3, 2)
-            Me.Label3.Font = New System.Drawing.Font("Segoe UI", 9.75!, System.Drawing.FontStyle.Bold)
-            Me.Label3.ForeColor = System.Drawing.Color.FromArgb(CType(CType(255, Byte), Integer), CType(CType(200, Byte), Integer), CType(CType(100, Byte), Integer))
-            Me.Label3.Location = New System.Drawing.Point(13, 258)
-            Me.Label3.Name = "Label3"
-            Me.Label3.Size = New System.Drawing.Size(144, 23)
-            Me.Label3.TabIndex = 9
-            Me.Label3.Text = "RMS && Ballistics"
-            '
-            'lblRmsWindow
-            '
-            Me.lblRmsWindow.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.lblRmsWindow.AutoSize = True
-            Me.lblRmsWindow.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.lblRmsWindow.ForeColor = System.Drawing.Color.White
-            Me.lblRmsWindow.Location = New System.Drawing.Point(13, 292)
-            Me.lblRmsWindow.Name = "lblRmsWindow"
-            Me.lblRmsWindow.Size = New System.Drawing.Size(98, 20)
-            Me.lblRmsWindow.TabIndex = 10
-            Me.lblRmsWindow.Text = "RMS Window:"
-            '
-            'cmbRmsWindow
-            '
-            Me.cmbRmsWindow.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.cmbRmsWindow.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
-            Me.cmbRmsWindow.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-            Me.cmbRmsWindow.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.cmbRmsWindow.ForeColor = System.Drawing.Color.White
-            Me.cmbRmsWindow.FormattingEnabled = True
-            Me.cmbRmsWindow.Location = New System.Drawing.Point(143, 288)
-            Me.cmbRmsWindow.Name = "cmbRmsWindow"
-            Me.cmbRmsWindow.Size = New System.Drawing.Size(204, 28)
-            Me.cmbRmsWindow.TabIndex = 11
-            '
-            'lblAttack
-            '
-            Me.lblAttack.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.lblAttack.AutoSize = True
-            Me.lblAttack.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.lblAttack.ForeColor = System.Drawing.Color.White
-            Me.lblAttack.Location = New System.Drawing.Point(13, 327)
-            Me.lblAttack.Name = "lblAttack"
-            Me.lblAttack.Size = New System.Drawing.Size(87, 20)
-            Me.lblAttack.TabIndex = 12
-            Me.lblAttack.Text = "Attack Time:"
-            '
-            'cmbAttack
-            '
-            Me.cmbAttack.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.cmbAttack.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
-            Me.cmbAttack.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-            Me.cmbAttack.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.cmbAttack.ForeColor = System.Drawing.Color.White
-            Me.cmbAttack.FormattingEnabled = True
-            Me.cmbAttack.Location = New System.Drawing.Point(143, 323)
-            Me.cmbAttack.Name = "cmbAttack"
-            Me.cmbAttack.Size = New System.Drawing.Size(204, 28)
-            Me.cmbAttack.TabIndex = 13
-            '
-            'lblRelease
-            '
-            Me.lblRelease.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.lblRelease.AutoSize = True
-            Me.lblRelease.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.lblRelease.ForeColor = System.Drawing.Color.White
-            Me.lblRelease.Location = New System.Drawing.Point(13, 362)
-            Me.lblRelease.Name = "lblRelease"
-            Me.lblRelease.Size = New System.Drawing.Size(93, 20)
-            Me.lblRelease.TabIndex = 14
-            Me.lblRelease.Text = "Release Time:"
-            '
-            'cmbRelease
-            '
-            Me.cmbRelease.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.cmbRelease.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
-            Me.cmbRelease.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-            Me.cmbRelease.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.cmbRelease.ForeColor = System.Drawing.Color.White
-            Me.cmbRelease.FormattingEnabled = True
-            Me.cmbRelease.Location = New System.Drawing.Point(143, 358)
-            Me.cmbRelease.Name = "cmbRelease"
-            Me.cmbRelease.Size = New System.Drawing.Size(204, 28)
-            Me.cmbRelease.TabIndex = 15
-            '
-            'Label4
-            '
-            Me.Label4.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.Label4.AutoSize = True
-            Me.tableLayoutPanel.SetColumnSpan(Me.Label4, 2)
-            Me.Label4.Font = New System.Drawing.Font("Segoe UI", 9.75!, System.Drawing.FontStyle.Bold)
-            Me.Label4.ForeColor = System.Drawing.Color.FromArgb(CType(CType(255, Byte), Integer), CType(CType(200, Byte), Integer), CType(CType(100, Byte), Integer))
-            Me.Label4.Location = New System.Drawing.Point(13, 398)
-            Me.Label4.Name = "Label4"
-            Me.Label4.Size = New System.Drawing.Size(163, 23)
-            Me.Label4.TabIndex = 16
-            Me.Label4.Text = "Clipping Detection"
-            '
-            'lblClipThreshold
-            '
-            Me.lblClipThreshold.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.lblClipThreshold.AutoSize = True
-            Me.lblClipThreshold.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.lblClipThreshold.ForeColor = System.Drawing.Color.White
-            Me.lblClipThreshold.Location = New System.Drawing.Point(13, 432)
-            Me.lblClipThreshold.Name = "lblClipThreshold"
-            Me.lblClipThreshold.Size = New System.Drawing.Size(108, 20)
-            Me.lblClipThreshold.TabIndex = 17
-            Me.lblClipThreshold.Text = "Clip Threshold:"
-            '
-            'cmbClipThreshold
-            '
-            Me.cmbClipThreshold.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.cmbClipThreshold.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
-            Me.cmbClipThreshold.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-            Me.cmbClipThreshold.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.cmbClipThreshold.ForeColor = System.Drawing.Color.White
-            Me.cmbClipThreshold.FormattingEnabled = True
-            Me.cmbClipThreshold.Location = New System.Drawing.Point(143, 428)
-            Me.cmbClipThreshold.Name = "cmbClipThreshold"
-            Me.cmbClipThreshold.Size = New System.Drawing.Size(204, 28)
-            Me.cmbClipThreshold.TabIndex = 18
-            '
-            'lblClipHold
-            '
-            Me.lblClipHold.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.lblClipHold.AutoSize = True
-            Me.lblClipHold.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.lblClipHold.ForeColor = System.Drawing.Color.White
-            Me.lblClipHold.Location = New System.Drawing.Point(13, 467)
-            Me.lblClipHold.Name = "lblClipHold"
-            Me.lblClipHold.Size = New System.Drawing.Size(113, 20)
-            Me.lblClipHold.TabIndex = 19
-            Me.lblClipHold.Text = "Clip Hold Time:"
-            '
-            'cmbClipHold
-            '
-            Me.cmbClipHold.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.cmbClipHold.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
-            Me.cmbClipHold.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-            Me.cmbClipHold.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.cmbClipHold.ForeColor = System.Drawing.Color.White
-            Me.cmbClipHold.FormattingEnabled = True
-            Me.cmbClipHold.Location = New System.Drawing.Point(143, 463)
-            Me.cmbClipHold.Name = "cmbClipHold"
-            Me.cmbClipHold.Size = New System.Drawing.Size(204, 28)
-            Me.cmbClipHold.TabIndex = 20
-            '
-            'Label5
-            '
-            Me.Label5.Anchor = System.Windows.Forms.AnchorStyles.Left
-            Me.Label5.AutoSize = True
-            Me.tableLayoutPanel.SetColumnSpan(Me.Label5, 2)
-            Me.Label5.Font = New System.Drawing.Font("Segoe UI", 9.75!, System.Drawing.FontStyle.Bold)
-            Me.Label5.ForeColor = System.Drawing.Color.FromArgb(CType(CType(255, Byte), Integer), CType(CType(200, Byte), Integer), CType(CType(100, Byte), Integer))
-            Me.Label5.Location = New System.Drawing.Point(13, 503)
-            Me.Label5.Name = "Label5"
-            Me.Label5.Size = New System.Drawing.Size(70, 23)
-            Me.Label5.TabIndex = 21
-            Me.Label5.Text = "Presets"
-            '
-            'btnFastResponse
-            '
-            Me.btnFastResponse.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.btnFastResponse.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.btnFastResponse.ForeColor = System.Drawing.Color.Black
-            Me.btnFastResponse.Location = New System.Drawing.Point(13, 538)
-            Me.btnFastResponse.Name = "btnFastResponse"
-            Me.btnFastResponse.Size = New System.Drawing.Size(124, 34)
-            Me.btnFastResponse.TabIndex = 22
-            Me.btnFastResponse.Text = "Fast Response"
-            Me.btnFastResponse.UseVisualStyleBackColor = True
-            '
-            'btnSlowResponse
-            '
-            Me.btnSlowResponse.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.btnSlowResponse.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.btnSlowResponse.ForeColor = System.Drawing.Color.Black
-            Me.btnSlowResponse.Location = New System.Drawing.Point(143, 538)
-            Me.btnSlowResponse.Name = "btnSlowResponse"
-            Me.btnSlowResponse.Size = New System.Drawing.Size(204, 34)
-            Me.btnSlowResponse.TabIndex = 23
-            Me.btnSlowResponse.Text = "Slow Response"
-            Me.btnSlowResponse.UseVisualStyleBackColor = True
-            '
-            'btnBroadcast
-            '
-            Me.btnBroadcast.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.btnBroadcast.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.btnBroadcast.ForeColor = System.Drawing.Color.Black
-            Me.btnBroadcast.Location = New System.Drawing.Point(13, 578)
-            Me.btnBroadcast.Name = "btnBroadcast"
-            Me.btnBroadcast.Size = New System.Drawing.Size(124, 34)
-            Me.btnBroadcast.TabIndex = 24
-            Me.btnBroadcast.Text = "Broadcast"
-            Me.btnBroadcast.UseVisualStyleBackColor = True
-            '
-            'btnReset
-            '
-            Me.btnReset.Anchor = CType((System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
-            Me.btnReset.Font = New System.Drawing.Font("Segoe UI", 9.0!)
-            Me.btnReset.ForeColor = System.Drawing.Color.Black
-            Me.btnReset.Location = New System.Drawing.Point(143, 578)
-            Me.btnReset.Name = "btnReset"
-            Me.btnReset.Size = New System.Drawing.Size(204, 34)
-            Me.btnReset.TabIndex = 25
-            Me.btnReset.Text = "Reset to Defaults"
-            Me.btnReset.UseVisualStyleBackColor = True
-            '
-            'InputTabPanel
-            '
-            Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 20.0!)
-            Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
-            Me.AutoScroll = True
-            Me.BackColor = System.Drawing.Color.FromArgb(CType(CType(45, Byte), Integer), CType(CType(45, Byte), Integer), CType(CType(48, Byte), Integer))
-            Me.Controls.Add(Me.tableLayoutPanel)
-            Me.ForeColor = System.Drawing.Color.FromArgb(CType(CType(241, Byte), Integer), CType(CType(241, Byte), Integer), CType(CType(241, Byte), Integer))
-            Me.Name = "InputTabPanel"
-            Me.Size = New System.Drawing.Size(360, 670)
-            Me.tableLayoutPanel.ResumeLayout(False)
-            Me.tableLayoutPanel.PerformLayout()
-            CType(Me.trackInputVolume, System.ComponentModel.ISupportInitialize).EndInit()
-            Me.ResumeLayout(False)
+            tableLayoutPanel = New TableLayoutPanel()
+            chkLinkToPlayback = New CheckBox()
+            Label2 = New Label()
+            lblPeakHold = New Label()
+            cmbPeakHold = New ComboBox()
+            lblPeakDecay = New Label()
+            cmbPeakDecay = New ComboBox()
+            Label3 = New Label()
+            lblRmsWindow = New Label()
+            cmbRmsWindow = New ComboBox()
+            lblAttack = New Label()
+            cmbAttack = New ComboBox()
+            lblRelease = New Label()
+            cmbRelease = New ComboBox()
+            Label4 = New Label()
+            lblClipThreshold = New Label()
+            cmbClipThreshold = New ComboBox()
+            lblClipHold = New Label()
+            cmbClipHold = New ComboBox()
+            Label5 = New Label()
+            btnFastResponse = New Button()
+            btnSlowResponse = New Button()
+            btnBroadcast = New Button()
+            btnReset = New Button()
+            tableLayoutPanel.SuspendLayout()
+            SuspendLayout()
+            ' 
+            ' tableLayoutPanel
+            ' 
+            tableLayoutPanel.AutoScroll = True
+            tableLayoutPanel.ColumnCount = 2
+            tableLayoutPanel.ColumnStyles.Add(New ColumnStyle(SizeType.Absolute, 130F))
+            tableLayoutPanel.ColumnStyles.Add(New ColumnStyle(SizeType.Percent, 100F))
+            tableLayoutPanel.Controls.Add(chkLinkToPlayback, 0, 0)
+            tableLayoutPanel.Controls.Add(Label2, 0, 1)
+            tableLayoutPanel.Controls.Add(lblPeakHold, 0, 2)
+            tableLayoutPanel.Controls.Add(cmbPeakHold, 1, 2)
+            tableLayoutPanel.Controls.Add(lblPeakDecay, 0, 3)
+            tableLayoutPanel.Controls.Add(cmbPeakDecay, 1, 3)
+            tableLayoutPanel.Controls.Add(Label3, 0, 4)
+            tableLayoutPanel.Controls.Add(lblRmsWindow, 0, 5)
+            tableLayoutPanel.Controls.Add(cmbRmsWindow, 1, 5)
+            tableLayoutPanel.Controls.Add(lblAttack, 0, 6)
+            tableLayoutPanel.Controls.Add(cmbAttack, 1, 6)
+            tableLayoutPanel.Controls.Add(lblRelease, 0, 7)
+            tableLayoutPanel.Controls.Add(cmbRelease, 1, 7)
+            tableLayoutPanel.Controls.Add(Label4, 0, 8)
+            tableLayoutPanel.Controls.Add(lblClipThreshold, 0, 9)
+            tableLayoutPanel.Controls.Add(cmbClipThreshold, 1, 9)
+            tableLayoutPanel.Controls.Add(lblClipHold, 0, 10)
+            tableLayoutPanel.Controls.Add(cmbClipHold, 1, 10)
+            tableLayoutPanel.Controls.Add(Label5, 0, 11)
+            tableLayoutPanel.Controls.Add(btnFastResponse, 0, 12)
+            tableLayoutPanel.Controls.Add(btnSlowResponse, 1, 12)
+            tableLayoutPanel.Controls.Add(btnBroadcast, 0, 13)
+            tableLayoutPanel.Controls.Add(btnReset, 1, 13)
+            tableLayoutPanel.Dock = DockStyle.Fill
+            tableLayoutPanel.Location = New Point(0, 0)
+            tableLayoutPanel.Name = "tableLayoutPanel"
+            tableLayoutPanel.Padding = New Padding(10)
+            tableLayoutPanel.RowCount = 14
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 35F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 30F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 35F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 35F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 30F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 35F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 35F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 35F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 30F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 35F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 35F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 30F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 40F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 40F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 20F))
+            tableLayoutPanel.RowStyles.Add(New RowStyle(SizeType.Absolute, 20F))
+            tableLayoutPanel.Size = New Size(360, 670)
+            tableLayoutPanel.TabIndex = 0
+            ' 
+            ' chkLinkToPlayback
+            ' 
+            chkLinkToPlayback.Anchor = AnchorStyles.Left
+            chkLinkToPlayback.AutoSize = True
+            tableLayoutPanel.SetColumnSpan(chkLinkToPlayback, 2)
+            chkLinkToPlayback.Font = New Font("Segoe UI", 9F)
+            chkLinkToPlayback.ForeColor = Color.White
+            chkLinkToPlayback.Location = New Point(13, 15)
+            chkLinkToPlayback.Name = "chkLinkToPlayback"
+            chkLinkToPlayback.Size = New Size(191, 24)
+            chkLinkToPlayback.TabIndex = 3
+            chkLinkToPlayback.Text = "Link to Playback Volume"
+            chkLinkToPlayback.UseVisualStyleBackColor = True
+            ' 
+            ' Label2
+            ' 
+            Label2.Anchor = AnchorStyles.Left
+            Label2.AutoSize = True
+            tableLayoutPanel.SetColumnSpan(Label2, 2)
+            Label2.Font = New Font("Segoe UI", 9.75F, FontStyle.Bold)
+            Label2.ForeColor = Color.FromArgb(CByte(255), CByte(200), CByte(100))
+            Label2.Location = New Point(13, 48)
+            Label2.Name = "Label2"
+            Label2.Size = New Size(122, 23)
+            Label2.TabIndex = 4
+            Label2.Text = "Peak Behavior"
+            ' 
+            ' lblPeakHold
+            ' 
+            lblPeakHold.Anchor = AnchorStyles.Left
+            lblPeakHold.AutoSize = True
+            lblPeakHold.Font = New Font("Segoe UI", 9F)
+            lblPeakHold.ForeColor = Color.White
+            lblPeakHold.Location = New Point(13, 82)
+            lblPeakHold.Name = "lblPeakHold"
+            lblPeakHold.Size = New Size(116, 20)
+            lblPeakHold.TabIndex = 5
+            lblPeakHold.Text = "Peak Hold Time:"
+            ' 
+            ' cmbPeakHold
+            ' 
+            cmbPeakHold.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            cmbPeakHold.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+            cmbPeakHold.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbPeakHold.Font = New Font("Segoe UI", 9F)
+            cmbPeakHold.ForeColor = Color.White
+            cmbPeakHold.FormattingEnabled = True
+            cmbPeakHold.Location = New Point(143, 78)
+            cmbPeakHold.Name = "cmbPeakHold"
+            cmbPeakHold.Size = New Size(204, 28)
+            cmbPeakHold.TabIndex = 6
+            ' 
+            ' lblPeakDecay
+            ' 
+            lblPeakDecay.Anchor = AnchorStyles.Left
+            lblPeakDecay.AutoSize = True
+            lblPeakDecay.Font = New Font("Segoe UI", 9F)
+            lblPeakDecay.ForeColor = Color.White
+            lblPeakDecay.Location = New Point(13, 117)
+            lblPeakDecay.Name = "lblPeakDecay"
+            lblPeakDecay.Size = New Size(121, 20)
+            lblPeakDecay.TabIndex = 7
+            lblPeakDecay.Text = "Peak Decay Rate:"
+            ' 
+            ' cmbPeakDecay
+            ' 
+            cmbPeakDecay.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            cmbPeakDecay.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+            cmbPeakDecay.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbPeakDecay.Font = New Font("Segoe UI", 9F)
+            cmbPeakDecay.ForeColor = Color.White
+            cmbPeakDecay.FormattingEnabled = True
+            cmbPeakDecay.Location = New Point(143, 113)
+            cmbPeakDecay.Name = "cmbPeakDecay"
+            cmbPeakDecay.Size = New Size(204, 28)
+            cmbPeakDecay.TabIndex = 8
+            ' 
+            ' Label3
+            ' 
+            Label3.Anchor = AnchorStyles.Left
+            Label3.AutoSize = True
+            tableLayoutPanel.SetColumnSpan(Label3, 2)
+            Label3.Font = New Font("Segoe UI", 9.75F, FontStyle.Bold)
+            Label3.ForeColor = Color.FromArgb(CByte(255), CByte(200), CByte(100))
+            Label3.Location = New Point(13, 148)
+            Label3.Name = "Label3"
+            Label3.Size = New Size(140, 23)
+            Label3.TabIndex = 9
+            Label3.Text = "RMS && Ballistics"
+            ' 
+            ' lblRmsWindow
+            ' 
+            lblRmsWindow.Anchor = AnchorStyles.Left
+            lblRmsWindow.AutoSize = True
+            lblRmsWindow.Font = New Font("Segoe UI", 9F)
+            lblRmsWindow.ForeColor = Color.White
+            lblRmsWindow.Location = New Point(13, 182)
+            lblRmsWindow.Name = "lblRmsWindow"
+            lblRmsWindow.Size = New Size(101, 20)
+            lblRmsWindow.TabIndex = 10
+            lblRmsWindow.Text = "RMS Window:"
+            ' 
+            ' cmbRmsWindow
+            ' 
+            cmbRmsWindow.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            cmbRmsWindow.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+            cmbRmsWindow.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbRmsWindow.Font = New Font("Segoe UI", 9F)
+            cmbRmsWindow.ForeColor = Color.White
+            cmbRmsWindow.FormattingEnabled = True
+            cmbRmsWindow.Location = New Point(143, 178)
+            cmbRmsWindow.Name = "cmbRmsWindow"
+            cmbRmsWindow.Size = New Size(204, 28)
+            cmbRmsWindow.TabIndex = 11
+            ' 
+            ' lblAttack
+            ' 
+            lblAttack.Anchor = AnchorStyles.Left
+            lblAttack.AutoSize = True
+            lblAttack.Font = New Font("Segoe UI", 9F)
+            lblAttack.ForeColor = Color.White
+            lblAttack.Location = New Point(13, 217)
+            lblAttack.Name = "lblAttack"
+            lblAttack.Size = New Size(91, 20)
+            lblAttack.TabIndex = 12
+            lblAttack.Text = "Attack Time:"
+            ' 
+            ' cmbAttack
+            ' 
+            cmbAttack.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            cmbAttack.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+            cmbAttack.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbAttack.Font = New Font("Segoe UI", 9F)
+            cmbAttack.ForeColor = Color.White
+            cmbAttack.FormattingEnabled = True
+            cmbAttack.Location = New Point(143, 213)
+            cmbAttack.Name = "cmbAttack"
+            cmbAttack.Size = New Size(204, 28)
+            cmbAttack.TabIndex = 13
+            ' 
+            ' lblRelease
+            ' 
+            lblRelease.Anchor = AnchorStyles.Left
+            lblRelease.AutoSize = True
+            lblRelease.Font = New Font("Segoe UI", 9F)
+            lblRelease.ForeColor = Color.White
+            lblRelease.Location = New Point(13, 252)
+            lblRelease.Name = "lblRelease"
+            lblRelease.Size = New Size(100, 20)
+            lblRelease.TabIndex = 14
+            lblRelease.Text = "Release Time:"
+            ' 
+            ' cmbRelease
+            ' 
+            cmbRelease.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            cmbRelease.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+            cmbRelease.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbRelease.Font = New Font("Segoe UI", 9F)
+            cmbRelease.ForeColor = Color.White
+            cmbRelease.FormattingEnabled = True
+            cmbRelease.Location = New Point(143, 248)
+            cmbRelease.Name = "cmbRelease"
+            cmbRelease.Size = New Size(204, 28)
+            cmbRelease.TabIndex = 15
+            ' 
+            ' Label4
+            ' 
+            Label4.Anchor = AnchorStyles.Left
+            Label4.AutoSize = True
+            tableLayoutPanel.SetColumnSpan(Label4, 2)
+            Label4.Font = New Font("Segoe UI", 9.75F, FontStyle.Bold)
+            Label4.ForeColor = Color.FromArgb(CByte(255), CByte(200), CByte(100))
+            Label4.Location = New Point(13, 283)
+            Label4.Name = "Label4"
+            Label4.Size = New Size(162, 23)
+            Label4.TabIndex = 16
+            Label4.Text = "Clipping Detection"
+            ' 
+            ' lblClipThreshold
+            ' 
+            lblClipThreshold.Anchor = AnchorStyles.Left
+            lblClipThreshold.AutoSize = True
+            lblClipThreshold.Font = New Font("Segoe UI", 9F)
+            lblClipThreshold.ForeColor = Color.White
+            lblClipThreshold.Location = New Point(13, 317)
+            lblClipThreshold.Name = "lblClipThreshold"
+            lblClipThreshold.Size = New Size(107, 20)
+            lblClipThreshold.TabIndex = 17
+            lblClipThreshold.Text = "Clip Threshold:"
+            ' 
+            ' cmbClipThreshold
+            ' 
+            cmbClipThreshold.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            cmbClipThreshold.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+            cmbClipThreshold.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbClipThreshold.Font = New Font("Segoe UI", 9F)
+            cmbClipThreshold.ForeColor = Color.White
+            cmbClipThreshold.FormattingEnabled = True
+            cmbClipThreshold.Location = New Point(143, 313)
+            cmbClipThreshold.Name = "cmbClipThreshold"
+            cmbClipThreshold.Size = New Size(204, 28)
+            cmbClipThreshold.TabIndex = 18
+            ' 
+            ' lblClipHold
+            ' 
+            lblClipHold.Anchor = AnchorStyles.Left
+            lblClipHold.AutoSize = True
+            lblClipHold.Font = New Font("Segoe UI", 9F)
+            lblClipHold.ForeColor = Color.White
+            lblClipHold.Location = New Point(13, 352)
+            lblClipHold.Name = "lblClipHold"
+            lblClipHold.Size = New Size(112, 20)
+            lblClipHold.TabIndex = 19
+            lblClipHold.Text = "Clip Hold Time:"
+            ' 
+            ' cmbClipHold
+            ' 
+            cmbClipHold.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            cmbClipHold.BackColor = Color.FromArgb(CByte(60), CByte(60), CByte(60))
+            cmbClipHold.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbClipHold.Font = New Font("Segoe UI", 9F)
+            cmbClipHold.ForeColor = Color.White
+            cmbClipHold.FormattingEnabled = True
+            cmbClipHold.Location = New Point(143, 348)
+            cmbClipHold.Name = "cmbClipHold"
+            cmbClipHold.Size = New Size(204, 28)
+            cmbClipHold.TabIndex = 20
+            ' 
+            ' Label5
+            ' 
+            Label5.Anchor = AnchorStyles.Left
+            Label5.AutoSize = True
+            tableLayoutPanel.SetColumnSpan(Label5, 2)
+            Label5.Font = New Font("Segoe UI", 9.75F, FontStyle.Bold)
+            Label5.ForeColor = Color.FromArgb(CByte(255), CByte(200), CByte(100))
+            Label5.Location = New Point(13, 383)
+            Label5.Name = "Label5"
+            Label5.Size = New Size(66, 23)
+            Label5.TabIndex = 21
+            Label5.Text = "Presets"
+            ' 
+            ' btnFastResponse
+            ' 
+            btnFastResponse.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            btnFastResponse.Font = New Font("Segoe UI", 9F)
+            btnFastResponse.ForeColor = Color.Black
+            btnFastResponse.Location = New Point(13, 413)
+            btnFastResponse.Name = "btnFastResponse"
+            btnFastResponse.Size = New Size(124, 34)
+            btnFastResponse.TabIndex = 22
+            btnFastResponse.Text = "Fast Response"
+            btnFastResponse.UseVisualStyleBackColor = True
+            ' 
+            ' btnSlowResponse
+            ' 
+            btnSlowResponse.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            btnSlowResponse.Font = New Font("Segoe UI", 9F)
+            btnSlowResponse.ForeColor = Color.Black
+            btnSlowResponse.Location = New Point(143, 413)
+            btnSlowResponse.Name = "btnSlowResponse"
+            btnSlowResponse.Size = New Size(204, 34)
+            btnSlowResponse.TabIndex = 23
+            btnSlowResponse.Text = "Slow Response"
+            btnSlowResponse.UseVisualStyleBackColor = True
+            ' 
+            ' btnBroadcast
+            ' 
+            btnBroadcast.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            btnBroadcast.Font = New Font("Segoe UI", 9F)
+            btnBroadcast.ForeColor = Color.Black
+            btnBroadcast.Location = New Point(13, 538)
+            btnBroadcast.Name = "btnBroadcast"
+            btnBroadcast.Size = New Size(124, 34)
+            btnBroadcast.TabIndex = 24
+            btnBroadcast.Text = "Broadcast"
+            btnBroadcast.UseVisualStyleBackColor = True
+            ' 
+            ' btnReset
+            ' 
+            btnReset.Anchor = AnchorStyles.Left Or AnchorStyles.Right
+            btnReset.Font = New Font("Segoe UI", 9F)
+            btnReset.ForeColor = Color.Black
+            btnReset.Location = New Point(143, 538)
+            btnReset.Name = "btnReset"
+            btnReset.Size = New Size(204, 34)
+            btnReset.TabIndex = 25
+            btnReset.Text = "Reset to Defaults"
+            btnReset.UseVisualStyleBackColor = True
+            ' 
+            ' InputTabPanel
+            ' 
+            AutoScaleDimensions = New SizeF(8F, 20F)
+            AutoScaleMode = AutoScaleMode.Font
+            AutoScroll = True
+            BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+            Controls.Add(tableLayoutPanel)
+            ForeColor = Color.FromArgb(CByte(241), CByte(241), CByte(241))
+            Name = "InputTabPanel"
+            Size = New Size(360, 670)
+            tableLayoutPanel.ResumeLayout(False)
+            tableLayoutPanel.PerformLayout()
+            ResumeLayout(False)
 
         End Sub
 
         Friend WithEvents tableLayoutPanel As TableLayoutPanel
-        Friend WithEvents Label1 As Label
-        Friend WithEvents trackInputVolume As TrackBar
-        Friend WithEvents lblInputVolumeValue As Label
         Friend WithEvents chkLinkToPlayback As CheckBox
         Friend WithEvents Label2 As Label
         Friend WithEvents lblPeakHold As Label

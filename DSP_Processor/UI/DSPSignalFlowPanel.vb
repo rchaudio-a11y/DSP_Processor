@@ -151,19 +151,21 @@ Partial Public Class DSPSignalFlowPanel
         trackPan.TickFrequency = 25
         lblPanValue.Text = "Center"
 
-        ' Wire events
+        ' Wire events (using MouseDoubleClick instead of DoubleClick for reliability)
         AddHandler trackGain.Scroll, AddressOf OnGainChanged
-        AddHandler trackGain.DoubleClick, AddressOf OnGainDoubleClick
+        AddHandler trackGain.ValueChanged, AddressOf OnGainChanged ' ALSO wire ValueChanged for redundancy
+        AddHandler trackGain.MouseDoubleClick, AddressOf OnGainDoubleClick
         AddHandler trackPan.Scroll, AddressOf OnPanChanged
-        AddHandler trackPan.DoubleClick, AddressOf OnPanDoubleClick
+        AddHandler trackPan.ValueChanged, AddressOf OnPanChanged ' ALSO wire ValueChanged
+        AddHandler trackPan.MouseDoubleClick, AddressOf OnPanDoubleClick
 
         ' TODO: Wire filter events when filters are implemented
         AddHandler chkHPFEnable.CheckedChanged, AddressOf OnFilterChanged
         AddHandler trackHPFFreq.Scroll, AddressOf OnFilterChanged
-        AddHandler trackHPFFreq.DoubleClick, AddressOf OnHPFDoubleClick
+        AddHandler trackHPFFreq.MouseDoubleClick, AddressOf OnHPFDoubleClick
         AddHandler chkLPFEnable.CheckedChanged, AddressOf OnFilterChanged
         AddHandler trackLPFFreq.Scroll, AddressOf OnFilterChanged
-        AddHandler trackLPFFreq.DoubleClick, AddressOf OnLPFDoubleClick
+        AddHandler trackLPFFreq.MouseDoubleClick, AddressOf OnLPFDoubleClick
 
         ' Initialize filter labels
         lblHPFFreqValue.Text = $"{trackHPFFreq.Value} Hz"
@@ -173,9 +175,9 @@ Partial Public Class DSPSignalFlowPanel
 
         ' TODO: Wire output mixer events
         AddHandler trackMaster.Scroll, AddressOf OnMasterChanged
-        AddHandler trackMaster.DoubleClick, AddressOf OnMasterDoubleClick
+        AddHandler trackMaster.MouseDoubleClick, AddressOf OnMasterDoubleClick
         AddHandler trackWidth.Scroll, AddressOf OnWidthChanged
-        AddHandler trackWidth.DoubleClick, AddressOf OnWidthDoubleClick
+        AddHandler trackWidth.MouseDoubleClick, AddressOf OnWidthDoubleClick
     End Sub
 
 #End Region
@@ -185,11 +187,15 @@ Partial Public Class DSPSignalFlowPanel
     ''' <summary>Set the GainProcessor instance to control</summary>
     Public Sub SetGainProcessor(processor As GainProcessor)
         gainProcessor = processor
+        Utils.Logger.Instance.Info($"SetGainProcessor called. Processor IsNot Nothing={processor IsNot Nothing}", "DSPSignalFlowPanel")
 
         If gainProcessor IsNot Nothing Then
             ' Load current values
             UpdateGainFromProcessor()
             UpdatePanFromProcessor()
+            Utils.Logger.Instance.Info("GainProcessor wired successfully!", "DSPSignalFlowPanel")
+        Else
+            Utils.Logger.Instance.Warning("SetGainProcessor called with Nothing!", "DSPSignalFlowPanel")
         End If
     End Sub
 
@@ -224,7 +230,15 @@ Partial Public Class DSPSignalFlowPanel
 #Region "Event Handlers - Gain/Pan"
 
     Private Sub OnGainChanged(sender As Object, e As EventArgs)
-        If suppressEvents OrElse gainProcessor Is Nothing Then Return
+        ' Debug logging
+        Utils.Logger.Instance.Debug($"OnGainChanged called. suppressEvents={suppressEvents}, gainProcessor IsNot Nothing={gainProcessor IsNot Nothing}", "DSPSignalFlowPanel")
+
+        If suppressEvents OrElse gainProcessor Is Nothing Then
+            If gainProcessor Is Nothing Then
+                Utils.Logger.Instance.Warning("OnGainChanged: gainProcessor is Nothing! Not wired yet?", "DSPSignalFlowPanel")
+            End If
+            Return
+        End If
 
         ' Convert trackbar value to dB (divided by 10)
         Dim gainDb = trackGain.Value / 10.0F
@@ -232,9 +246,10 @@ Partial Public Class DSPSignalFlowPanel
 
         ' Update processor
         gainProcessor.GainDB = gainDb
+        Utils.Logger.Instance.Info($"Gain updated to {gainDb:F1} dB", "DSPSignalFlowPanel")
     End Sub
 
-    Private Sub OnGainDoubleClick(sender As Object, e As EventArgs)
+    Private Sub OnGainDoubleClick(sender As Object, e As MouseEventArgs)
         ' Reset to default (0 dB = unity gain)
         trackGain.Value = 0
         Utils.Logger.Instance.Info("Gain reset to default (0 dB)", "DSPSignalFlowPanel")
@@ -259,7 +274,7 @@ Partial Public Class DSPSignalFlowPanel
         gainProcessor.PanPosition = panPosition
     End Sub
 
-    Private Sub OnPanDoubleClick(sender As Object, e As EventArgs)
+    Private Sub OnPanDoubleClick(sender As Object, e As MouseEventArgs)
         ' Reset to default (0 = center)
         trackPan.Value = 0
         Utils.Logger.Instance.Info("Pan reset to default (Center)", "DSPSignalFlowPanel")
@@ -286,13 +301,13 @@ Partial Public Class DSPSignalFlowPanel
         End If
     End Sub
 
-    Private Sub OnHPFDoubleClick(sender As Object, e As EventArgs)
+    Private Sub OnHPFDoubleClick(sender As Object, e As MouseEventArgs)
         ' Reset to default (80 Hz typical high-pass)
         trackHPFFreq.Value = 80
         Utils.Logger.Instance.Info("High-pass filter reset to default (80 Hz)", "DSPSignalFlowPanel")
     End Sub
 
-    Private Sub OnLPFDoubleClick(sender As Object, e As EventArgs)
+    Private Sub OnLPFDoubleClick(sender As Object, e As MouseEventArgs)
         ' Reset to default (15000 Hz typical low-pass)
         trackLPFFreq.Value = 15000
         Utils.Logger.Instance.Info("Low-pass filter reset to default (15 kHz)", "DSPSignalFlowPanel")
@@ -308,7 +323,7 @@ Partial Public Class DSPSignalFlowPanel
         lblMasterValue.Text = $"{masterDb:F1} dB"
     End Sub
 
-    Private Sub OnMasterDoubleClick(sender As Object, e As EventArgs)
+    Private Sub OnMasterDoubleClick(sender As Object, e As MouseEventArgs)
         ' Reset to default (0 dB = unity gain)
         trackMaster.Value = 0
         Utils.Logger.Instance.Info("Master volume reset to default (0 dB)", "DSPSignalFlowPanel")
@@ -320,7 +335,7 @@ Partial Public Class DSPSignalFlowPanel
         lblWidthValue.Text = $"{width}%"
     End Sub
 
-    Private Sub OnWidthDoubleClick(sender As Object, e As EventArgs)
+    Private Sub OnWidthDoubleClick(sender As Object, e As MouseEventArgs)
         ' Reset to default (100% = normal stereo)
         trackWidth.Value = 100
         Utils.Logger.Instance.Info("Stereo width reset to default (100%)", "DSPSignalFlowPanel")

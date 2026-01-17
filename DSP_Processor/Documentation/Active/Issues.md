@@ -1,31 +1,73 @@
-# Active Issues
+# Active Issues - DSP_Processor v1.3.1.3
 
-**Last Updated:** January 16, 2026
+**Last Updated:** 2026-01-16  
+**Current Version:** v1.3.1.3 (In Progress - Testing)
 
-## ?? Critical
+---
 
-*No critical issues*
+## ?? Critical Issues
+
+None currently.
+
+---
 
 ## ?? High Priority
 
-*No high priority issues*
+### **#001: Meters Display Raw Audio Bypassing DSP Chain**
+**Status:** Open - Root Cause Identified  
+**Created:** 2026-01-16  
+**Affects:** All meters, gain/pan control feedback
+
+**Summary:** UI meters show raw microphone audio instead of DSP-processed audio, making slider controls appear non-functional.
+
+**Details:** [v1_3_1_3-001-Meters-Bypass-DSP.md](Issues/v1_3_1_3-001-Meters-Bypass-DSP.md)
+
+---
 
 ## ?? Medium Priority
 
-*No medium priority issues*
+### **#002: DSPSignalFlowPanel Meters Show Identical Values**
+**Status:** Open - Root Cause Identified  
+**Created:** 2026-01-16
 
-## ?? Low Priority / Enhancements
+**Details:** [v1_3_1_3-002-Meters-Show-Same-Value.md](Issues/v1_3_1_3-002-Meters-Show-Same-Value.md)
 
-*No low priority issues*
+### **#003: Tap Point Buffers Created But Never Used**
+**Status:** Open  
+**Created:** 2026-01-16
 
----
-
-## ? Recently Resolved
-
-- [x] Volume control sliders not working ? [Docs](../Completed/Features/Volume-Controls-Cleanup-Complete.md)
-- [x] RingBuffer validation bugs ? [Docs](../Completed/Features/Volume-Controls-Cleanup-Complete.md)
-- [x] DSPSignalFlowPanel not wired ? [Docs](../Completed/Features/Volume-Controls-Cleanup-Complete.md)
+**Details:** [v1_3_1_3-003-Tap-Points-Unused.md](Issues/v1_3_1_3-003-Tap-Points-Unused.md)
 
 ---
 
-**Note:** When issues are resolved, move to [Completed/Issues/](../Completed/Issues/)
+## ?? Low Priority
+
+### **#004: Master Volume and Stereo Width Not Implemented**
+**Status:** Open - Deferred
+
+**Details:** [v1_3_1_3-004-Master-Width-Not-Implemented.md](Issues/v1_3_1_3-004-Master-Width-Not-Implemented.md)
+
+### **#005: No Centralized Tap Point Management Infrastructure**
+**Status:** Open - Future Enhancement  
+**Created:** 2026-01-16
+
+**Summary:** Tap point buffers accessed as direct Friend fields with no manager, enum, or unified API. Creates tight coupling and maintenance burden.
+
+**Recommendation:** Defer to v1.3.2.0 - Create TapPointManager for cleaner architecture
+
+**Details:** [v1_3_1_3-005-No-TapPointManager.md](Issues/v1_3_1_3-005-No-TapPointManager.md)
+
+---
+
+## ?? Summary
+
+| Priority | Count |
+|----------|-------|
+| High | 1 |
+| Medium | 2 |
+| Low | 2 |
+| **Total** | **5** |
+
+---
+
+**Next:** [Task-List-v1_3_1_3-Audio-Flow-Fix.md](Task-List-v1_3_1_3-Audio-Flow-Fix.md)

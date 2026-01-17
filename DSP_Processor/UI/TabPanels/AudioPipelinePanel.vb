@@ -55,6 +55,7 @@ Namespace UI.TabPanels
         Private suppressEvents As Boolean = False
         Private isDirty As Boolean = False  ' Track unsaved changes
         Private router As AudioPipelineRouter
+        Private recordingManager As RecordingManager  ' For real-time gain control
 
 #End Region
 
@@ -71,41 +72,47 @@ Namespace UI.TabPanels
 
         ''' <summary>Inject router instance from MainForm (prevents duplicate router instances)</summary>
         Public Sub SetRouter(routerInstance As AudioPipelineRouter)
-    If routerInstance Is Nothing Then
-        Throw New ArgumentNullException(NameOf(routerInstance))
-    End If
+            If routerInstance Is Nothing Then
+                Throw New ArgumentNullException(NameOf(routerInstance))
+            End If
 
-    ' Unsubscribe from old router if any
-    If router IsNot Nothing Then
-        RemoveHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
-    End If
+            ' Unsubscribe from old router if any
+            If router IsNot Nothing Then
+                RemoveHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
+            End If
 
-    ' Set new router
-    router = routerInstance
+            ' Set new router
+            router = routerInstance
 
-    ' Subscribe to events
-    AddHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
+            ' Subscribe to events
+            AddHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
 
-    Utils.Logger.Instance.Info("Router injected into AudioPipelinePanel", "AudioPipelinePanel")
-End Sub
+            Utils.Logger.Instance.Info("Router injected into AudioPipelinePanel", "AudioPipelinePanel")
+        End Sub
 
-Private Sub InitializeRouter()
-    Try
-        ' DEPRECATED: Router is now injected via SetRouter()
-        ' This method kept for backward compatibility but should not be used
-        Utils.Logger.Instance.Warning("InitializeRouter() called - router should be injected via SetRouter()", "AudioPipelinePanel")
+        ''' <summary>Inject RecordingManager instance for real-time gain control</summary>
+        Public Sub SetRecordingManager(manager As RecordingManager)
+            recordingManager = manager
+            Utils.Logger.Instance.Info("RecordingManager injected into AudioPipelinePanel", "AudioPipelinePanel")
+        End Sub
 
-        router = New AudioPipelineRouter()
-        router.Initialize()
+        Private Sub InitializeRouter()
+            Try
+                ' DEPRECATED: Router is now injected via SetRouter()
+                ' This method kept for backward compatibility but should not be used
+                Utils.Logger.Instance.Warning("InitializeRouter() called - router should be injected via SetRouter()", "AudioPipelinePanel")
 
-        ' Subscribe to router events
-        AddHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
+                router = New AudioPipelineRouter()
+                router.Initialize()
 
-    Catch ex As Exception
-        ' Log error but don't crash
-        Utils.Logger.Instance.Error("Failed to initialize router in panel", ex, "AudioPipelinePanel")
-    End Try
-End Sub
+                ' Subscribe to router events
+                AddHandler router.RoutingChanged, AddressOf OnRouterConfigurationChanged
+
+            Catch ex As Exception
+                ' Log error but don't crash
+                Utils.Logger.Instance.Error("Failed to initialize router in panel", ex, "AudioPipelinePanel")
+            End Try
+        End Sub
 
         Private Sub InitializeComponent()
             Me.SuspendLayout()
@@ -344,20 +351,20 @@ End Sub
 
 #Region "Public Methods"
 
-''' <summary>Set configuration with automatic event suppression</summary>
-Private Sub SetConfiguration(config As PipelineConfiguration, Optional suppress As Boolean = True)
-    If config Is Nothing Then Return
+        ''' <summary>Set configuration with automatic event suppression</summary>
+        Private Sub SetConfiguration(config As PipelineConfiguration, Optional suppress As Boolean = True)
+            If config Is Nothing Then Return
 
-    Dim wasSuppress = suppressEvents
-    suppressEvents = suppress
-    Try
-        LoadConfiguration(config)
-    Finally
-        suppressEvents = wasSuppress
-    End Try
-End Sub
+            Dim wasSuppress = suppressEvents
+            suppressEvents = suppress
+            Try
+                LoadConfiguration(config)
+            Finally
+                suppressEvents = wasSuppress
+            End Try
+        End Sub
 
-''' <summary>Load configuration into UI controls</summary>
+        ''' <summary>Load configuration into UI controls</summary>
         Public Sub LoadConfiguration(config As PipelineConfiguration)
             If config Is Nothing Then Return
 
@@ -496,6 +503,15 @@ End Sub
         Private Sub trkInputGain_ValueChanged(sender As Object, e As EventArgs)
             lblInputGainValue.Text = $"{trkInputGain.Value}%"
             Utils.Logger.Instance.Debug($"Input gain changed: {trkInputGain.Value}%", "AudioPipelinePanel")
+
+            ' Update RecordingManager InputGainProcessor in real-time
+            If recordingManager IsNot Nothing AndAlso recordingManager.InputGainProcessor IsNot Nothing Then
+                ' Convert 0-200% to linear gain (0.0-2.0)
+                Dim linearGain = trkInputGain.Value / 100.0F
+                recordingManager.InputGainProcessor.GainLinear = linearGain
+                Utils.Logger.Instance.Debug($"InputGainProcessor updated: {linearGain:F2} linear", "AudioPipelinePanel")
+            End If
+
             OnSettingChanged(sender, e)
         End Sub
 
@@ -508,6 +524,15 @@ End Sub
         Private Sub trkOutputGain_ValueChanged(sender As Object, e As EventArgs)
             lblOutputGainValue.Text = $"{trkOutputGain.Value}%"
             Utils.Logger.Instance.Debug($"Output gain changed: {trkOutputGain.Value}%", "AudioPipelinePanel")
+
+            ' Update RecordingManager OutputGainProcessor in real-time
+            If recordingManager IsNot Nothing AndAlso recordingManager.OutputGainProcessor IsNot Nothing Then
+                ' Convert 0-200% to linear gain (0.0-2.0)
+                Dim linearGain = trkOutputGain.Value / 100.0F
+                recordingManager.OutputGainProcessor.GainLinear = linearGain
+                Utils.Logger.Instance.Debug($"OutputGainProcessor updated: {linearGain:F2} linear", "AudioPipelinePanel")
+            End If
+
             OnSettingChanged(sender, e)
         End Sub
 

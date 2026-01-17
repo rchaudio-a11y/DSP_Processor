@@ -18,7 +18,6 @@ Namespace UI.TabPanels
             InitializeComponent()
 
             ' Wire up events (controls already exist in Designer!)
-            AddHandler trackInputVolume.Scroll, AddressOf OnControlChanged
             AddHandler chkLinkToPlayback.CheckedChanged, AddressOf OnControlChanged
             AddHandler cmbPeakHold.SelectedIndexChanged, AddressOf OnControlChanged
             AddHandler cmbPeakDecay.SelectedIndexChanged, AddressOf OnControlChanged
@@ -117,9 +116,7 @@ Namespace UI.TabPanels
             If suppressEvents Then Return
 
             ' Update volume label
-            If TypeOf sender Is TrackBar AndAlso sender Is trackInputVolume Then
-                lblInputVolumeValue.Text = $"{trackInputVolume.Value}%"
-            End If
+
 
             ' Raise settings changed event
             RaiseEvent SettingsChanged(Me, GetSettings())
