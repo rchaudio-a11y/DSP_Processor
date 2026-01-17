@@ -47,6 +47,7 @@ Namespace Managers
         Private dspThread As DSP.DSPThread ' Routes mic audio through DSP for meters/effects
         Private _inputGainProcessor As DSP.GainProcessor ' Input gain stage (Phase 2.5)
         Private _outputGainProcessor As DSP.GainProcessor ' Output gain stage (Phase 2.5)
+        Private tapPointManager As DSP.TapPointManager ' Phase 2.7: Centralized tap point access
         Private useDSP As Boolean = True ' Enable DSP processing (can disable for testing)
 
         ' Settings
@@ -137,6 +138,13 @@ Namespace Managers
         Public ReadOnly Property OutputGainProcessor As DSP.GainProcessor
             Get
                 Return _outputGainProcessor
+            End Get
+        End Property
+
+        ''' <summary>Gets the TapPointManager for reading processed audio from tap points (Phase 2.7)</summary>
+        Public ReadOnly Property TapManager As DSP.TapPointManager
+            Get
+                Return tapPointManager
             End Get
         End Property
 
@@ -412,6 +420,10 @@ Namespace Managers
                     ' Start DSP worker thread
                     dspThread.Start()
 
+                    ' PHASE 2.7: Create TapPointManager for centralized tap access
+                    tapPointManager = New DSP.TapPointManager(dspThread)
+                    Logger.Instance.Info("✅ TapPointManager created (centralized tap point access)", "RecordingManager")
+
                     Logger.Instance.Info($"✅ DSP pipeline active: {pcm16Format.SampleRate}Hz, {pcm16Format.Channels}ch, Input+Output gain stages!", "RecordingManager")
                 End If
 
@@ -453,6 +465,14 @@ Namespace Managers
                 ' PHASE 2.5: Clean up DSP thread and processors
                 If dspThread IsNot Nothing Then
                     Logger.Instance.Info("Stopping DSP thread...", "RecordingManager")
+
+                    ' PHASE 2.7: Dispose TapPointManager first
+                    If tapPointManager IsNot Nothing Then
+                        tapPointManager.Dispose()
+                        tapPointManager = Nothing
+                        Logger.Instance.Info("TapPointManager disposed", "RecordingManager")
+                    End If
+
                     dspThread.Stop()
                     dspThread.Dispose()
                     dspThread = Nothing

@@ -15,22 +15,23 @@ Namespace DSP
 
         Private ReadOnly inputBuffer As Utils.RingBuffer
         Private ReadOnly outputBuffer As Utils.RingBuffer
-        
+
         ' PHASE 2.5: Multi-Reader Monitor Buffers (Architecture Rule #4)
-        Private ReadOnly inputMonitorBuffer As Utils.MultiReaderRingBuffer ' PreDSP tap (raw audio)
-        Private ReadOnly outputMonitorBuffer As Utils.MultiReaderRingBuffer ' PreOutput tap (final processed)
-        Friend ReadOnly postGainMonitorBuffer As Utils.MultiReaderRingBuffer ' PostGain tap (after INPUT gain) - Friend for callback access
-        Friend ReadOnly postOutputGainMonitorBuffer As Utils.MultiReaderRingBuffer ' PostDSP tap (after OUTPUT gain) - Friend for callback access
-        
+        Friend ReadOnly inputMonitorBuffer As Utils.MultiReaderRingBuffer ' PreDSP tap (raw audio) - Friend for TapPointManager
+        Friend ReadOnly outputMonitorBuffer As Utils.MultiReaderRingBuffer ' PreOutput tap (final processed) - Friend for TapPointManager
+        Friend ReadOnly postGainMonitorBuffer As Utils.MultiReaderRingBuffer ' PostGain tap (after INPUT gain) - Friend for TapPointManager
+        Friend ReadOnly postOutputGainMonitorBuffer As Utils.MultiReaderRingBuffer ' PostDSP tap (after OUTPUT gain) - Friend for TapPointManager
+
         Private ReadOnly processorChain As ProcessorChain
         Private ReadOnly workBuffer As AudioBuffer
-        Private disposed As Boolean = False
+        ' Thread-safe flags using Interlocked (0=False, 1=True)
+        Private _disposed As Integer = 0 ' Thread-safe: Use Interlocked.CompareExchange
         Private ReadOnly inputLowEvent As AutoResetEvent ' Signal feeder when input low
 
         ' Worker thread for DSP processing
         Private workerThread As Thread
-        Private shouldStop As Boolean = False
-        Private _isRunning As Boolean = False
+        Private _shouldStop As Integer = 0 ' Thread-safe: Use Interlocked.Exchange
+        Private _isRunningFlag As Integer = 0 ' Thread-safe: Use Interlocked.Exchange
 
         ' Processing stats
         Private _processedSamples As Long = 0
@@ -69,7 +70,7 @@ Namespace DSP
         ''' <summary>Gets whether worker thread is running</summary>
         Public ReadOnly Property IsRunning As Boolean
             Get
-                Return _isRunning
+                Return Interlocked.CompareExchange(_isRunningFlag, 0, 0) = 1
             End Get
         End Property
 
@@ -144,10 +145,12 @@ Namespace DSP
         ''' Start the DSP worker thread
         ''' </summary>
         Public Sub Start()
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
-            If _isRunning Then Return
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
+            If IsRunning Then Return
 
-            shouldStop = False
+            Interlocked.Exchange(_shouldStop, 0) ' Set to False
             workerThread = New Thread(AddressOf WorkerLoop)
             workerThread.Name = "DSP Worker Thread"
             workerThread.Priority = ThreadPriority.AboveNormal ' High priority for real-time
@@ -161,9 +164,9 @@ Namespace DSP
         ''' Stop the DSP worker thread
         ''' </summary>
         Public Sub [Stop]()
-            If Not _isRunning Then Return
+            If Not IsRunning Then Return
 
-            shouldStop = True
+            Interlocked.Exchange(_shouldStop, 1) ' Set to True
             workerThread?.Join(1000) ' Wait up to 1 second
 
             Utils.Logger.Instance.Info($"DSP worker stopped. Processed: {ProcessedSamples}, Dropped: {DroppedSamples}", "DSPThread")
@@ -173,7 +176,9 @@ Namespace DSP
         ''' Writes audio data to the input buffer
         ''' </summary>
         Public Function WriteInput(data As Byte(), offset As Integer, count As Integer) As Integer
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
             Return inputBuffer.Write(data, offset, count)
         End Function
 
@@ -182,7 +187,9 @@ Namespace DSP
         ''' REAL-TIME SAFE: Never blocks, never does DSP work
         ''' </summary>
         Public Function ReadOutput(data As Byte(), offset As Integer, count As Integer) As Integer
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
             Return outputBuffer.Read(data, offset, count)
         End Function
 
@@ -192,7 +199,9 @@ Namespace DSP
         ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
         ''' </summary>
         Public Function ReadInputMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
             ' Auto-create default reader if not exists
             If Not inputMonitorBuffer.HasReader("_default_input") Then
                 inputMonitorBuffer.CreateReader("_default_input")
@@ -206,7 +215,9 @@ Namespace DSP
         ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
         ''' </summary>
         Public Function ReadOutputMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
             ' Auto-create default reader if not exists
             If Not outputMonitorBuffer.HasReader("_default_output") Then
                 outputMonitorBuffer.CreateReader("_default_output")
@@ -220,7 +231,9 @@ Namespace DSP
         ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
         ''' </summary>
         Public Function ReadPostGainMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
             ' Auto-create default reader if not exists
             If Not postGainMonitorBuffer.HasReader("_default_postgain") Then
                 postGainMonitorBuffer.CreateReader("_default_postgain")
@@ -234,7 +247,9 @@ Namespace DSP
         ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
         ''' </summary>
         Public Function ReadPostOutputGainMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
             ' Auto-create default reader if not exists
             If Not postOutputGainMonitorBuffer.HasReader("_default_postoutputgain") Then
                 postOutputGainMonitorBuffer.CreateReader("_default_postoutputgain")
@@ -338,7 +353,9 @@ Namespace DSP
         ''' <param name="readerName">Unique name for this reader (e.g., "InputFFT", "OutputMeter")</param>
         ''' <returns>Reader handle for use in ReadFromTap()</returns>
         Public Function CreateTapReader(tapLocation As TapLocation, readerName As String) As String
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
 
             Select Case tapLocation
                 Case TapLocation.PreDSP
@@ -358,7 +375,7 @@ Namespace DSP
         ''' Remove a reader cursor from a tap point
         ''' </summary>
         Public Sub RemoveTapReader(tapLocation As TapLocation, readerName As String)
-            If disposed OrElse String.IsNullOrWhiteSpace(readerName) Then Return
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 OrElse String.IsNullOrWhiteSpace(readerName) Then Return
 
             Select Case tapLocation
                 Case TapLocation.PreDSP
@@ -377,7 +394,9 @@ Namespace DSP
         ''' Each reader maintains independent position
         ''' </summary>
         Public Function ReadFromTap(tapLocation As TapLocation, readerName As String, buffer As Byte(), offset As Integer, count As Integer) As Integer
-            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
 
             Select Case tapLocation
                 Case TapLocation.PreDSP
@@ -397,7 +416,7 @@ Namespace DSP
         ''' Get bytes available for a specific reader at a tap point
         ''' </summary>
         Public Function TapAvailable(tapLocation As TapLocation, readerName As String) As Integer
-            If disposed OrElse String.IsNullOrWhiteSpace(readerName) Then Return 0
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 OrElse String.IsNullOrWhiteSpace(readerName) Then Return 0
 
             Select Case tapLocation
                 Case TapLocation.PreDSP
@@ -417,7 +436,7 @@ Namespace DSP
         ''' Check if a reader exists at a tap point
         ''' </summary>
         Public Function HasTapReader(tapLocation As TapLocation, readerName As String) As Boolean
-            If disposed OrElse String.IsNullOrWhiteSpace(readerName) Then Return False
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 OrElse String.IsNullOrWhiteSpace(readerName) Then Return False
 
             Select Case tapLocation
                 Case TapLocation.PreDSP
@@ -444,7 +463,7 @@ Namespace DSP
         ''' Rate-matched to audio playback speed (not unlimited processing)
         ''' </summary>
         Private Sub WorkerLoop()
-            _isRunning = True
+            Interlocked.Exchange(_isRunningFlag, 1) ' Set to True
             Dim cycleCount As Long = 0
 
             ' Calculate target delay to match sample rate
@@ -457,7 +476,7 @@ Namespace DSP
             Dim nextProcessTime As Long = targetTicksPerBlock
 
             Try
-                While Not shouldStop
+                While Interlocked.CompareExchange(_shouldStop, 0, 0) = 0 ' While False
                     ' Check if we have enough input data to process
                     If inputBuffer.Available >= workBuffer.Capacity Then
                         ' Check if it's time to process next block (rate limiting)
@@ -517,7 +536,7 @@ Namespace DSP
             Catch ex As Exception
                 Utils.Logger.Instance.Error("DSP worker thread crashed", ex, "DSPThread")
             Finally
-                _isRunning = False
+                Interlocked.Exchange(_isRunningFlag, 0) ' Set to False
                 Utils.Logger.Instance.Info($"DSP worker stopped. Cycles={cycleCount}, Processed={ProcessedSamples}, Dropped={DroppedSamples}", "DSPThread")
             End Try
         End Sub
@@ -527,7 +546,10 @@ Namespace DSP
 #Region "IDisposable"
 
         Public Sub Dispose() Implements IDisposable.Dispose
-            If Not disposed Then
+            ' Thread-safe double-dispose protection using Interlocked.CompareExchange
+            ' If _disposed was 0 (False) and we set it to 1 (True), we proceed with disposal
+            ' If _disposed was already 1 (True), CompareExchange returns 1 and we skip disposal
+            If Interlocked.CompareExchange(_disposed, 1, 0) = 0 Then
                 [Stop]()
 
                 inputBuffer?.Dispose()
@@ -539,7 +561,6 @@ Namespace DSP
                 inputLowEvent?.Dispose()
 
                 Utils.Logger.Instance.Info($"DSP disposed. Processed: {ProcessedSamples}, Dropped: {DroppedSamples}", "DSPThread")
-                disposed = True
             End If
         End Sub
 

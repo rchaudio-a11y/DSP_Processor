@@ -10,6 +10,8 @@ Namespace DSP
 
         Private _gainLinear As Single = 1.0F ' Linear gain (1.0 = unity gain)
         Private _panPosition As Single = 0.0F ' Pan position: -1.0 (left) to +1.0 (right), 0 = center
+        Private _stereoWidth As Single = 1.0F ' Stereo width: 0.0 (mono) to 2.0 (wide), 1.0 = normal (100%)
+
 
         ''' <summary>
         ''' Creates a new gain processor
@@ -79,6 +81,22 @@ Namespace DSP
         End Property
 
         ''' <summary>
+        ''' Gets or sets the stereo width (0.0 = mono, 1.0 = normal, 2.0 = wide)
+        ''' Uses mid-side processing to adjust stereo image width
+        ''' PHASE 2.7: Added for Master/Width control on Output stage
+        ''' </summary>
+        Public Property StereoWidth As Single
+            Get
+                Return _stereoWidth
+            End Get
+            Set(value As Single)
+                ' Clamp to valid range (0.0 to 2.0)
+                _stereoWidth = Math.Max(0.0F, Math.Min(2.0F, value))
+            End Set
+        End Property
+
+
+        ''' <summary>
         ''' Process audio buffer (apply gain)
         ''' </summary>
         Protected Overrides Sub ProcessInternal(buffer As AudioBuffer)
@@ -86,12 +104,13 @@ Namespace DSP
                 Return
             End If
 
-            ' Unity gain and center pan - no processing needed, but STILL send to monitor
-            If Math.Abs(_gainLinear - 1.0F) < 0.001F AndAlso Math.Abs(_panPosition) < 0.001F Then
+            ' Unity gain, center pan, and normal width - no processing needed, but STILL send to monitor
+            If Math.Abs(_gainLinear - 1.0F) < 0.001F AndAlso Math.Abs(_panPosition) < 0.001F AndAlso Math.Abs(_stereoWidth - 1.0F) < 0.001F Then
                 ' DSP TAP POINT PATTERN: Send to monitor even when bypassing processing
                 SendToMonitor(buffer)
                 Return
             End If
+
 
             ' Process 16-bit PCM samples
             Dim sampleCount = buffer.ByteCount \ Format.BlockAlign
@@ -116,24 +135,43 @@ Namespace DSP
                     buffer.Buffer(sampleOffset + 1) = bytes(1)
                     
                 ElseIf Format.Channels = 2 Then
-                    ' Stereo - apply gain AND pan
-                    ' Left channel
+                    ' Stereo - apply gain, pan, AND stereo width
+                    ' Read left and right samples
                     Dim leftOffset = offset
+                    Dim rightOffset = offset + 2
                     Dim leftSample = BitConverter.ToInt16(buffer.Buffer, leftOffset)
-                    Dim leftGained = CInt(leftSample * _gainLinear * leftPanGain)
+                    Dim rightSample = BitConverter.ToInt16(buffer.Buffer, rightOffset)
+
+                    ' Apply stereo width using mid-side processing
+                    ' Mid = (L + R) / 2, Side = (L - R) / 2
+                    Dim mid As Single = (leftSample + rightSample) / 2.0F
+                    Dim side As Single = (leftSample - rightSample) / 2.0F
+
+                    ' Apply width to side signal
+                    side *= _stereoWidth
+
+                    ' Reconstruct L/R from mid/side
+                    ' L = Mid + Side, R = Mid - Side
+                    Dim leftProcessed As Single = mid + side
+                    Dim rightProcessed As Single = mid - side
+
+                    ' Apply gain and pan
+                    Dim leftGained = CInt(leftProcessed * _gainLinear * leftPanGain)
+                    Dim rightGained = CInt(rightProcessed * _gainLinear * rightPanGain)
+
+                    ' Clamp to 16-bit range
                     leftGained = Math.Max(-32768, Math.Min(32767, leftGained))
+                    rightGained = Math.Max(-32768, Math.Min(32767, rightGained))
+
+                    ' Write back
                     Dim leftBytes = BitConverter.GetBytes(CShort(leftGained))
                     buffer.Buffer(leftOffset) = leftBytes(0)
                     buffer.Buffer(leftOffset + 1) = leftBytes(1)
-                    
-                    ' Right channel
-                    Dim rightOffset = offset + 2
-                    Dim rightSample = BitConverter.ToInt16(buffer.Buffer, rightOffset)
-                    Dim rightGained = CInt(rightSample * _gainLinear * rightPanGain)
-                    rightGained = Math.Max(-32768, Math.Min(32767, rightGained))
+
                     Dim rightBytes = BitConverter.GetBytes(CShort(rightGained))
                     buffer.Buffer(rightOffset) = rightBytes(0)
                     buffer.Buffer(rightOffset + 1) = rightBytes(1)
+
                 Else
                     ' Multi-channel - fall back to old per-channel gain only
                     For ch = 0 To Format.Channels - 1

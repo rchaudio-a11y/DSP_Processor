@@ -1,4 +1,4 @@
-Imports DSP_Processor.Utils
+﻿Imports DSP_Processor.Utils
 Imports DSP_Processor.Managers
 Imports DSP_Processor.DSP.FFT
 
@@ -233,16 +233,16 @@ Namespace Audio.Routing
 #Region "Routing Logic"
 
         ''' <summary>
-        ''' Route an audio buffer through the pipeline - PHASE 3 REFACTORED!
+        ''' Route an audio buffer through the pipeline - PHASE 2.7 UPDATED FOR TAPPOINT!
         ''' 
-        ''' NEW: TRUE BYPASS MODE!
-        ''' - When DSP disabled: Direct routing (bypasses pipeline entirely)
-        ''' - When DSP enabled: Full pipeline processing with FFT taps
+        ''' NEW: Microphone uses TapPointManager (NOT AudioPipeline)!
+        ''' - Microphone: Reads from TapPointManager tap points
+        ''' - File playback: Still uses AudioPipeline (old system)
         ''' 
-        ''' This allows perfect A/B testing:
-        ''' - Record file with DSP disabled (pure input)
-        ''' - Record file with DSP enabled (processed)
-        ''' - Compare the files to verify DSP behavior!
+        ''' This fixes:
+        ''' - Pre FFT waiting (now reads from TapPointManager)
+        ''' - Post FFT affected by wrong sliders (now independent)
+        ''' - Enable checkboxes not working (will be fixed)
         ''' </summary>
         Public Sub RouteAudioBuffer(buffer As Byte(), source As AudioSourceType,
                                    bitsPerSample As Integer, channels As Integer, sampleRate As Integer)
@@ -257,6 +257,17 @@ Namespace Audio.Routing
             End If
 
             Try
+                ' PHASE 2.7: For MICROPHONE, skip AudioPipeline entirely!
+                ' Microphone audio is already being processed by DSPThread
+                ' and read through TapPointManager in MainForm.OnRecordingBufferAvailable
+                ' 
+                ' AudioPipeline is ONLY for file playback (where we don't have DSPThread)
+                If source = AudioSourceType.Microphone Then
+                    ' Skip pipeline - microphone uses TapPointManager directly
+                    Logger.Instance.Debug("Microphone audio: Skipping AudioPipeline (using TapPointManager)", "AudioPipelineRouter")
+                    Return
+                End If
+
                 ' Get configuration snapshot
                 Dim config As PipelineConfiguration
                 SyncLock _configLock
@@ -267,13 +278,13 @@ Namespace Audio.Routing
                 If Not config.Processing.EnableDSP Then
                     ' === BYPASS MODE: Skip pipeline entirely! ===
                     ' No FFT taps, no monitoring, no processing
-                    ' Direct path: Input ? Output (zero overhead)
+                    ' Direct path: Input → Output (zero overhead)
                     ' Perfect for A/B testing!
                     Logger.Instance.Debug("DSP BYPASS: Audio routed directly (pipeline skipped)", "AudioPipelineRouter")
                     Return
                 End If
 
-                ' === DSP ENABLED: Route through full pipeline ===
+                ' === DSP ENABLED: Route through full pipeline (FILE PLAYBACK ONLY) ===
                 ' This includes:
                 ' - FFT tap points (if enabled)
                 ' - DSP processing (gain, future: EQ, compressor, etc.)
@@ -287,6 +298,7 @@ Namespace Audio.Routing
                 Logger.Instance.Error("Error routing audio buffer", ex, "AudioPipelineRouter")
             End Try
         End Sub
+
 
 #End Region
 

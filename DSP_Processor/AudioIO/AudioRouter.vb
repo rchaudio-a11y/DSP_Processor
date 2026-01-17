@@ -477,8 +477,21 @@ Namespace AudioIO
                 Dim outputBufferSize = pcm16Format.AverageBytesPerSecond * 2 ' 2 seconds of audio
                 dspThread = New DSP.DSPThread(pcm16Format, inputBufferSize, outputBufferSize)
 
+                ' AUTO-CREATE DEFAULT READERS for file playback FFT/meters
+                ' (RecordingManager uses TapPointManager which creates its own readers)
+                If Not dspThread.inputMonitorBuffer.HasReader("_default_input") Then
+                    dspThread.inputMonitorBuffer.CreateReader("_default_input")
+                    Utils.Logger.Instance.Info("✅ Created default INPUT monitor reader for file playback", "AudioRouter")
+                End If
+
+                If Not dspThread.outputMonitorBuffer.HasReader("_default_output") Then
+                    dspThread.outputMonitorBuffer.CreateReader("_default_output")
+                    Utils.Logger.Instance.Info("✅ Created default OUTPUT monitor reader for file playback", "AudioRouter")
+                End If
+
                 Utils.Logger.Instance.Info($"DSP format: {dspThread.Format.SampleRate}Hz, {dspThread.Format.Channels}ch, {dspThread.Format.BitsPerSample}bit, Encoding={dspThread.Format.Encoding}, BlockAlign={dspThread.Format.BlockAlign}, AvgBytes/sec={dspThread.Format.AverageBytesPerSecond}", "AudioRouter")
                 Utils.Logger.Instance.Info($"DSP buffers: {inputBufferSize} bytes input, {outputBufferSize} bytes output (2 seconds each)", "AudioRouter")
+
 
                 ' PHASE 2.5: Add INPUT gain processor (first in chain)
                 _inputGainProcessor = New DSP.GainProcessor(pcm16Format) With {

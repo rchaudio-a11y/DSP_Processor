@@ -22,10 +22,20 @@ Partial Public Class MainForm
     ' Audio Pipeline Router (Phase 2 Foundation - SHARED INSTANCE)
     Private pipelineRouter As AudioPipelineRouter
 
+    ' PHASE 2.7: Tap Point Reader Tracking
+    Private tapReaders As New List(Of String)() ' Track reader IDs for cleanup
+
+    ' UI Update Throttling (20 FPS = 50ms) - SEPARATE FOR EACH PATH!
+    Private lastMicrophoneUIUpdateTime As DateTime = DateTime.MinValue ' Microphone path
+    Private lastFilePlaybackUIUpdateTime As DateTime = DateTime.MinValue ' File playback path
+    Private ReadOnly uiUpdateIntervalMs As Integer = 50 ' 20 FPS
+
     ' Flag to prevent FFT queue buildup
     Private fftProcessingInProgress As Boolean = False
     Private lastMonitoringEventTime As DateTime = DateTime.MinValue
     Private monitoringThrottleMs As Integer = 50  ' Only fire monitoring events every 50ms
+
+
 
     ' Form load state
     Private isFormFullyLoaded As Boolean = False
@@ -395,6 +405,8 @@ Partial Public Class MainForm
         Services.LoggingServiceAdapter.Instance.LogInfo($"Recording stopped: {e.Duration.TotalSeconds:F1}s")
     End Sub
 
+
+
     Private Sub OnRecordingTimeUpdated(sender As Object, duration As TimeSpan)
         ' Update UI (on UI thread if needed)
         If Me.InvokeRequired Then
@@ -416,25 +428,81 @@ Partial Public Class MainForm
             e.Channels,
             e.SampleRate)
 
-        ' FAST PATH: Update meters immediately (EVENT-DRIVEN, not timer-based!)
-        ' NOTE: This is direct - not routed through pipeline for lowest latency
+        ' PHASE 2.7: UI UPDATE THROTTLING (20 FPS = 50ms) - MICROPHONE PATH
+        ' Only update meters and FFT every 50ms to prevent lag from painted controls
+        Dim now = DateTime.Now
+        If (now - lastMicrophoneUIUpdateTime).TotalMilliseconds < uiUpdateIntervalMs Then
+            Return ' Skip this frame - too soon!
+        End If
+        lastMicrophoneUIUpdateTime = now
+
+
+        ' PHASE 2.7: Update meters using tap point processed audio (EVENT-DRIVEN!)
+        ' This shows DSP-processed audio, not raw input
         Try
-            Dim levelData = AudioLevelMeter.AnalyzeSamples(e.Buffer, e.BitsPerSample, e.Channels)
+            If recordingManager IsNot Nothing AndAlso recordingManager.TapManager IsNot Nothing Then
+                ' Read from INPUT tap (after InputGainProcessor)
+                Dim inputBuffer(4095) As Byte
+                Dim inputBytes = recordingManager.TapManager.Read("MainForm_InputMeters", inputBuffer, 0, 4096)
 
-            ' Waveform tab meter (existing)
-            meterRecording.SetLevel(levelData.PeakDB, levelData.RMSDB, levelData.IsClipping)
+                ' Read from OUTPUT tap (after OutputGainProcessor)
+                Dim outputBuffer(4095) As Byte
+                Dim outputBytes = recordingManager.TapManager.Read("MainForm_OutputMeters", outputBuffer, 0, 4096)
 
-            ' DSP Signal Flow Panel meters (NEW - event-driven!)
-            ' For now, use same levels for input and output (future: read from DSP tap points)
-            DspSignalFlowPanel1.UpdateMeters(
-                levelData.PeakDB,  ' Input Left
-                levelData.PeakDB,  ' Input Right
-                levelData.PeakDB,  ' Output Left
-                levelData.PeakDB)  ' Output Right
-        Catch
-            ' Ignore metering errors
+                ' Analyze INPUT levels (after InputGainProcessor) - STEREO L/R separation!
+                Dim inputLevels = AudioLevelMeter.AnalyzeSamples(inputBuffer, e.BitsPerSample, e.Channels)
+
+                ' Analyze OUTPUT levels (after OutputGainProcessor) - STEREO L/R separation!
+                Dim outputLevels = AudioLevelMeter.AnalyzeSamples(outputBuffer, e.BitsPerSample, e.Channels)
+
+                ' Update main recording meter (use output tap - final processed audio)
+                meterRecording.SetLevel(outputLevels.PeakDB, outputLevels.RMSDB, outputLevels.IsClipping)
+
+                ' PHASE 2.7: Update DSP Signal Flow Panel meters with SEPARATE L/R channels!
+                ' Pan control is now VISIBLE in the meters! 🎚️
+                DspSignalFlowPanel1.UpdateMeters(
+                    inputLevels.PeakLeftDB,   ' Input Left (separate!)
+                    inputLevels.PeakRightDB,  ' Input Right (separate!)
+                    outputLevels.PeakLeftDB,  ' Output Left (separate!)
+                    outputLevels.PeakRightDB) ' Output Right (separate!)
+
+                ' PHASE 2.7: Send audio to FFT (SpectrumManager) using tap points!
+                ' Input FFT = PostInputGain (after InputGainProcessor)
+                If inputBytes > 0 AndAlso spectrumManager IsNot Nothing Then
+                    Dim inputSpectrum = spectrumManager.ProcessInputSamples(inputBuffer, inputBytes, e.BitsPerSample, e.Channels, e.SampleRate)
+                    If inputSpectrum IsNot Nothing Then
+                        SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(inputSpectrum, e.SampleRate, spectrumManager.FFTSize)
+                    End If
+                End If
+
+                ' Output FFT = PostOutputGain (after OutputGainProcessor)
+                If outputBytes > 0 AndAlso spectrumManager IsNot Nothing Then
+                    Dim outputSpectrum = spectrumManager.ProcessOutputSamples(outputBuffer, outputBytes, e.BitsPerSample, e.Channels, e.SampleRate)
+                    If outputSpectrum IsNot Nothing Then
+                        SpectrumAnalyzerControl1.OutputDisplay.UpdateSpectrum(outputSpectrum, e.SampleRate, spectrumManager.FFTSize)
+                    End If
+                End If
+
+                Logger.Instance.Debug($"UI Update (20 FPS): Input L={inputLevels.PeakLeftDB:F1} R={inputLevels.PeakRightDB:F1}, Output L={outputLevels.PeakLeftDB:F1} R={outputLevels.PeakRightDB:F1}", "MainForm")
+            Else
+                ' Fallback to raw buffer if tap points not available
+                Dim levelData = AudioLevelMeter.AnalyzeSamples(e.Buffer, e.BitsPerSample, e.Channels)
+                meterRecording.SetLevel(levelData.PeakDB, levelData.RMSDB, levelData.IsClipping)
+
+                DspSignalFlowPanel1.UpdateMeters(
+                    levelData.PeakLeftDB, levelData.PeakRightDB,
+                    levelData.PeakLeftDB, levelData.PeakRightDB)
+
+                Logger.Instance.Warning("TapManager not available - using raw buffer fallback", "MainForm")
+            End If
+        Catch ex As Exception
+            Logger.Instance.Error("Meter update failed", ex, "MainForm")
         End Try
     End Sub
+
+
+
+
 
     Private Sub OnMicrophoneArmed(sender As Object, isArmed As Boolean)
         If isArmed Then
@@ -442,17 +510,81 @@ Partial Public Class MainForm
             lblStatus.Text = "Status: Ready (Mic Armed)"
             transportControl.IsRecordArmed = True
 
-            ' Wire DSPSignalFlowPanel to RecordingManager's INPUT gain processor
-            If recordingManager IsNot Nothing AndAlso recordingManager.InputGainProcessor IsNot Nothing Then
-                DspSignalFlowPanel1.SetGainProcessor(recordingManager.InputGainProcessor)
-                Logger.Instance.Info("DSPSignalFlowPanel wired to RecordingManager INPUT GainProcessor", "MainForm")
+            ' PHASE 2.7: Wire DSPSignalFlowPanel to BOTH INPUT and OUTPUT gain processors
+            If recordingManager IsNot Nothing Then
+                ' Wire INPUT gain processor (Gain/Pan controls)
+                If recordingManager.InputGainProcessor IsNot Nothing Then
+                    DspSignalFlowPanel1.SetGainProcessor(recordingManager.InputGainProcessor)
+                    Logger.Instance.Info("✅ DSPSignalFlowPanel wired to INPUT GainProcessor (Gain/Pan)", "MainForm")
+                End If
+
+                ' Wire OUTPUT gain processor (Master/Width controls)
+                If recordingManager.OutputGainProcessor IsNot Nothing Then
+                    DspSignalFlowPanel1.SetOutputGainProcessor(recordingManager.OutputGainProcessor)
+                    Logger.Instance.Info("✅ DSPSignalFlowPanel wired to OUTPUT GainProcessor (Master/Width)", "MainForm")
+                End If
             End If
+
+            ' PHASE 2.7: Initialize tap point readers for metering
+            Logger.Instance.Info("Microphone armed - initializing tap point readers", "MainForm")
+            InitializeTapPointReaders()
         Else
             panelLED.BackColor = Color.Gray
             lblStatus.Text = "Status: Mic Disarmed"
             transportControl.IsRecordArmed = False
+
+            ' PHASE 2.7: Cleanup tap point readers
+            Logger.Instance.Info("Microphone disarmed - cleaning up tap point readers", "MainForm")
+            CleanupTapPointReaders()
         End If
     End Sub
+
+
+    ''' <summary>
+    ''' Phase 2.7: Initialize tap point readers for metering
+    ''' Creates readers for INPUT and OUTPUT tap points
+    ''' </summary>
+    Private Sub InitializeTapPointReaders()
+        If recordingManager Is Nothing OrElse recordingManager.TapManager Is Nothing Then
+            Logger.Instance.Warning("Cannot initialize tap readers - manager not available", "MainForm")
+            Return
+        End If
+
+        Try
+            ' Create readers for meters
+            Dim inputReader = recordingManager.TapManager.CreateReader(
+                DSP.TapPoint.PostInputGain,
+                "MainForm_InputMeters")
+            tapReaders.Add(inputReader)
+
+            Dim outputReader = recordingManager.TapManager.CreateReader(
+                DSP.TapPoint.PostOutputGain,
+                "MainForm_OutputMeters")
+            tapReaders.Add(outputReader)
+
+            Logger.Instance.Info("✅ Tap point readers initialized (INPUT + OUTPUT)", "MainForm")
+        Catch ex As Exception
+            Logger.Instance.Error("Failed to create tap readers", ex, "MainForm")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Phase 2.7: Cleanup tap point readers when microphone disarmed
+    ''' </summary>
+    Private Sub CleanupTapPointReaders()
+        If recordingManager IsNot Nothing AndAlso recordingManager.TapManager IsNot Nothing Then
+            For Each readerId In tapReaders
+                Try
+                    recordingManager.TapManager.DestroyReader(readerId)
+                Catch ex As Exception
+                    Logger.Instance.Warning($"Failed to destroy reader {readerId}", "MainForm")
+                End Try
+            Next
+        End If
+        tapReaders.Clear()
+        Logger.Instance.Info("✅ Tap point readers cleaned up", "MainForm")
+    End Sub
+
 
 #End Region
 
@@ -965,12 +1097,12 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub TimerPlayback_Tick(sender As Object, e As EventArgs) Handles TimerPlayback.Tick
-        ' DIAGNOSTIC: Log timer ticks (every 30 ticks = ~0.5s)
+        ' DIAGNOSTIC: Log timer ticks
         Static tickCount As Integer = 0
         tickCount += 1
-        If tickCount Mod 30 = 0 Then
-            Logger.Instance.Debug($"⏱️ TimerPlayback_Tick #{tickCount}, IsPlaying={playbackManager?.IsPlaying}, DSP={audioRouter?.IsPlaying}", "MainForm")
-        End If
+
+        ' LOUD LOGGING for debugging!
+        Services.LoggingServiceAdapter.Instance.LogInfo($"⏱️ TIMER TICK #{tickCount}, audioRouter.IsPlaying={audioRouter?.IsPlaying}")
 
         ' Update playback position (PlaybackManager OR AudioRouter) - EVENT-DRIVEN!
         If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
@@ -983,7 +1115,10 @@ Partial Public Class MainForm
 
         ' Update DSP BOTH input (PRE) and output (POST) samples for FFT comparison at 60 Hz
         If audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
+            Services.LoggingServiceAdapter.Instance.LogInfo($"⏱️ Calling audioRouter.UpdateInputSamples...")
             audioRouter.UpdateInputSamples()  ' PRE-DSP (raw audio)
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"⏱️ Calling audioRouter.UpdateOutputSamples...")
             audioRouter.UpdateOutputSamples() ' POST-DSP (processed audio)
 
             ' NOTE: DSP Signal Flow meters removed from timer - now event-driven!
@@ -1139,26 +1274,33 @@ Partial Public Class MainForm
     ''' <summary>Handle DSP input samples for FFT (PRE-DSP - raw audio)</summary>
     Private Sub OnDSPInputSamples(sender As Object, e As AudioIO.AudioSamplesEventArgs)
         Try
-            ' DIAGNOSTIC: Log that we received the event
+            ' DIAGNOSTIC: Log EVERY call to see if events are firing
             Static callCount As Integer = 0
             callCount += 1
-            If callCount Mod 10 = 0 Then
-                Services.LoggingServiceAdapter.Instance.LogInfo($"OnDSPInputSamples: Event received! Count={callCount}, Samples={e.Count} bytes")
-            End If
+            Services.LoggingServiceAdapter.Instance.LogInfo($"🔊 OnDSPInputSamples CALLED! Count={callCount}, Samples={e.Count} bytes")
 
-            ' Process through SpectrumManager (Task 2.0.4)
+            ' Analyze levels for METERS
+            Dim inputLevels = AudioLevelMeter.AnalyzeSamples(e.Samples, e.BitsPerSample, e.Channels)
+
+            ' Process through SpectrumManager for FFT (Task 2.0.4)
             Dim spectrumInput = spectrumManager.ProcessInputSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels, e.SampleRate)
 
             If spectrumInput IsNot Nothing AndAlso spectrumInput.Length > 0 Then
                 SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrumInput, e.SampleRate, spectrumManager.FFTSize)
             Else
-                ' Log if spectrum is null/empty
-                If callCount Mod 10 = 0 Then
-                    Services.LoggingServiceAdapter.Instance.LogWarning($"OnDSPInputSamples: Spectrum is NULL or empty!")
-                End If
+                Services.LoggingServiceAdapter.Instance.LogWarning($"OnDSPInputSamples: Spectrum is NULL or empty!")
             End If
+
+            ' Update INPUT meters (DSP Signal Flow Panel)
+            DspSignalFlowPanel1.UpdateMeters(
+                inputLevels.PeakLeftDB,   ' Input Left
+                inputLevels.PeakRightDB,  ' Input Right
+                inputLevels.PeakLeftDB,   ' Output Left (same for now)
+                inputLevels.PeakRightDB)  ' Output Right (same for now)
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"✅ Meters updated: L={inputLevels.PeakLeftDB:F1} R={inputLevels.PeakRightDB:F1}")
+
         Catch ex As Exception
-            ' Log FFT errors instead of ignoring
             Services.LoggingServiceAdapter.Instance.LogError($"OnDSPInputSamples error: {ex.Message}", ex)
         End Try
     End Sub
@@ -1173,7 +1315,13 @@ Partial Public Class MainForm
                 Services.LoggingServiceAdapter.Instance.LogInfo($"OnDSPOutputSamples: Event received! Count={callCount}, Samples={e.Count} bytes")
             End If
 
-            ' Process through SpectrumManager (Task 2.0.4)
+            ' Analyze levels for METERS
+            Dim outputLevels = AudioLevelMeter.AnalyzeSamples(e.Samples, e.BitsPerSample, e.Channels)
+
+            ' Update main recording meter with output levels
+            meterRecording.SetLevel(outputLevels.PeakDB, outputLevels.RMSDB, outputLevels.IsClipping)
+
+            ' Process through SpectrumManager for FFT (Task 2.0.4)
             Dim spectrumOutput = spectrumManager.ProcessOutputSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels, e.SampleRate)
 
             If spectrumOutput IsNot Nothing AndAlso spectrumOutput.Length > 0 Then
@@ -1198,6 +1346,7 @@ Partial Public Class MainForm
             Services.LoggingServiceAdapter.Instance.LogError($"OnDSPOutputSamples error: {ex.Message}", ex)
         End Try
     End Sub
+
 
     ''' <summary>Handle playback completion (file reached EOF naturally)</summary>
     Private Sub OnPlaybackCompleted(sender As Object, e As EventArgs)

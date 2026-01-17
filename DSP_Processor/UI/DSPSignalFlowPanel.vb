@@ -21,10 +21,12 @@ Partial Public Class DSPSignalFlowPanel
 
 #Region "Fields"
 
-    Private gainProcessor As GainProcessor
+    Private inputGainProcessor As GainProcessor  ' INPUT gain stage
+    Private outputGainProcessor As GainProcessor ' OUTPUT gain stage (Master/Width)
     Private suppressEvents As Boolean = False
 
 #End Region
+
 
 #Region "Constructor"
 
@@ -184,20 +186,41 @@ Partial Public Class DSPSignalFlowPanel
 
 #Region "Public Methods"
 
-    ''' <summary>Set the GainProcessor instance to control</summary>
-    Public Sub SetGainProcessor(processor As GainProcessor)
-        gainProcessor = processor
-        Utils.Logger.Instance.Info($"SetGainProcessor called. Processor IsNot Nothing={processor IsNot Nothing}", "DSPSignalFlowPanel")
+''' <summary>
+''' Set the INPUT GainProcessor instance to control (Gain/Pan)
+''' PHASE 2.7: Updated to support separate Input and Output processors
+''' </summary>
+Public Sub SetGainProcessor(processor As GainProcessor)
+    inputGainProcessor = processor
+    Utils.Logger.Instance.Info($"SetGainProcessor (INPUT) called. Processor IsNot Nothing={processor IsNot Nothing}", "DSPSignalFlowPanel")
 
-        If gainProcessor IsNot Nothing Then
-            ' Load current values
-            UpdateGainFromProcessor()
-            UpdatePanFromProcessor()
-            Utils.Logger.Instance.Info("GainProcessor wired successfully!", "DSPSignalFlowPanel")
-        Else
-            Utils.Logger.Instance.Warning("SetGainProcessor called with Nothing!", "DSPSignalFlowPanel")
-        End If
-    End Sub
+    If inputGainProcessor IsNot Nothing Then
+        ' Load current values
+        UpdateGainFromProcessor()
+        UpdatePanFromProcessor()
+        Utils.Logger.Instance.Info("INPUT GainProcessor wired successfully!", "DSPSignalFlowPanel")
+    Else
+        Utils.Logger.Instance.Warning("SetGainProcessor called with Nothing!", "DSPSignalFlowPanel")
+    End If
+End Sub
+
+''' <summary>
+''' Set the OUTPUT GainProcessor instance to control (Master/Width)
+''' PHASE 2.7: NEW - Wire Master and Width controls to Output stage
+''' </summary>
+Public Sub SetOutputGainProcessor(processor As GainProcessor)
+    outputGainProcessor = processor
+    Utils.Logger.Instance.Info($"SetOutputGainProcessor called. Processor IsNot Nothing={processor IsNot Nothing}", "DSPSignalFlowPanel")
+
+    If outputGainProcessor IsNot Nothing Then
+        ' Load current values
+        UpdateMasterFromProcessor()
+        UpdateWidthFromProcessor()
+        Utils.Logger.Instance.Info("OUTPUT GainProcessor wired successfully!", "DSPSignalFlowPanel")
+    Else
+        Utils.Logger.Instance.Warning("SetOutputGainProcessor called with Nothing!", "DSPSignalFlowPanel")
+    End If
+End Sub
 
     ''' <summary>Update meter levels (call from audio thread callback)</summary>
     ''' <param name="inputLeftDb">Left input level in dB</param>
@@ -231,11 +254,11 @@ Partial Public Class DSPSignalFlowPanel
 
     Private Sub OnGainChanged(sender As Object, e As EventArgs)
         ' Debug logging
-        Utils.Logger.Instance.Debug($"OnGainChanged called. suppressEvents={suppressEvents}, gainProcessor IsNot Nothing={gainProcessor IsNot Nothing}", "DSPSignalFlowPanel")
+        Utils.Logger.Instance.Debug($"OnGainChanged called. suppressEvents={suppressEvents}, inputGainProcessor IsNot Nothing={inputGainProcessor IsNot Nothing}", "DSPSignalFlowPanel")
 
-        If suppressEvents OrElse gainProcessor Is Nothing Then
-            If gainProcessor Is Nothing Then
-                Utils.Logger.Instance.Warning("OnGainChanged: gainProcessor is Nothing! Not wired yet?", "DSPSignalFlowPanel")
+        If suppressEvents OrElse inputGainProcessor Is Nothing Then
+            If inputGainProcessor Is Nothing Then
+                Utils.Logger.Instance.Warning("OnGainChanged: inputGainProcessor is Nothing! Not wired yet?", "DSPSignalFlowPanel")
             End If
             Return
         End If
@@ -244,10 +267,11 @@ Partial Public Class DSPSignalFlowPanel
         Dim gainDb = trackGain.Value / 10.0F
         lblGainValue.Text = $"{gainDb:F1} dB"
 
-        ' Update processor
-        gainProcessor.GainDB = gainDb
-        Utils.Logger.Instance.Info($"Gain updated to {gainDb:F1} dB", "DSPSignalFlowPanel")
+        ' Update INPUT processor
+        inputGainProcessor.GainDB = gainDb
+        Utils.Logger.Instance.Info($"INPUT Gain updated to {gainDb:F1} dB", "DSPSignalFlowPanel")
     End Sub
+
 
     Private Sub OnGainDoubleClick(sender As Object, e As MouseEventArgs)
         ' Reset to default (0 dB = unity gain)
@@ -256,7 +280,7 @@ Partial Public Class DSPSignalFlowPanel
     End Sub
 
     Private Sub OnPanChanged(sender As Object, e As EventArgs)
-        If suppressEvents OrElse gainProcessor Is Nothing Then Return
+        If suppressEvents OrElse inputGainProcessor Is Nothing Then Return
 
         ' Convert trackbar value to pan position (-1.0 to +1.0)
         Dim panPosition = trackPan.Value / 100.0F
@@ -270,9 +294,10 @@ Partial Public Class DSPSignalFlowPanel
             lblPanValue.Text = $"R{CInt(panPosition * 100)}"
         End If
 
-        ' Update processor
-        gainProcessor.PanPosition = panPosition
+        ' Update INPUT processor
+        inputGainProcessor.PanPosition = panPosition
     End Sub
+
 
     Private Sub OnPanDoubleClick(sender As Object, e As MouseEventArgs)
         ' Reset to default (0 = center)
@@ -318,9 +343,20 @@ Partial Public Class DSPSignalFlowPanel
 #Region "Event Handlers - Output Mixer"
 
     Private Sub OnMasterChanged(sender As Object, e As EventArgs)
-        ' TODO: Implement master volume control
+        If suppressEvents OrElse outputGainProcessor Is Nothing Then
+            If outputGainProcessor Is Nothing Then
+                Utils.Logger.Instance.Debug("OnMasterChanged: outputGainProcessor is Nothing! Not wired yet?", "DSPSignalFlowPanel")
+            End If
+            Return
+        End If
+
+        ' Convert trackbar value to dB (divided by 10)
         Dim masterDb = trackMaster.Value / 10.0F
         lblMasterValue.Text = $"{masterDb:F1} dB"
+
+        ' Update OUTPUT processor gain
+        outputGainProcessor.GainDB = masterDb
+        Utils.Logger.Instance.Info($"OUTPUT Master Gain updated to {masterDb:F1} dB", "DSPSignalFlowPanel")
     End Sub
 
     Private Sub OnMasterDoubleClick(sender As Object, e As MouseEventArgs)
@@ -330,27 +366,50 @@ Partial Public Class DSPSignalFlowPanel
     End Sub
 
     Private Sub OnWidthChanged(sender As Object, e As EventArgs)
-        ' TODO: Implement stereo width control
-        Dim width = trackWidth.Value
-        lblWidthValue.Text = $"{width}%"
+        If suppressEvents OrElse outputGainProcessor Is Nothing Then
+            If outputGainProcessor Is Nothing Then
+                Utils.Logger.Instance.Debug("OnWidthChanged: outputGainProcessor is Nothing! Not wired yet?", "DSPSignalFlowPanel")
+            End If
+            Return
+        End If
+
+        ' PHASE 2.7: Width slider is actually OUTPUT PAN control!
+        ' Convert trackbar value to pan position (-1.0 to +1.0)
+        Dim panPosition = (trackWidth.Value - 100) / 100.0F
+
+        ' Update label
+        If Math.Abs(panPosition) < 0.05F Then
+            lblWidthValue.Text = "Center"
+        ElseIf panPosition < 0 Then
+            lblWidthValue.Text = $"L{Math.Abs(CInt(panPosition * 100))}"
+        Else
+            lblWidthValue.Text = $"R{CInt(panPosition * 100)}"
+        End If
+
+        ' Update OUTPUT processor pan (not width!)
+        outputGainProcessor.PanPosition = panPosition
+        Utils.Logger.Instance.Info($"OUTPUT Pan updated to {panPosition:F2}", "DSPSignalFlowPanel")
     End Sub
 
+
     Private Sub OnWidthDoubleClick(sender As Object, e As MouseEventArgs)
-        ' Reset to default (100% = normal stereo)
+        ' Reset to default (center pan)
         trackWidth.Value = 100
-        Utils.Logger.Instance.Info("Stereo width reset to default (100%)", "DSPSignalFlowPanel")
+        Utils.Logger.Instance.Info("OUTPUT Pan reset to default (Center)", "DSPSignalFlowPanel")
     End Sub
+
+
 
 #End Region
 
 #Region "Private Helper Methods"
 
     Private Sub UpdateGainFromProcessor()
-        If gainProcessor Is Nothing Then Return
+        If inputGainProcessor Is Nothing Then Return
 
         suppressEvents = True
         Try
-            Dim gainDb = gainProcessor.GainDB
+            Dim gainDb = inputGainProcessor.GainDB
             trackGain.Value = CInt(gainDb * 10)
             lblGainValue.Text = $"{gainDb:F1} dB"
         Finally
@@ -359,11 +418,11 @@ Partial Public Class DSPSignalFlowPanel
     End Sub
 
     Private Sub UpdatePanFromProcessor()
-        If gainProcessor Is Nothing Then Return
+        If inputGainProcessor Is Nothing Then Return
 
         suppressEvents = True
         Try
-            Dim panPosition = gainProcessor.PanPosition
+            Dim panPosition = inputGainProcessor.PanPosition
             trackPan.Value = CInt(panPosition * 100)
 
             If Math.Abs(panPosition) < 0.05F Then
@@ -378,6 +437,43 @@ Partial Public Class DSPSignalFlowPanel
         End Try
     End Sub
 
+    Private Sub UpdateMasterFromProcessor()
+        If outputGainProcessor Is Nothing Then Return
+
+        suppressEvents = True
+        Try
+            Dim masterDb = outputGainProcessor.GainDB
+            trackMaster.Value = CInt(masterDb * 10)
+            lblMasterValue.Text = $"{masterDb:F1} dB"
+        Finally
+            suppressEvents = False
+        End Try
+    End Sub
+
+    Private Sub UpdateWidthFromProcessor()
+        If outputGainProcessor Is Nothing Then Return
+
+        suppressEvents = True
+        Try
+            ' Width slider is actually OUTPUT PAN control
+            Dim panPosition = outputGainProcessor.PanPosition
+            trackWidth.Value = CInt((panPosition + 1.0F) * 100)
+
+            If Math.Abs(panPosition) < 0.05F Then
+                lblWidthValue.Text = "Center"
+            ElseIf panPosition < 0 Then
+                lblWidthValue.Text = $"L{Math.Abs(CInt(panPosition * 100))}"
+            Else
+                lblWidthValue.Text = $"R{CInt(panPosition * 100)}"
+            End If
+        Finally
+            suppressEvents = False
+        End Try
+    End Sub
+
+
+
 #End Region
+
 
 End Class

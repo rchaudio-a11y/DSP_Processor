@@ -194,7 +194,7 @@ Namespace DSP.FFT
                     If _outputStage.HasMonitorData Then
                         Dim tapData = _outputStage.GetMonitorTapWithMetadata()
                         If tapData IsNot Nothing AndAlso tapData.Buffer IsNot Nothing Then
-                            ProcessFFT(tapData, TapPoint.PostDSP, _fftProcessorOutput, _lastOutputUpdateTime)
+                            ProcessFFT(tapData, TapPoint.PostOutputGain, _fftProcessorOutput, _lastOutputUpdateTime)
                             _outputStage.ClearMonitorFlag()
                             Interlocked.Increment(_totalBuffersProcessed)
                         End If
