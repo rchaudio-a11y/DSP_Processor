@@ -8,6 +8,7 @@
 2. Event-Driven Design  
 3. RDF Methodology
 4. Documentation is Synthesis
+5. Clear ownership boundaries for every subsystem. Each component should have exactly ONE owner for state and lifecycle. Prevent shared mutable state and ambiguous responsibility. Example: GlobalStateMachine owns global state, RecordingManager owns actions (not state), StateCoordinator owns coordination (not subsystems). No circular dependencies. Single source of truth pattern.
 
 ## Specialized Instructions
 

@@ -10,81 +10,75 @@
 
 ## ?? **CRITICAL ISSUES (Must Fix Before Phase 2)**
 
-### **1. RACE CONDITION: DSPThread Flags Not Volatile** ??????
+### **1. RACE CONDITION: DSPThread Flags Not Volatile** ? **RESOLVED**
 
 **File:** `DSP_Processor\DSP\DSPThread.vb`  
-**Lines:** 32-33  
-**Severity:** **CRITICAL - Data Race**
+**Lines:** 27-33 (now using Interlocked)  
+**Severity:** **CRITICAL - Data Race**  
+**Status:** ? **FIXED on 2026-01-17**
 
+**Original Problem:**
 ```vb
 Private shouldStop As Boolean = False
 Private _isRunning As Boolean = False
 ```
 
-**Problem:**
-- These flags are accessed from **multiple threads** (UI thread sets `shouldStop`, worker thread reads it)
-- **NOT marked `Volatile`** - compiler/CPU can cache values
-- Race condition: worker thread may never see `shouldStop = True`
-- Can cause **infinite loops** or **delayed shutdown**
-
-**Impact on State Machine:**
-- DSPThreadSSM (Step 12) will control DSPThread lifecycle
-- Race conditions will break state transitions (Armed ? Recording may hang)
-- Thread safety patterns from `Thread-Safety-Patterns.md` Part 1 not applied
-
-**Fix Required (Step 16):**
+**Fix Applied:**
 ```vb
-' Apply Thread-Safety-Patterns.md Part 1: Volatile
-Private Volatile shouldStop As Boolean = False
-Private Volatile _isRunning As Boolean = False
+' Thread-safe flags using Interlocked (0=False, 1=True)
+Private _shouldStop As Integer = 0 ' Thread-safe: Use Interlocked.Exchange
+Private _isRunningFlag As Integer = 0 ' Thread-safe: Use Interlocked.Exchange
+
+' Usage:
+Interlocked.Exchange(_shouldStop, 1) ' Set to True
+While Interlocked.CompareExchange(_shouldStop, 0, 0) = 0 ' While False
 ```
 
-**Better Solution (Step 16):**
-```vb
-' Apply Thread-Safety-Patterns.md Part 2: CancellationToken
-Private cancellationTokenSource As CancellationTokenSource
-Private Volatile _isRunning As Boolean = False
-```
+**Resolution Details:**
+- Converted Boolean flags to Integer for Interlocked operations
+- All reads/writes use Interlocked.CompareExchange/Exchange
+- Memory barriers guaranteed across threads
+- No more race conditions on worker thread control
 
-**Cross-Reference:**
-- Thread-Safety-Audit.md § 3.1 "DSPThread Race Conditions"
-- Thread-Safety-Patterns.md Part 1 "Volatile Pattern"
-- Thread-Safety-Patterns.md Part 2 "CancellationTokenSource Pattern"
+**Reference:** `Thread-Safety-Fix-Issues-1-2.md`
 
 ---
 
-### **2. RACE CONDITION: disposed Flag Not Volatile** ????
+### **2. RACE CONDITION: disposed Flag Not Volatile** ? **RESOLVED**
 
 **File:** `DSP_Processor\DSP\DSPThread.vb`  
 **Line:** 27  
-**Severity:** **HIGH - Use-After-Dispose**
+**Severity:** **HIGH - Use-After-Dispose**  
+**Status:** ? **FIXED on 2026-01-17**
 
+**Original Problem:**
 ```vb
 Private disposed As Boolean = False
 ```
 
-**Problem:**
-- `disposed` flag checked in **multiple public methods** (lines 176, 185, 194, 341, 361, 380)
-- NOT atomic - race between `Dispose()` setting flag and methods reading it
-- Can cause **ObjectDisposedException** or **NullReferenceException**
-- **Disposal guards pattern** from Thread-Safety-Patterns.md Part 5 not applied
-
-**Impact on State Machine:**
-- StateCoordinator disposal (Step 15) may trigger late access
-- DSPThreadSSM shutdown (Step 12) may race with ongoing operations
-- No grace period before disposal
-
-**Fix Required (Step 16):**
+**Fix Applied:**
 ```vb
-Private Volatile disposed As Boolean = False
+' Thread-safe disposal flag using Interlocked (0=False, 1=True)
+Private _disposed As Integer = 0 ' Thread-safe: Use Interlocked.CompareExchange
 
-' Add disposal guard at method entry
-If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+' All disposal checks now use:
+If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+    Throw New ObjectDisposedException(NameOf(DSPThread))
+End If
+
+' Dispose() uses atomic test-and-set:
+If Interlocked.CompareExchange(_disposed, 1, 0) = 0 Then
+    ' Dispose logic (only runs once)
+End If
 ```
 
-**Cross-Reference:**
-- Thread-Safety-Patterns.md Part 5 "Disposal Guards"
-- Thread-Safety-Patterns.md Part 13 "Shutdown Barrier" (50ms grace period)
+**Resolution Details:**
+- Converted disposed flag to Integer for Interlocked operations
+- All 11 disposal checks updated to use Interlocked.CompareExchange
+- Dispose() uses atomic test-and-set (prevents double-dispose)
+- No more use-after-dispose races
+
+**Reference:** `Thread-Safety-Fix-Issues-1-2.md`
 
 ---
 
@@ -729,8 +723,8 @@ AddHandler mic.AudioDataAvailable, AddressOf OnAudioDataAvailable
 ## ?? **PHASE 2-3 CHECKLIST (Integration Readiness)**
 
 ### **Before Starting Phase 2 (Step 9-15):**
-- [ ] **CRITICAL:** Add `Volatile` to DSPThread flags (Issue #1)
-- [ ] **CRITICAL:** Add `Volatile` to `disposed` flags (Issue #2)
+- [x] **CRITICAL:** Add `Volatile` to DSPThread flags (Issue #1) ? **RESOLVED 2026-01-17**
+- [x] **CRITICAL:** Add `Volatile` to `disposed` flags (Issue #2) ? **RESOLVED 2026-01-17**
 - [ ] **HIGH:** Review `MultiReaderRingBuffer` for lock conflicts (Issue #9)
 - [ ] **HIGH:** Document current state management in RecordingManager (Issue #11)
 
