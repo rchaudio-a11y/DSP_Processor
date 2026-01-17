@@ -162,14 +162,31 @@ Namespace DSP
 
         ''' <summary>
         ''' Stop the DSP worker thread
+        ''' Implements shutdown barrier pattern (50ms grace period)
+        ''' Thread-safe: Can be called multiple times safely
         ''' </summary>
         Public Sub [Stop]()
-            If Not IsRunning Then Return
+            ' Check if already stopped (thread-safe read)
+            If Interlocked.CompareExchange(_isRunningFlag, 0, 0) = 0 Then
+                Return ' Already stopped
+            End If
 
+            ' Signal worker thread to stop
             Interlocked.Exchange(_shouldStop, 1) ' Set to True
-            workerThread?.Join(1000) ' Wait up to 1 second
 
-            Utils.Logger.Instance.Info($"DSP worker stopped. Processed: {ProcessedSamples}, Dropped: {DroppedSamples}", "DSPThread")
+            ' Grace period (50ms) - let worker finish current audio block
+            ' This prevents buffer corruption and ensures clean shutdown
+            Thread.Sleep(50)
+
+            ' Wait for worker thread to exit (longer timeout after grace period)
+            Dim joined As Boolean = workerThread?.Join(5000) ' 5 seconds max
+
+            If joined Then
+                Utils.Logger.Instance.Info($"DSP worker stopped cleanly. Processed: {ProcessedSamples}, Dropped: {DroppedSamples}", "DSPThread")
+            Else
+                ' Worker thread did not stop within timeout
+                Utils.Logger.Instance.Warning($"DSP worker did not stop within timeout. Processed: {ProcessedSamples}, Dropped: {DroppedSamples}", "DSPThread")
+            End If
         End Sub
 
         ''' <summary>

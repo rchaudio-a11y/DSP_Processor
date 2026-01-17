@@ -55,8 +55,9 @@ Namespace Managers
         Private recordingOptions As RecordingOptions
 
         ' DIAGNOSTIC: Performance tracking for recorder.Process() timing (kept for callback monitoring)
+        ' Thread-safe counters using Interlocked operations
         Private ReadOnly _processingStopwatch As New Diagnostics.Stopwatch()
-        Private _totalProcessingTimeMs As Double = 0
+        Private _totalProcessingTimeMs As Long = 0 ' Changed to Long for Interlocked.Add
         Private _processCallCount As Long = 0
         Private _slowCallCount As Long = 0  ' Calls > 1ms
         Private _verySlowCallCount As Long = 0  ' Calls > 5ms
@@ -745,16 +746,19 @@ Private Sub ProcessingTimer_Tick(state As Object)
                         recorder.Process()
                         _processingStopwatch.Stop()
                         
+                        ' Thread-safe counter updates using Interlocked
                         Dim elapsed = _processingStopwatch.Elapsed.TotalMilliseconds
-                        _totalProcessingTimeMs += elapsed
-                        _processCallCount += 1
+                        Dim elapsedMs = CLng(elapsed) ' Convert to Long for Interlocked.Add
                         
-                        ' Track slow calls
+                        Interlocked.Add(_totalProcessingTimeMs, elapsedMs)
+                        Interlocked.Increment(_processCallCount)
+                        
+                        ' Track slow calls (thread-safe)
                         If elapsed > 5.0 Then
-                            _verySlowCallCount += 1
+                            Interlocked.Increment(_verySlowCallCount)
                             Logger.Instance.Warning($"VERY SLOW Process() call: {elapsed:F2}ms (threshold: 5ms)", "RecordingManager")
                         ElseIf elapsed > 1.0 Then
-                            _slowCallCount += 1
+                            Interlocked.Increment(_slowCallCount)
                             Logger.Instance.Warning($"SLOW Process() call: {elapsed:F2}ms (threshold: 1ms)", "RecordingManager")
                         End If
                     Next
@@ -782,9 +786,16 @@ Private Sub ProcessingTimer_Tick(state As Object)
                     Dim now = DateTime.Now
                     If (now - _lastStatsLogTime).TotalSeconds >= 10 Then
                         _lastStatsLogTime = now
-                        If _processCallCount > 0 Then
-                            Dim avgTime = _totalProcessingTimeMs / _processCallCount
-                            Logger.Instance.Info($"Process() Performance: Calls={_processCallCount}, Avg={avgTime:F3}ms, Slow(>1ms)={_slowCallCount}, VerySlow(>5ms)={_verySlowCallCount}", "RecordingManager")
+                        
+                        ' Thread-safe reads using Interlocked
+                        Dim callCount = Interlocked.Read(_processCallCount)
+                        If callCount > 0 Then
+                            Dim totalTime = Interlocked.Read(_totalProcessingTimeMs)
+                            Dim slowCount = Interlocked.Read(_slowCallCount)
+                            Dim verySlowCount = Interlocked.Read(_verySlowCallCount)
+                            
+                            Dim avgTime = CDbl(totalTime) / callCount
+                            Logger.Instance.Info($"Process() Performance: Calls={callCount}, Avg={avgTime:F3}ms, Slow(>1ms)={slowCount}, VerySlow(>5ms)={verySlowCount}", "RecordingManager")
                         End If
                     End If
 

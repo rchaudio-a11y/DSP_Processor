@@ -373,6 +373,12 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnRecordingStarted(sender As Object, e As EventArgs)
+        ' Thread-safe UI update (event may fire from audio callback thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnRecordingStarted(sender, e))
+            Return
+        End If
+        
         ' Update UI
         transportControl.State = UI.TransportControl.TransportState.Recording
         panelLED.BackColor = Color.Red
@@ -389,6 +395,12 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnRecordingStopped(sender As Object, e As RecordingStoppedEventArgs)
+        ' Thread-safe UI update (event may fire from audio callback thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnRecordingStopped(sender, e))
+            Return
+        End If
+        
         ' Update UI
         transportControl.State = UI.TransportControl.TransportState.Stopped
         transportControl.RecordingTime = TimeSpan.Zero
@@ -419,6 +431,12 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnRecordingBufferAvailable(sender As Object, e As AudioBufferEventArgs)
+        ' Thread-safe UI update (event fires from audio callback thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnRecordingBufferAvailable(sender, e))
+            Return
+        End If
+        
         ' Route through AudioPipelineRouter (Task 2.0.3 - safety checks moved to router)
         ' Router handles: DSP processing, FFT taps, monitoring, recording destination
         pipelineRouter?.RouteAudioBuffer(
@@ -505,6 +523,12 @@ Partial Public Class MainForm
 
 
     Private Sub OnMicrophoneArmed(sender As Object, isArmed As Boolean)
+        ' Thread-safe UI update (event may fire from worker thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnMicrophoneArmed(sender, isArmed))
+            Return
+        End If
+        
         If isArmed Then
             panelLED.BackColor = Color.Yellow
             lblStatus.Text = "Status: Ready (Mic Armed)"
@@ -1141,6 +1165,12 @@ Partial Public Class MainForm
     ''' AudioRouter playback started (DSP playback) - matches RecordingManager pattern
     ''' </summary>
     Private Sub OnAudioRouterPlaybackStarted(sender As Object, filename As String)
+        ' Thread-safe UI update (event may fire from worker thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnAudioRouterPlaybackStarted(sender, filename))
+            Return
+        End If
+        
         Logger.Instance.Info($"🎵 AudioRouter playback started: {filename}", "MainForm")
 
         ' Wire DSP panel to the GainProcessor (now that it exists)
@@ -1164,6 +1194,12 @@ Partial Public Class MainForm
     ''' AudioRouter playback stopped (DSP playback) - matches RecordingManager pattern
     ''' </summary>
     Private Sub OnAudioRouterPlaybackStopped(sender As Object, e As EventArgs)
+        ' Thread-safe UI update (event may fire from worker thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnAudioRouterPlaybackStopped(sender, e))
+            Return
+        End If
+        
         Try
             Logger.Instance.Info("🛑 AudioRouter playback stopped - NATURAL EOF DETECTED!", "MainForm")
 
@@ -1216,6 +1252,12 @@ Partial Public Class MainForm
     ''' AudioRouter position updated (DSP playback) - matches RecordingManager pattern
     ''' </summary>
     Private Sub OnAudioRouterPositionChanged(sender As Object, position As TimeSpan)
+        ' Thread-safe UI update (event fires from worker thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnAudioRouterPositionChanged(sender, position))
+            Return
+        End If
+        
         ' Update TransportControl (event-driven, like RecordingManager!)
         transportControl.TrackPosition = position
 
