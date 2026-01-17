@@ -1,35 +1,64 @@
-# Copilot Instructions
+# Copilot Instructions - Main Index
 
-## General Guidelines
-- Always implement a State Machine to centralize control of applications. State machines should be the single source of truth for application state and control flow.
-- Prefer event-driven architecture over timer-driven logic, especially for audio and state updates. Use events and callbacks instead of polling timers whenever possible.
-- Call `detect_memories` whenever a preference is stated or when asked to remember something, to utilize the memory popup feature for saving to Copilot instructions. Always trigger the memory detection UI rather than manually noting preferences.
+**Project:** DSP_Processor - Real-time Audio Processing Engine  
+**Language:** Visual Basic .NET (Windows Forms)  
+**Methodology:** [Rick Development Framework (RDF)](../DSP_Processor/Documentation/Reference/RDF.md)
 
-## Documentation Preferences
-- Use the `Documentation\Templates\` folder for all documentation templates
-- Template naming convention: `[Type]-v[Major]_[Minor]_[Patch].md` (e.g., `Task-v1_0_0.md`)
-- Current template version: v1.0.0
-- Follow the RDF-aligned folder structure:
-  - **Templates/**: All document templates (versioned files)
-  - **Architecture/**: System architecture and design decisions (timeless, all maturity levels)
-  - **Active/**: Current work - Tasks.md (single file), Issues.md (single file), Sessions/ (dated files)
-  - **Completed/**: Finished work - Features/, Tasks/, Issues/ (archived documentation)
-  - **Reference/**: Timeless reference material (RDF.md, coding standards, etc.)
-  - **Changelog/**: Version history - CURRENT.md (active), Archive/ (historical)
-- When creating new documentation:
-  1. Start with appropriate versioned template from `Templates/`
-  2. Fill out all sections completely
-  3. Save to proper folder (Active/ for work-in-progress, Architecture/ for design, etc.)
-  4. Update relevant index files (Active/Tasks.md, Active/Issues.md, Changelog/CURRENT.md)
-- When completing work:
-  1. Move from `Active/` to `Completed/`
-  2. Create completion document in `Completed/Features/`
-  3. Update `Changelog/CURRENT.md`
-- After each plan phase:
-  1. Create session notes using `Session-Notes-v1_0_0.md` template
-  2. Update Changelog with phase completion
-  3. Maintain version tracking for all documentation changes
+---
 
-## User Preferences
-- Implement DoubleClick event handlers for all TrackBar controls. Users can double-click on slider controls to reset them to default values: Volume/Gain sliders default to 100%, Pan sliders default to 50% (center), and other controls should have sensible defaults.
-- Prefer the Rick Development Framework (RDF) methodology over Agile, Scrum, or Kanban. RDF is a recursive, architecture-driven approach that treats debugging as creative exploration, values deep understanding over velocity, and focuses on building systems that evolve rather than degrade. Documentation can be found at Documentation\Reference\RDF.md.
+## ?? Core Principles
+
+1. **State Machine Architecture** - Centralize state control
+2. **Event-Driven Design** - Prefer events over timers
+3. **RDF Methodology** - Recursive, architecture-driven development
+4. **Documentation is Synthesis** - Document during work, not after
+
+---
+
+## ?? Specialized Instructions (Branch Files)
+
+When working on specific areas, refer to these detailed instruction files:
+
+### **Documentation Work**
+? [Documentation Instructions](instructions/documentation.md)
+- Template usage and versioning
+- Folder structure and workflow
+- Session notes and changelogs
+
+### **UI/Forms Work**
+? [UI Instructions](instructions/ui.md)
+- Event wiring patterns (WithEvents vs AddHandler)
+- Control naming conventions
+- User interaction patterns (double-click reset, etc.)
+
+### **Architecture/Design Work**
+? [Architecture Instructions](instructions/architecture.md)
+- RDF phase guidance
+- System boundaries and invariants
+- Design decision documentation
+
+### **Audio/DSP Work**
+? [Audio Instructions](instructions/audio.md)
+- Zero-copy patterns
+- Event-driven audio updates
+- Ring buffer usage
+
+### **Testing/Debugging Work**
+? [Debugging Instructions](instructions/debugging.md)
+- RDF Phase 4: Bugs as teachers
+- Root cause analysis
+- Lesson documentation
+
+---
+
+## ?? Quick Reference
+
+**Project Type:** Audio Engine (not CRUD)  
+**Methodology:** RDF (recursive, architecture-driven)  
+**Documentation:** Documentation\Reference\RDF.md  
+**Current Version:** v1.0.0
+
+---
+
+**Last Updated:** 2026-01-16  
+**Version:** 2.0.0 (Branch Architecture)
