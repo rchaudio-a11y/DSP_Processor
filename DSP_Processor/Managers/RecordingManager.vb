@@ -1,4 +1,4 @@
-Imports System.Threading
+﻿Imports System.Threading
 Imports DSP_Processor.AudioIO
 Imports DSP_Processor.Recording
 Imports DSP_Processor.Models
@@ -42,6 +42,12 @@ Namespace Managers
         ' REMOVED: processingTimer - replaced with callback-driven recording
         Private _isArmed As Boolean = False
         Private _isRecording As Boolean = False
+
+        ' PHASE 2: DSP Pipeline Integration
+        Private dspThread As DSP.DSPThread ' Routes mic audio through DSP for meters/effects
+        Private _inputGainProcessor As DSP.GainProcessor ' Input gain stage (Phase 2.5)
+        Private _outputGainProcessor As DSP.GainProcessor ' Output gain stage (Phase 2.5)
+        Private useDSP As Boolean = True ' Enable DSP processing (can disable for testing)
 
         ' Settings
         Private audioSettings As AudioDeviceSettings
@@ -119,6 +125,133 @@ Namespace Managers
                 End If
             End Set
         End Property
+
+        ''' <summary>Gets the INPUT GainProcessor instance for UI control (Phase 2.5)</summary>
+        Public ReadOnly Property InputGainProcessor As DSP.GainProcessor
+            Get
+                Return _inputGainProcessor
+            End Get
+        End Property
+
+        ''' <summary>Gets the OUTPUT GainProcessor instance for UI control (Phase 2.5)</summary>
+        Public ReadOnly Property OutputGainProcessor As DSP.GainProcessor
+            Get
+                Return _outputGainProcessor
+            End Get
+        End Property
+
+        ''' <summary>DEPRECATED: Use InputGainProcessor instead (kept for compatibility)</summary>
+        Public ReadOnly Property GainProcessor As DSP.GainProcessor
+            Get
+                Return _inputGainProcessor
+            End Get
+        End Property
+
+        ''' <summary>Gets post-gain samples for meter display (Phase 2: DSP Tap Point Pattern)</summary>
+        Public ReadOnly Property PostGainSamples As Single()
+            Get
+                If dspThread IsNot Nothing Then
+                    Dim available = dspThread.PostGainMonitorAvailable()
+                    If available > 0 Then
+                        ' Read up to 4KB for meters
+                        Dim bufferSize = Math.Min(available, 4096)
+                        Dim buffer(bufferSize - 1) As Byte
+                        Dim bytesRead = dspThread.ReadPostGainMonitor(buffer, 0, buffer.Length)
+
+                        If bytesRead > 0 Then
+                            ' Convert Int16 PCM to Float32 samples
+                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+                            Dim samples(sampleCount - 1) As Single
+                            For i = 0 To sampleCount - 1
+                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
+                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
+                            Next
+                            Return samples
+                        End If
+                    End If
+                End If
+                Return Nothing
+            End Get
+        End Property
+
+        ''' <summary>Gets post-OUTPUT-gain samples for meter display (Phase 2.5 - Output tap point)</summary>
+        Public ReadOnly Property PostOutputGainSamples As Single()
+            Get
+                If dspThread IsNot Nothing Then
+                    Dim available = dspThread.PostOutputGainMonitorAvailable()
+                    If available > 0 Then
+                        ' Read up to 4KB for meters
+                        Dim bufferSize = Math.Min(available, 4096)
+                        Dim buffer(bufferSize - 1) As Byte
+                        Dim bytesRead = dspThread.ReadPostOutputGainMonitor(buffer, 0, buffer.Length)
+
+                        If bytesRead > 0 Then
+                            ' Convert Int16 PCM to Float32 samples
+                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+                            Dim samples(sampleCount - 1) As Single
+                            For i = 0 To sampleCount - 1
+                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
+                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
+                            Next
+                            Return samples
+                        End If
+                    End If
+                End If
+                Return Nothing
+            End Get
+        End Property
+
+#Region "Multi-Reader Tap Point API (Phase 2.5 - Architecture Rule #4)"
+
+        ''' <summary>
+        ''' Create a custom reader for a specific DSP tap point
+        ''' Enables flexible routing of instruments (FFT, meters, analyzers) to any tap
+        ''' </summary>
+        ''' <param name="tapLocation">Which tap point to read from (PreDSP, PostGain, PostDSP, PreOutput)</param>
+        ''' <param name="readerName">Unique name for reader (e.g., "CustomFFT", "PhaseAnalyzer")</param>
+        ''' <returns>Reader handle for use with ReadFromTap()</returns>
+        Public Function CreateTapReader(tapLocation As DSP.DSPThread.TapLocation, readerName As String) As String
+            If dspThread Is Nothing Then
+                Throw New InvalidOperationException("DSP thread not initialized! Arm microphone first.")
+            End If
+
+            Return dspThread.CreateTapReader(tapLocation, readerName)
+        End Function
+
+        ''' <summary>
+        ''' Remove a custom tap reader
+        ''' </summary>
+        Public Sub RemoveTapReader(tapLocation As DSP.DSPThread.TapLocation, readerName As String)
+            If dspThread IsNot Nothing Then
+                dspThread.RemoveTapReader(tapLocation, readerName)
+            End If
+        End Sub
+
+        ''' <summary>
+        ''' Read audio from a custom tap reader
+        ''' </summary>
+        Public Function ReadFromTap(tapLocation As DSP.DSPThread.TapLocation, readerName As String, buffer As Byte(), offset As Integer, count As Integer) As Integer
+            If dspThread Is Nothing Then Return 0
+            Return dspThread.ReadFromTap(tapLocation, readerName, buffer, offset, count)
+        End Function
+
+        ''' <summary>
+        ''' Check how many bytes are available for a specific reader
+        ''' </summary>
+        Public Function TapAvailable(tapLocation As DSP.DSPThread.TapLocation, readerName As String) As Integer
+            If dspThread Is Nothing Then Return 0
+            Return dspThread.TapAvailable(tapLocation, readerName)
+        End Function
+
+        ''' <summary>
+        ''' Check if a custom reader exists
+        ''' </summary>
+        Public Function HasTapReader(tapLocation As DSP.DSPThread.TapLocation, readerName As String) As Boolean
+            If dspThread Is Nothing Then Return False
+            Return dspThread.HasTapReader(tapLocation, readerName)
+        End Function
+
+#End Region
 
 #End Region
 
@@ -231,6 +364,57 @@ Namespace Managers
                 AddHandler mic.AudioDataAvailable, AddressOf OnAudioDataAvailable
                 Logger.Instance.Info("Subscribed to AudioDataAvailable callback (glitch-free recording mode)", "RecordingManager")
 
+                ' PHASE 2: Create DSPThread for mic audio (unified pipeline!)
+                If useDSP Then
+                    Logger.Instance.Info("🎵 Phase 2.5: Initializing DSP pipeline for microphone...", "RecordingManager")
+
+                    ' Create PCM16 format for DSP
+                    Dim pcm16Format As New NAudio.Wave.WaveFormat(mic.SampleRate, 16, mic.Channels)
+
+                    ' Create DSP thread with 2-second buffers (same as file playback)
+                    Dim bufferSize = pcm16Format.AverageBytesPerSecond * 2 ' 2 seconds
+                    dspThread = New DSP.DSPThread(pcm16Format, bufferSize, bufferSize)
+
+                    ' PHASE 2.5: Add INPUT gain processor (first in chain)
+                    _inputGainProcessor = New DSP.GainProcessor(pcm16Format) With {
+                        .GainDB = 0.0F ' Unity gain
+                    }
+                    dspThread.Chain.AddProcessor(_inputGainProcessor)
+                    Logger.Instance.Info("Added INPUT Gain processor to chain (0 dB)", "RecordingManager")
+
+                    ' Wire INPUT gain tap point for meters (DSP TAP POINT PATTERN)
+                    _inputGainProcessor.SetMonitorOutputCallback(
+                        Sub(buffer As DSP.AudioBuffer)
+                            If buffer IsNot Nothing AndAlso buffer.ByteCount > 0 Then
+                                dspThread.postGainMonitorBuffer.Write(buffer.Buffer, 0, buffer.ByteCount)
+                            End If
+                        End Sub
+                    )
+                    Logger.Instance.Info("✅ INPUT GainProcessor tap point wired to PostGainMonitor buffer", "RecordingManager")
+
+                    ' PHASE 2.5: Add OUTPUT gain processor (last in chain)
+                    _outputGainProcessor = New DSP.GainProcessor(pcm16Format) With {
+                        .GainDB = 0.0F ' Unity gain
+                    }
+                    dspThread.Chain.AddProcessor(_outputGainProcessor)
+                    Logger.Instance.Info("Added OUTPUT Gain processor to chain (0 dB)", "RecordingManager")
+
+                    ' Wire OUTPUT gain tap point for meters
+                    _outputGainProcessor.SetMonitorOutputCallback(
+                        Sub(buffer As DSP.AudioBuffer)
+                            If buffer IsNot Nothing AndAlso buffer.ByteCount > 0 Then
+                                dspThread.postOutputGainMonitorBuffer.Write(buffer.Buffer, 0, buffer.ByteCount)
+                            End If
+                        End Sub
+                    )
+                    Logger.Instance.Info("✅ OUTPUT GainProcessor tap point wired to PostOutputGainMonitor buffer", "RecordingManager")
+
+                    ' Start DSP worker thread
+                    dspThread.Start()
+
+                    Logger.Instance.Info($"✅ DSP pipeline active: {pcm16Format.SampleRate}Hz, {pcm16Format.Channels}ch, Input+Output gain stages!", "RecordingManager")
+                End If
+
                 _isArmed = True
                 RaiseEvent MicrophoneArmed(Me, True)
 
@@ -264,6 +448,17 @@ Namespace Managers
                         DirectCast(mic, IDisposable).Dispose()
                     End If
                     mic = Nothing
+                End If
+
+                ' PHASE 2.5: Clean up DSP thread and processors
+                If dspThread IsNot Nothing Then
+                    Logger.Instance.Info("Stopping DSP thread...", "RecordingManager")
+                    dspThread.Stop()
+                    dspThread.Dispose()
+                    dspThread = Nothing
+                    _inputGainProcessor = Nothing
+                    _outputGainProcessor = Nothing
+                    Logger.Instance.Info("DSP thread stopped", "RecordingManager")
                 End If
 
                 ' Another small delay to ensure disposal is complete
@@ -424,21 +619,44 @@ Namespace Managers
         ''' </summary>
         Private Sub OnAudioDataAvailable(sender As Object, e As AudioIO.AudioCallbackEventArgs)
             Try
-                ' If recording is active, pass buffer DIRECTLY to recorder (no queue polling!)
-                ' This ensures audio is processed at exact rate it arrives (glitch-free!)
-                If recorder IsNot Nothing AndAlso recorder.IsRecording Then
-                    recorder.ProcessBuffer(e.Buffer, e.BytesRecorded)
+                ' Static variable for time updates (shared across both paths)
+                Static lastTimeUpdate As DateTime = DateTime.MinValue
+                
+                ' PHASE 2.5: Route through DSP for PROCESSING + METERS (ASYNC!)
+                If useDSP AndAlso dspThread IsNot Nothing Then
+                    ' Write raw audio to DSP input (non-blocking)
+                    dspThread.WriteInput(e.Buffer, 0, e.BytesRecorded)
                     
-                    ' Raise time update (do this periodically, not on every callback)
-                    Static lastTimeUpdate As DateTime = DateTime.MinValue
-                    If (DateTime.Now - lastTimeUpdate).TotalMilliseconds >= 100 Then
-                        RaiseEvent RecordingTimeUpdated(Me, recorder.RecordingDuration)
-                        lastTimeUpdate = DateTime.Now
+                    ' CRITICAL: Must drain output buffer to trigger DSP worker processing!
+                    ' DSPThread is PULL-based - worker only processes when output is drained.
+                    ' This is what triggers tap callbacks for meters (freewheeling monitoring).
+                    ' We don't use this output for anything - just triggering processing.
+                    Dim drainBuffer(e.BytesRecorded - 1) As Byte
+                    Dim bytesRead = dspThread.ReadOutput(drainBuffer, 0, drainBuffer.Length)
+                    
+                    ' For recording, use the drained processed audio
+                    If recorder IsNot Nothing AndAlso recorder.IsRecording AndAlso bytesRead > 0 Then
+                        recorder.ProcessBuffer(drainBuffer, bytesRead)
+                        
+                        ' Raise time update periodically
+                        If (DateTime.Now - lastTimeUpdate).TotalMilliseconds >= 100 Then
+                            RaiseEvent RecordingTimeUpdated(Me, recorder.RecordingDuration)
+                            lastTimeUpdate = DateTime.Now
+                        End If
+                    End If
+                Else
+                    ' DSP disabled - use raw buffer for recording
+                    If recorder IsNot Nothing AndAlso recorder.IsRecording Then
+                        recorder.ProcessBuffer(e.Buffer, e.BytesRecorded)
+                        
+                        If (DateTime.Now - lastTimeUpdate).TotalMilliseconds >= 100 Then
+                            RaiseEvent RecordingTimeUpdated(Me, recorder.RecordingDuration)
+                            lastTimeUpdate = DateTime.Now
+                        End If
                     End If
                 End If
                 
-                ' Always raise BufferAvailable for FFT/metering
-                ' Use the buffer from the callback (already copied by driver layer)
+                ' Always raise BufferAvailable for FFT/metering (use raw buffer)
                 Dim args As New AudioBufferEventArgs With {
                     .Buffer = e.Buffer,
                     .BitsPerSample = mic.BitsPerSample,

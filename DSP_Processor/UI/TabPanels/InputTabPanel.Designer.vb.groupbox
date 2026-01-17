@@ -1,0 +1,425 @@
+Imports DSP_Processor.Models
+Imports DSP_Processor.UI
+
+Namespace UI.TabPanels
+
+    <Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()>
+    Partial Class InputTabPanel
+        Inherits System.Windows.Forms.UserControl
+
+        'UserControl overrides dispose to clean up the component list.
+        <System.Diagnostics.DebuggerNonUserCode()>
+        Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+            Try
+                If disposing AndAlso components IsNot Nothing Then
+                    components.Dispose()
+                End If
+            Finally
+                MyBase.Dispose(disposing)
+            End Try
+        End Sub
+
+        'Required by the Windows Form Designer
+        Private components As System.ComponentModel.IContainer
+
+        'NOTE: The following procedure is required by the Windows Form Designer
+        'It can be modified using the Windows Form Designer.  
+        'Do not modify it using the code editor.
+        <System.Diagnostics.DebuggerStepThrough()>
+        Private Sub InitializeComponent()
+            grpInputVolume = New GroupBox()
+            chkLinkToPlayback = New CheckBox()
+            lblInputVolumeValue = New Label()
+            trackInputVolume = New TrackBar()
+            Label1 = New Label()
+            grpPeakBehavior = New GroupBox()
+            cmbPeakDecay = New ComboBox()
+            lblPeakDecay = New Label()
+            cmbPeakHold = New ComboBox()
+            lblPeakHold = New Label()
+            grpMeterBehavior = New GroupBox()
+            cmbRelease = New ComboBox()
+            lblRelease = New Label()
+            cmbAttack = New ComboBox()
+            lblAttack = New Label()
+            cmbRmsWindow = New ComboBox()
+            lblRmsWindow = New Label()
+            grpClipping = New GroupBox()
+            cmbClipHold = New ComboBox()
+            lblClipHold = New Label()
+            cmbClipThreshold = New ComboBox()
+            lblClipThreshold = New Label()
+            grpPresets = New GroupBox()
+            btnReset = New Button()
+            btnBroadcast = New Button()
+            btnSlowResponse = New Button()
+            btnFastResponse = New Button()
+            grpInputVolume.SuspendLayout()
+            CType(trackInputVolume, ComponentModel.ISupportInitialize).BeginInit()
+            grpPeakBehavior.SuspendLayout()
+            grpMeterBehavior.SuspendLayout()
+            grpClipping.SuspendLayout()
+            grpPresets.SuspendLayout()
+            SuspendLayout()
+            ' 
+            ' grpInputVolume
+            ' 
+            grpInputVolume.Controls.Add(chkLinkToPlayback)
+            grpInputVolume.Controls.Add(lblInputVolumeValue)
+            grpInputVolume.Controls.Add(trackInputVolume)
+            grpInputVolume.Controls.Add(Label1)
+            grpInputVolume.Font = New Font("Segoe UI", 9.0F, FontStyle.Bold)
+            grpInputVolume.ForeColor = Color.White
+            grpInputVolume.Location = New Point(10, 10)
+            grpInputVolume.Name = "grpInputVolume"
+            grpInputVolume.Size = New Size(320, 160)
+            grpInputVolume.TabIndex = 0
+            grpInputVolume.TabStop = False
+            grpInputVolume.Text = "Input Volume Control"
+            ' 
+            ' chkLinkToPlayback
+            ' 
+            chkLinkToPlayback.AutoSize = True
+            chkLinkToPlayback.Font = New Font("Segoe UI", 9.0F)
+            chkLinkToPlayback.Location = New Point(10, 112)
+            chkLinkToPlayback.Name = "chkLinkToPlayback"
+            chkLinkToPlayback.Size = New Size(191, 24)
+            chkLinkToPlayback.TabIndex = 3
+            chkLinkToPlayback.Text = "Link to Playback Volume"
+            chkLinkToPlayback.UseVisualStyleBackColor = True
+            ' 
+            ' lblInputVolumeValue
+            ' 
+            lblInputVolumeValue.Font = New Font("Segoe UI", 9.0F)
+            lblInputVolumeValue.Location = New Point(270, 55)
+            lblInputVolumeValue.Name = "lblInputVolumeValue"
+            lblInputVolumeValue.Size = New Size(40, 20)
+            lblInputVolumeValue.TabIndex = 2
+            lblInputVolumeValue.Text = "100%"
+            ' 
+            ' trackInputVolume
+            ' 
+            trackInputVolume.Location = New Point(10, 50)
+            trackInputVolume.Maximum = 200
+            trackInputVolume.Name = "trackInputVolume"
+            trackInputVolume.Size = New Size(250, 56)
+            trackInputVolume.TabIndex = 1
+            trackInputVolume.TickFrequency = 25
+            trackInputVolume.Value = 100
+            ' 
+            ' Label1
+            ' 
+            Label1.AutoSize = True
+            Label1.Font = New Font("Segoe UI", 9.0F)
+            Label1.Location = New Point(10, 25)
+            Label1.Name = "Label1"
+            Label1.Size = New Size(100, 20)
+            Label1.TabIndex = 0
+            Label1.Text = "Input Volume:"
+            ' 
+            ' grpPeakBehavior
+            ' 
+            grpPeakBehavior.Controls.Add(cmbPeakDecay)
+            grpPeakBehavior.Controls.Add(lblPeakDecay)
+            grpPeakBehavior.Controls.Add(cmbPeakHold)
+            grpPeakBehavior.Controls.Add(lblPeakHold)
+            grpPeakBehavior.Font = New Font("Segoe UI", 9.0F, FontStyle.Bold)
+            grpPeakBehavior.ForeColor = Color.White
+            grpPeakBehavior.Location = New Point(10, 176)
+            grpPeakBehavior.Name = "grpPeakBehavior"
+            grpPeakBehavior.Size = New Size(320, 100)
+            grpPeakBehavior.TabIndex = 1
+            grpPeakBehavior.TabStop = False
+            grpPeakBehavior.Text = "Peak Behavior"
+            ' 
+            ' cmbPeakDecay
+            ' 
+            cmbPeakDecay.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbPeakDecay.Font = New Font("Segoe UI", 9.0F)
+            cmbPeakDecay.FormattingEnabled = True
+            cmbPeakDecay.Location = New Point(140, 58)
+            cmbPeakDecay.Name = "cmbPeakDecay"
+            cmbPeakDecay.Size = New Size(160, 28)
+            cmbPeakDecay.TabIndex = 3
+            ' 
+            ' lblPeakDecay
+            ' 
+            lblPeakDecay.AutoSize = True
+            lblPeakDecay.Font = New Font("Segoe UI", 9.0F)
+            lblPeakDecay.Location = New Point(10, 61)
+            lblPeakDecay.Name = "lblPeakDecay"
+            lblPeakDecay.Size = New Size(121, 20)
+            lblPeakDecay.TabIndex = 2
+            lblPeakDecay.Text = "Peak Decay Rate:"
+            ' 
+            ' cmbPeakHold
+            ' 
+            cmbPeakHold.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbPeakHold.Font = New Font("Segoe UI", 9.0F)
+            cmbPeakHold.FormattingEnabled = True
+            cmbPeakHold.Location = New Point(140, 23)
+            cmbPeakHold.Name = "cmbPeakHold"
+            cmbPeakHold.Size = New Size(160, 28)
+            cmbPeakHold.TabIndex = 1
+            ' 
+            ' lblPeakHold
+            ' 
+            lblPeakHold.AutoSize = True
+            lblPeakHold.Font = New Font("Segoe UI", 9.0F)
+            lblPeakHold.Location = New Point(10, 26)
+            lblPeakHold.Name = "lblPeakHold"
+            lblPeakHold.Size = New Size(116, 20)
+            lblPeakHold.TabIndex = 0
+            lblPeakHold.Text = "Peak Hold Time:"
+            ' 
+            ' grpMeterBehavior
+            ' 
+            grpMeterBehavior.Controls.Add(cmbRelease)
+            grpMeterBehavior.Controls.Add(lblRelease)
+            grpMeterBehavior.Controls.Add(cmbAttack)
+            grpMeterBehavior.Controls.Add(lblAttack)
+            grpMeterBehavior.Controls.Add(cmbRmsWindow)
+            grpMeterBehavior.Controls.Add(lblRmsWindow)
+            grpMeterBehavior.Font = New Font("Segoe UI", 9.0F, FontStyle.Bold)
+            grpMeterBehavior.ForeColor = Color.White
+            grpMeterBehavior.Location = New Point(10, 282)
+            grpMeterBehavior.Name = "grpMeterBehavior"
+            grpMeterBehavior.Size = New Size(320, 150)
+            grpMeterBehavior.TabIndex = 2
+            grpMeterBehavior.TabStop = False
+            grpMeterBehavior.Text = "Meter Behavior"
+            ' 
+            ' cmbRelease
+            ' 
+            cmbRelease.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbRelease.Font = New Font("Segoe UI", 9.0F)
+            cmbRelease.FormattingEnabled = True
+            cmbRelease.Location = New Point(140, 108)
+            cmbRelease.Name = "cmbRelease"
+            cmbRelease.Size = New Size(160, 28)
+            cmbRelease.TabIndex = 5
+            ' 
+            ' lblRelease
+            ' 
+            lblRelease.AutoSize = True
+            lblRelease.Font = New Font("Segoe UI", 9.0F)
+            lblRelease.Location = New Point(10, 111)
+            lblRelease.Name = "lblRelease"
+            lblRelease.Size = New Size(100, 20)
+            lblRelease.TabIndex = 4
+            lblRelease.Text = "Release Time:"
+            ' 
+            ' cmbAttack
+            ' 
+            cmbAttack.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbAttack.Font = New Font("Segoe UI", 9.0F)
+            cmbAttack.FormattingEnabled = True
+            cmbAttack.Location = New Point(140, 68)
+            cmbAttack.Name = "cmbAttack"
+            cmbAttack.Size = New Size(160, 28)
+            cmbAttack.TabIndex = 3
+            ' 
+            ' lblAttack
+            ' 
+            lblAttack.AutoSize = True
+            lblAttack.Font = New Font("Segoe UI", 9.0F)
+            lblAttack.Location = New Point(10, 71)
+            lblAttack.Name = "lblAttack"
+            lblAttack.Size = New Size(91, 20)
+            lblAttack.TabIndex = 2
+            lblAttack.Text = "Attack Time:"
+            ' 
+            ' cmbRmsWindow
+            ' 
+            cmbRmsWindow.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbRmsWindow.Font = New Font("Segoe UI", 9.0F)
+            cmbRmsWindow.FormattingEnabled = True
+            cmbRmsWindow.Location = New Point(140, 28)
+            cmbRmsWindow.Name = "cmbRmsWindow"
+            cmbRmsWindow.Size = New Size(160, 28)
+            cmbRmsWindow.TabIndex = 1
+            ' 
+            ' lblRmsWindow
+            ' 
+            lblRmsWindow.AutoSize = True
+            lblRmsWindow.Font = New Font("Segoe UI", 9.0F)
+            lblRmsWindow.Location = New Point(10, 31)
+            lblRmsWindow.Name = "lblRmsWindow"
+            lblRmsWindow.Size = New Size(101, 20)
+            lblRmsWindow.TabIndex = 0
+            lblRmsWindow.Text = "RMS Window:"
+            ' 
+            ' grpClipping
+            ' 
+            grpClipping.Controls.Add(cmbClipHold)
+            grpClipping.Controls.Add(lblClipHold)
+            grpClipping.Controls.Add(cmbClipThreshold)
+            grpClipping.Controls.Add(lblClipThreshold)
+            grpClipping.Font = New Font("Segoe UI", 9.0F, FontStyle.Bold)
+            grpClipping.ForeColor = Color.White
+            grpClipping.Location = New Point(10, 438)
+            grpClipping.Name = "grpClipping"
+            grpClipping.Size = New Size(320, 100)
+            grpClipping.TabIndex = 3
+            grpClipping.TabStop = False
+            grpClipping.Text = "Clipping Detection"
+            ' 
+            ' cmbClipHold
+            ' 
+            cmbClipHold.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbClipHold.Font = New Font("Segoe UI", 9.0F)
+            cmbClipHold.FormattingEnabled = True
+            cmbClipHold.Location = New Point(140, 58)
+            cmbClipHold.Name = "cmbClipHold"
+            cmbClipHold.Size = New Size(160, 28)
+            cmbClipHold.TabIndex = 3
+            ' 
+            ' lblClipHold
+            ' 
+            lblClipHold.AutoSize = True
+            lblClipHold.Font = New Font("Segoe UI", 9.0F)
+            lblClipHold.Location = New Point(10, 61)
+            lblClipHold.Name = "lblClipHold"
+            lblClipHold.Size = New Size(112, 20)
+            lblClipHold.TabIndex = 2
+            lblClipHold.Text = "Clip Hold Time:"
+            ' 
+            ' cmbClipThreshold
+            ' 
+            cmbClipThreshold.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbClipThreshold.Font = New Font("Segoe UI", 9.0F)
+            cmbClipThreshold.FormattingEnabled = True
+            cmbClipThreshold.Location = New Point(140, 23)
+            cmbClipThreshold.Name = "cmbClipThreshold"
+            cmbClipThreshold.Size = New Size(160, 28)
+            cmbClipThreshold.TabIndex = 1
+            ' 
+            ' lblClipThreshold
+            ' 
+            lblClipThreshold.AutoSize = True
+            lblClipThreshold.Font = New Font("Segoe UI", 9.0F)
+            lblClipThreshold.Location = New Point(10, 26)
+            lblClipThreshold.Name = "lblClipThreshold"
+            lblClipThreshold.Size = New Size(107, 20)
+            lblClipThreshold.TabIndex = 0
+            lblClipThreshold.Text = "Clip Threshold:"
+            ' 
+            ' grpPresets
+            ' 
+            grpPresets.Controls.Add(btnReset)
+            grpPresets.Controls.Add(btnBroadcast)
+            grpPresets.Controls.Add(btnSlowResponse)
+            grpPresets.Controls.Add(btnFastResponse)
+            grpPresets.Font = New Font("Segoe UI", 9.0F, FontStyle.Bold)
+            grpPresets.ForeColor = Color.White
+            grpPresets.Location = New Point(10, 544)
+            grpPresets.Name = "grpPresets"
+            grpPresets.Size = New Size(320, 120)
+            grpPresets.TabIndex = 4
+            grpPresets.TabStop = False
+            grpPresets.Text = "Presets"
+            ' 
+            ' btnReset
+            ' 
+            btnReset.Font = New Font("Segoe UI", 9.0F)
+            btnReset.ForeColor = Color.Black
+            btnReset.Location = New Point(165, 75)
+            btnReset.Name = "btnReset"
+            btnReset.Size = New Size(135, 30)
+            btnReset.TabIndex = 3
+            btnReset.Text = "Reset to Defaults"
+            btnReset.UseVisualStyleBackColor = True
+            ' 
+            ' btnBroadcast
+            ' 
+            btnBroadcast.Font = New Font("Segoe UI", 9.0F)
+            btnBroadcast.ForeColor = Color.Black
+            btnBroadcast.Location = New Point(165, 30)
+            btnBroadcast.Name = "btnBroadcast"
+            btnBroadcast.Size = New Size(135, 30)
+            btnBroadcast.TabIndex = 2
+            btnBroadcast.Text = "Broadcast"
+            btnBroadcast.UseVisualStyleBackColor = True
+            ' 
+            ' btnSlowResponse
+            ' 
+            btnSlowResponse.Font = New Font("Segoe UI", 9.0F)
+            btnSlowResponse.ForeColor = Color.Black
+            btnSlowResponse.Location = New Point(10, 75)
+            btnSlowResponse.Name = "btnSlowResponse"
+            btnSlowResponse.Size = New Size(135, 30)
+            btnSlowResponse.TabIndex = 1
+            btnSlowResponse.Text = "Slow Response"
+            btnSlowResponse.UseVisualStyleBackColor = True
+            ' 
+            ' btnFastResponse
+            ' 
+            btnFastResponse.Font = New Font("Segoe UI", 9.0F)
+            btnFastResponse.ForeColor = Color.Black
+            btnFastResponse.Location = New Point(10, 30)
+            btnFastResponse.Name = "btnFastResponse"
+            btnFastResponse.Size = New Size(135, 30)
+            btnFastResponse.TabIndex = 0
+            btnFastResponse.Text = "Fast Response"
+            btnFastResponse.UseVisualStyleBackColor = True
+            ' 
+            ' InputTabPanel
+            ' 
+            AutoScaleDimensions = New SizeF(8.0F, 20.0F)
+            AutoScaleMode = AutoScaleMode.Font
+            AutoScroll = True
+            BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+            Controls.Add(grpPresets)
+            Controls.Add(grpClipping)
+            Controls.Add(grpMeterBehavior)
+            Controls.Add(grpPeakBehavior)
+            Controls.Add(grpInputVolume)
+            ForeColor = Color.FromArgb(CByte(241), CByte(241), CByte(241))
+            Name = "InputTabPanel"
+            Size = New Size(360, 777)
+            grpInputVolume.ResumeLayout(False)
+            grpInputVolume.PerformLayout()
+            CType(trackInputVolume, ComponentModel.ISupportInitialize).EndInit()
+            grpPeakBehavior.ResumeLayout(False)
+            grpPeakBehavior.PerformLayout()
+            grpMeterBehavior.ResumeLayout(False)
+            grpMeterBehavior.PerformLayout()
+            grpClipping.ResumeLayout(False)
+            grpClipping.PerformLayout()
+            grpPresets.ResumeLayout(False)
+            ResumeLayout(False)
+
+        End Sub
+
+        Friend WithEvents grpInputVolume As GroupBox
+        Friend WithEvents chkLinkToPlayback As CheckBox
+        Friend WithEvents lblInputVolumeValue As Label
+        Friend WithEvents trackInputVolume As TrackBar
+        Friend WithEvents Label1 As Label
+        Friend WithEvents grpPeakBehavior As GroupBox
+        Friend WithEvents cmbPeakDecay As ComboBox
+        Friend WithEvents lblPeakDecay As Label
+        Friend WithEvents cmbPeakHold As ComboBox
+        Friend WithEvents lblPeakHold As Label
+        Friend WithEvents grpMeterBehavior As GroupBox
+        Friend WithEvents cmbRelease As ComboBox
+        Friend WithEvents lblRelease As Label
+        Friend WithEvents cmbAttack As ComboBox
+        Friend WithEvents lblAttack As Label
+        Friend WithEvents cmbRmsWindow As ComboBox
+        Friend WithEvents lblRmsWindow As Label
+        Friend WithEvents grpClipping As GroupBox
+        Friend WithEvents cmbClipHold As ComboBox
+        Friend WithEvents lblClipHold As Label
+        Friend WithEvents cmbClipThreshold As ComboBox
+        Friend WithEvents lblClipThreshold As Label
+        Friend WithEvents grpPresets As GroupBox
+        Friend WithEvents btnReset As Button
+        Friend WithEvents btnBroadcast As Button
+        Friend WithEvents btnSlowResponse As Button
+        Friend WithEvents btnFastResponse As Button
+
+    End Class
+
+End Namespace
+

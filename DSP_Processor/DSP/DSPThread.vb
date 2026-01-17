@@ -15,8 +15,13 @@ Namespace DSP
 
         Private ReadOnly inputBuffer As Utils.RingBuffer
         Private ReadOnly outputBuffer As Utils.RingBuffer
-        Private ReadOnly inputMonitorBuffer As Utils.RingBuffer ' Monitor BEFORE processing (raw audio)
-        Private ReadOnly outputMonitorBuffer As Utils.RingBuffer ' Monitor AFTER processing (processed audio)
+        
+        ' PHASE 2.5: Multi-Reader Monitor Buffers (Architecture Rule #4)
+        Private ReadOnly inputMonitorBuffer As Utils.MultiReaderRingBuffer ' PreDSP tap (raw audio)
+        Private ReadOnly outputMonitorBuffer As Utils.MultiReaderRingBuffer ' PreOutput tap (final processed)
+        Friend ReadOnly postGainMonitorBuffer As Utils.MultiReaderRingBuffer ' PostGain tap (after INPUT gain) - Friend for callback access
+        Friend ReadOnly postOutputGainMonitorBuffer As Utils.MultiReaderRingBuffer ' PostDSP tap (after OUTPUT gain) - Friend for callback access
+        
         Private ReadOnly processorChain As ProcessorChain
         Private ReadOnly workBuffer As AudioBuffer
         Private disposed As Boolean = False
@@ -111,10 +116,13 @@ Namespace DSP
             inputBuffer = New Utils.RingBuffer(inputBufferSize)
             outputBuffer = New Utils.RingBuffer(outputBufferSize)
 
-            ' Create monitor buffers (0.5 seconds each for FFT)
+            ' PHASE 2.5: Create MULTI-READER monitor buffers (0.5 seconds each for FFT and meters)
+            ' Architecture Rule #4: Multiple instruments can read same audio independently
             Dim monitorSize = outputBufferSize \ 4
-            inputMonitorBuffer = New Utils.RingBuffer(monitorSize)
-            outputMonitorBuffer = New Utils.RingBuffer(monitorSize)
+            inputMonitorBuffer = New Utils.MultiReaderRingBuffer(monitorSize)         ' PreDSP tap
+            outputMonitorBuffer = New Utils.MultiReaderRingBuffer(monitorSize)        ' PreOutput tap
+            postGainMonitorBuffer = New Utils.MultiReaderRingBuffer(monitorSize)      ' PostGain tap (after INPUT gain)
+            postOutputGainMonitorBuffer = New Utils.MultiReaderRingBuffer(monitorSize) ' PostDSP tap (after OUTPUT gain)
 
             ' Create processor chain
             processorChain = New ProcessorChain(format)
@@ -125,7 +133,7 @@ Namespace DSP
             workBuffer = New AudioBuffer(format, blockSizeBytes, True)
 
             Utils.Logger.Instance.Info($"DSP initialized (pull-based with worker thread): {BLOCK_SIZE_SAMPLES} samples ({blockSizeBytes} bytes, {format.Channels}ch)", "DSPThread")
-            Utils.Logger.Instance.Info($"Monitor buffers: {monitorSize} bytes each (0.5 seconds) - Input (raw) + Output (processed)", "DSPThread")
+            Utils.Logger.Instance.Info($"Monitor buffers: {monitorSize} bytes each (0.5 seconds) - MULTI-READER taps: PreDSP + PostGain + PostDSP + PreOutput", "DSPThread")
         End Sub
 
 #End Region
@@ -181,20 +189,59 @@ Namespace DSP
         ''' <summary>
         ''' Reads RAW audio from INPUT monitor buffer (before DSP processing)
         ''' NON-BLOCKING: For FFT comparison - shows what went INTO the DSP
+        ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
         ''' </summary>
         Public Function ReadInputMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
             If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
-            Return inputMonitorBuffer.Read(data, offset, count)
+            ' Auto-create default reader if not exists
+            If Not inputMonitorBuffer.HasReader("_default_input") Then
+                inputMonitorBuffer.CreateReader("_default_input")
+            End If
+            Return inputMonitorBuffer.Read("_default_input", data, offset, count)
         End Function
 
         ''' <summary>
         ''' Reads PROCESSED audio from OUTPUT monitor buffer (after DSP processing)
         ''' NON-BLOCKING: For FFT comparison - shows what came OUT of the DSP
+        ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
         ''' </summary>
         Public Function ReadOutputMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
             If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
-            Return outputMonitorBuffer.Read(data, offset, count)
+            ' Auto-create default reader if not exists
+            If Not outputMonitorBuffer.HasReader("_default_output") Then
+                outputMonitorBuffer.CreateReader("_default_output")
+            End If
+            Return outputMonitorBuffer.Read("_default_output", data, offset, count)
         End Function
+
+        ''' <summary>
+        ''' Reads audio from POST-GAIN monitor buffer (after Gain/Pan, DSP tap point pattern)
+        ''' NON-BLOCKING: For meters - shows audio after INPUT gain/pan adjustments
+        ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
+        ''' </summary>
+        Public Function ReadPostGainMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
+            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            ' Auto-create default reader if not exists
+            If Not postGainMonitorBuffer.HasReader("_default_postgain") Then
+                postGainMonitorBuffer.CreateReader("_default_postgain")
+            End If
+            Return postGainMonitorBuffer.Read("_default_postgain", data, offset, count)
+        End Function
+
+        ''' <summary>
+        ''' Reads audio from POST-OUTPUT-GAIN monitor buffer (Phase 2.5)
+        ''' NON-BLOCKING: For output meters - shows audio after OUTPUT gain/pan adjustments
+        ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
+        ''' </summary>
+        Public Function ReadPostOutputGainMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
+            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+            ' Auto-create default reader if not exists
+            If Not postOutputGainMonitorBuffer.HasReader("_default_postoutputgain") Then
+                postOutputGainMonitorBuffer.CreateReader("_default_postoutputgain")
+            End If
+            Return postOutputGainMonitorBuffer.Read("_default_postoutputgain", data, offset, count)
+        End Function
+
 
         ''' <summary>
         ''' Gets the number of bytes available in the output buffer
@@ -207,14 +254,44 @@ Namespace DSP
         ''' Gets the number of bytes available in the INPUT monitor buffer
         ''' </summary>
         Public Function InputMonitorAvailable() As Integer
-            Return inputMonitorBuffer.Available
+            ' Use default reader or return total available
+            If inputMonitorBuffer.HasReader("_default_input") Then
+                Return inputMonitorBuffer.Available("_default_input")
+            End If
+            Return 0 ' No reader yet
         End Function
 
         ''' <summary>
         ''' Gets the number of bytes available in the OUTPUT monitor buffer
         ''' </summary>
         Public Function OutputMonitorAvailable() As Integer
-            Return outputMonitorBuffer.Available
+            ' Use default reader or return total available
+            If outputMonitorBuffer.HasReader("_default_output") Then
+                Return outputMonitorBuffer.Available("_default_output")
+            End If
+            Return 0 ' No reader yet
+        End Function
+
+        ''' <summary>
+        ''' Gets the number of bytes available in the POST-GAIN monitor buffer (DSP tap point)
+        ''' </summary>
+        Public Function PostGainMonitorAvailable() As Integer
+            ' Use default reader or return total available
+            If postGainMonitorBuffer.HasReader("_default_postgain") Then
+                Return postGainMonitorBuffer.Available("_default_postgain")
+            End If
+            Return 0 ' No reader yet
+        End Function
+
+        ''' <summary>
+        ''' Gets the number of bytes available in the POST-OUTPUT-GAIN monitor buffer (Phase 2.5)
+        ''' </summary>
+        Public Function PostOutputGainMonitorAvailable() As Integer
+            ' Use default reader or return total available
+            If postOutputGainMonitorBuffer.HasReader("_default_postoutputgain") Then
+                Return postOutputGainMonitorBuffer.Available("_default_postoutputgain")
+            End If
+            Return 0 ' No reader yet
         End Function
 
         ''' <summary>
@@ -239,6 +316,124 @@ Namespace DSP
         Public Sub ResetProcessors()
             processorChain?.Reset()
         End Sub
+
+#Region "Multi-Reader Tap Point API (Phase 2.5 - Architecture Rule #4)"
+
+        ''' <summary>
+        ''' Tap point locations for flexible instrument routing
+        ''' Maps to TapPoint enum in PipelineConfiguration
+        ''' </summary>
+        Public Enum TapLocation
+            PreDSP = 1        ' Raw input (before any processing)
+            PostGain = 2      ' After INPUT gain stage
+            PostDSP = 3       ' After OUTPUT gain stage (final processed)
+            PreOutput = 4     ' Before final output (same as PostDSP currently)
+        End Enum
+
+        ''' <summary>
+        ''' Create an independent reader cursor for a specific tap point
+        ''' Enables multiple instruments to read same audio without contention
+        ''' </summary>
+        ''' <param name="tapLocation">Which tap point to read from</param>
+        ''' <param name="readerName">Unique name for this reader (e.g., "InputFFT", "OutputMeter")</param>
+        ''' <returns>Reader handle for use in ReadFromTap()</returns>
+        Public Function CreateTapReader(tapLocation As TapLocation, readerName As String) As String
+            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+
+            Select Case tapLocation
+                Case TapLocation.PreDSP
+                    Return inputMonitorBuffer.CreateReader(readerName)
+                Case TapLocation.PostGain
+                    Return postGainMonitorBuffer.CreateReader(readerName)
+                Case TapLocation.PostDSP
+                    Return postOutputGainMonitorBuffer.CreateReader(readerName)
+                Case TapLocation.PreOutput
+                    Return outputMonitorBuffer.CreateReader(readerName)
+                Case Else
+                    Throw New ArgumentException($"Invalid tap location: {tapLocation}")
+            End Select
+        End Function
+
+        ''' <summary>
+        ''' Remove a reader cursor from a tap point
+        ''' </summary>
+        Public Sub RemoveTapReader(tapLocation As TapLocation, readerName As String)
+            If disposed OrElse String.IsNullOrWhiteSpace(readerName) Then Return
+
+            Select Case tapLocation
+                Case TapLocation.PreDSP
+                    inputMonitorBuffer.RemoveReader(readerName)
+                Case TapLocation.PostGain
+                    postGainMonitorBuffer.RemoveReader(readerName)
+                Case TapLocation.PostDSP
+                    postOutputGainMonitorBuffer.RemoveReader(readerName)
+                Case TapLocation.PreOutput
+                    outputMonitorBuffer.RemoveReader(readerName)
+            End Select
+        End Sub
+
+        ''' <summary>
+        ''' Read audio from a specific tap point using a reader cursor
+        ''' Each reader maintains independent position
+        ''' </summary>
+        Public Function ReadFromTap(tapLocation As TapLocation, readerName As String, buffer As Byte(), offset As Integer, count As Integer) As Integer
+            If disposed Then Throw New ObjectDisposedException(NameOf(DSPThread))
+
+            Select Case tapLocation
+                Case TapLocation.PreDSP
+                    Return inputMonitorBuffer.Read(readerName, buffer, offset, count)
+                Case TapLocation.PostGain
+                    Return postGainMonitorBuffer.Read(readerName, buffer, offset, count)
+                Case TapLocation.PostDSP
+                    Return postOutputGainMonitorBuffer.Read(readerName, buffer, offset, count)
+                Case TapLocation.PreOutput
+                    Return outputMonitorBuffer.Read(readerName, buffer, offset, count)
+                Case Else
+                    Throw New ArgumentException($"Invalid tap location: {tapLocation}")
+            End Select
+        End Function
+
+        ''' <summary>
+        ''' Get bytes available for a specific reader at a tap point
+        ''' </summary>
+        Public Function TapAvailable(tapLocation As TapLocation, readerName As String) As Integer
+            If disposed OrElse String.IsNullOrWhiteSpace(readerName) Then Return 0
+
+            Select Case tapLocation
+                Case TapLocation.PreDSP
+                    Return inputMonitorBuffer.Available(readerName)
+                Case TapLocation.PostGain
+                    Return postGainMonitorBuffer.Available(readerName)
+                Case TapLocation.PostDSP
+                    Return postOutputGainMonitorBuffer.Available(readerName)
+                Case TapLocation.PreOutput
+                    Return outputMonitorBuffer.Available(readerName)
+                Case Else
+                    Return 0
+            End Select
+        End Function
+
+        ''' <summary>
+        ''' Check if a reader exists at a tap point
+        ''' </summary>
+        Public Function HasTapReader(tapLocation As TapLocation, readerName As String) As Boolean
+            If disposed OrElse String.IsNullOrWhiteSpace(readerName) Then Return False
+
+            Select Case tapLocation
+                Case TapLocation.PreDSP
+                    Return inputMonitorBuffer.HasReader(readerName)
+                Case TapLocation.PostGain
+                    Return postGainMonitorBuffer.HasReader(readerName)
+                Case TapLocation.PostDSP
+                    Return postOutputGainMonitorBuffer.HasReader(readerName)
+                Case TapLocation.PreOutput
+                    Return outputMonitorBuffer.HasReader(readerName)
+                Case Else
+                    Return False
+            End Select
+        End Function
+
+#End Region
 
 #End Region
 

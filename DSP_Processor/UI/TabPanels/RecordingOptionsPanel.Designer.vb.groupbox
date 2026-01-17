@@ -1,0 +1,406 @@
+Imports DSP_Processor.Models
+Imports DSP_Processor.UI
+
+Namespace UI.TabPanels
+
+<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()>
+Partial Class RecordingOptionsPanel
+    Inherits System.Windows.Forms.UserControl
+
+    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+        Try
+            If disposing AndAlso components IsNot Nothing Then
+                components.Dispose()
+            End If
+        Finally
+            MyBase.Dispose(disposing)
+        End Try
+    End Sub
+
+    Private components As System.ComponentModel.IContainer
+
+    <System.Diagnostics.DebuggerStepThrough()>
+    Private Sub InitializeComponent()
+        Me.grpRecordingMode = New System.Windows.Forms.GroupBox()
+        Me.lblModeDescription = New System.Windows.Forms.Label()
+        Me.radioLoop = New System.Windows.Forms.RadioButton()
+        Me.radioTimed = New System.Windows.Forms.RadioButton()
+        Me.radioManual = New System.Windows.Forms.RadioButton()
+        Me.grpTimedOptions = New System.Windows.Forms.GroupBox()
+        Me.lblTimedFormat = New System.Windows.Forms.Label()
+        Me.numTimedSeconds = New System.Windows.Forms.NumericUpDown()
+        Me.numTimedMinutes = New System.Windows.Forms.NumericUpDown()
+        Me.numTimedHours = New System.Windows.Forms.NumericUpDown()
+        Me.lblTimedDuration = New System.Windows.Forms.Label()
+        Me.grpLoopOptions = New System.Windows.Forms.GroupBox()
+        Me.chkAutoIncrement = New System.Windows.Forms.CheckBox()
+        Me.numLoopDelay = New System.Windows.Forms.NumericUpDown()
+        Me.lblLoopDelay = New System.Windows.Forms.Label()
+        Me.numLoopSeconds = New System.Windows.Forms.NumericUpDown()
+        Me.numLoopMinutes = New System.Windows.Forms.NumericUpDown()
+        Me.numLoopHours = New System.Windows.Forms.NumericUpDown()
+        Me.lblLoopDuration = New System.Windows.Forms.Label()
+        Me.numLoopCount = New System.Windows.Forms.NumericUpDown()
+        Me.lblLoopCount = New System.Windows.Forms.Label()
+        Me.grpPresets = New System.Windows.Forms.GroupBox()
+        Me.btn5Takes = New System.Windows.Forms.Button()
+        Me.btn60Sec = New System.Windows.Forms.Button()
+        Me.btn30Sec = New System.Windows.Forms.Button()
+        Me.grpRecordingMode.SuspendLayout()
+        Me.grpTimedOptions.SuspendLayout()
+        CType(Me.numTimedSeconds, System.ComponentModel.ISupportInitialize).BeginInit()
+        CType(Me.numTimedMinutes, System.ComponentModel.ISupportInitialize).BeginInit()
+        CType(Me.numTimedHours, System.ComponentModel.ISupportInitialize).BeginInit()
+        Me.grpLoopOptions.SuspendLayout()
+        CType(Me.numLoopDelay, System.ComponentModel.ISupportInitialize).BeginInit()
+        CType(Me.numLoopSeconds, System.ComponentModel.ISupportInitialize).BeginInit()
+        CType(Me.numLoopMinutes, System.ComponentModel.ISupportInitialize).BeginInit()
+        CType(Me.numLoopHours, System.ComponentModel.ISupportInitialize).BeginInit()
+        CType(Me.numLoopCount, System.ComponentModel.ISupportInitialize).BeginInit()
+        Me.grpPresets.SuspendLayout()
+        Me.SuspendLayout()
+        '
+        'grpRecordingMode
+        '
+        Me.grpRecordingMode.Controls.Add(Me.lblModeDescription)
+        Me.grpRecordingMode.Controls.Add(Me.radioLoop)
+        Me.grpRecordingMode.Controls.Add(Me.radioTimed)
+        Me.grpRecordingMode.Controls.Add(Me.radioManual)
+        Me.grpRecordingMode.Font = New System.Drawing.Font("Segoe UI", 9.0!, System.Drawing.FontStyle.Bold)
+        Me.grpRecordingMode.ForeColor = System.Drawing.Color.White
+        Me.grpRecordingMode.Location = New System.Drawing.Point(10, 10)
+        Me.grpRecordingMode.Name = "grpRecordingMode"
+        Me.grpRecordingMode.Size = New System.Drawing.Size(320, 150)
+        Me.grpRecordingMode.TabIndex = 0
+        Me.grpRecordingMode.TabStop = False
+        Me.grpRecordingMode.Text = "Recording Mode"
+        '
+        'lblModeDescription
+        '
+        Me.lblModeDescription.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblModeDescription.ForeColor = System.Drawing.Color.LightGray
+        Me.lblModeDescription.Location = New System.Drawing.Point(10, 115)
+        Me.lblModeDescription.Name = "lblModeDescription"
+        Me.lblModeDescription.Size = New System.Drawing.Size(300, 25)
+        Me.lblModeDescription.TabIndex = 3
+        Me.lblModeDescription.Text = "Record until manually stopped"
+        '
+        'radioLoop
+        '
+        Me.radioLoop.AutoSize = True
+        Me.radioLoop.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.radioLoop.Location = New System.Drawing.Point(10, 85)
+        Me.radioLoop.Name = "radioLoop"
+        Me.radioLoop.Size = New System.Drawing.Size(242, 24)
+        Me.radioLoop.TabIndex = 2
+        Me.radioLoop.Text = "Loop - Multiple automatic takes"
+        Me.radioLoop.UseVisualStyleBackColor = True
+        '
+        'radioTimed
+        '
+        Me.radioTimed.AutoSize = True
+        Me.radioTimed.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.radioTimed.Location = New System.Drawing.Point(10, 55)
+        Me.radioTimed.Name = "radioTimed"
+        Me.radioTimed.Size = New System.Drawing.Size(272, 24)
+        Me.radioTimed.TabIndex = 1
+        Me.radioTimed.Text = "Timed - Record for specific duration"
+        Me.radioTimed.UseVisualStyleBackColor = True
+        '
+        'radioManual
+        '
+        Me.radioManual.AutoSize = True
+        Me.radioManual.Checked = True
+        Me.radioManual.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.radioManual.Location = New System.Drawing.Point(10, 25)
+        Me.radioManual.Name = "radioManual"
+        Me.radioManual.Size = New System.Drawing.Size(242, 24)
+        Me.radioManual.TabIndex = 0
+        Me.radioManual.TabStop = True
+        Me.radioManual.Text = "Manual - Record until stopped"
+        Me.radioManual.UseVisualStyleBackColor = True
+        '
+        'grpTimedOptions
+        '
+        Me.grpTimedOptions.Controls.Add(Me.lblTimedFormat)
+        Me.grpTimedOptions.Controls.Add(Me.numTimedSeconds)
+        Me.grpTimedOptions.Controls.Add(Me.numTimedMinutes)
+        Me.grpTimedOptions.Controls.Add(Me.numTimedHours)
+        Me.grpTimedOptions.Controls.Add(Me.lblTimedDuration)
+        Me.grpTimedOptions.Enabled = False
+        Me.grpTimedOptions.Font = New System.Drawing.Font("Segoe UI", 9.0!, System.Drawing.FontStyle.Bold)
+        Me.grpTimedOptions.ForeColor = System.Drawing.Color.White
+        Me.grpTimedOptions.Location = New System.Drawing.Point(10, 170)
+        Me.grpTimedOptions.Name = "grpTimedOptions"
+        Me.grpTimedOptions.Size = New System.Drawing.Size(320, 100)
+        Me.grpTimedOptions.TabIndex = 1
+        Me.grpTimedOptions.TabStop = False
+        Me.grpTimedOptions.Text = "Timed Recording Options"
+        '
+        'lblTimedFormat
+        '
+        Me.lblTimedFormat.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblTimedFormat.ForeColor = System.Drawing.Color.Gray
+        Me.lblTimedFormat.Location = New System.Drawing.Point(80, 50)
+        Me.lblTimedFormat.Name = "lblTimedFormat"
+        Me.lblTimedFormat.Size = New System.Drawing.Size(170, 20)
+        Me.lblTimedFormat.TabIndex = 4
+        Me.lblTimedFormat.Text = "HH : MM : SS"
+        '
+        'numTimedSeconds
+        '
+        Me.numTimedSeconds.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.numTimedSeconds.Location = New System.Drawing.Point(200, 23)
+        Me.numTimedSeconds.Maximum = New Decimal(New Integer() {59, 0, 0, 0})
+        Me.numTimedSeconds.Name = "numTimedSeconds"
+        Me.numTimedSeconds.Size = New System.Drawing.Size(50, 27)
+        Me.numTimedSeconds.TabIndex = 3
+        '
+        'numTimedMinutes
+        '
+        Me.numTimedMinutes.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.numTimedMinutes.Location = New System.Drawing.Point(140, 23)
+        Me.numTimedMinutes.Maximum = New Decimal(New Integer() {59, 0, 0, 0})
+        Me.numTimedMinutes.Name = "numTimedMinutes"
+        Me.numTimedMinutes.Size = New System.Drawing.Size(50, 27)
+        Me.numTimedMinutes.TabIndex = 2
+        Me.numTimedMinutes.Value = New Decimal(New Integer() {1, 0, 0, 0})
+        '
+        'numTimedHours
+        '
+        Me.numTimedHours.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.numTimedHours.Location = New System.Drawing.Point(80, 23)
+        Me.numTimedHours.Maximum = New Decimal(New Integer() {23, 0, 0, 0})
+        Me.numTimedHours.Name = "numTimedHours"
+        Me.numTimedHours.Size = New System.Drawing.Size(50, 27)
+        Me.numTimedHours.TabIndex = 1
+        '
+        'lblTimedDuration
+        '
+        Me.lblTimedDuration.AutoSize = True
+        Me.lblTimedDuration.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblTimedDuration.Location = New System.Drawing.Point(10, 25)
+        Me.lblTimedDuration.Name = "lblTimedDuration"
+        Me.lblTimedDuration.Size = New System.Drawing.Size(71, 20)
+        Me.lblTimedDuration.TabIndex = 0
+        Me.lblTimedDuration.Text = "Duration:"
+        '
+        'grpLoopOptions
+        '
+        Me.grpLoopOptions.Controls.Add(Me.chkAutoIncrement)
+        Me.grpLoopOptions.Controls.Add(Me.numLoopDelay)
+        Me.grpLoopOptions.Controls.Add(Me.lblLoopDelay)
+        Me.grpLoopOptions.Controls.Add(Me.numLoopSeconds)
+        Me.grpLoopOptions.Controls.Add(Me.numLoopMinutes)
+        Me.grpLoopOptions.Controls.Add(Me.numLoopHours)
+        Me.grpLoopOptions.Controls.Add(Me.lblLoopDuration)
+        Me.grpLoopOptions.Controls.Add(Me.numLoopCount)
+        Me.grpLoopOptions.Controls.Add(Me.lblLoopCount)
+        Me.grpLoopOptions.Enabled = False
+        Me.grpLoopOptions.Font = New System.Drawing.Font("Segoe UI", 9.0!, System.Drawing.FontStyle.Bold)
+        Me.grpLoopOptions.ForeColor = System.Drawing.Color.White
+        Me.grpLoopOptions.Location = New System.Drawing.Point(10, 280)
+        Me.grpLoopOptions.Name = "grpLoopOptions"
+        Me.grpLoopOptions.Size = New System.Drawing.Size(320, 180)
+        Me.grpLoopOptions.TabIndex = 2
+        Me.grpLoopOptions.TabStop = False
+        Me.grpLoopOptions.Text = "Loop Recording Options"
+        '
+        'chkAutoIncrement
+        '
+        Me.chkAutoIncrement.AutoSize = True
+        Me.chkAutoIncrement.Checked = True
+        Me.chkAutoIncrement.CheckState = System.Windows.Forms.CheckState.Checked
+        Me.chkAutoIncrement.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.chkAutoIncrement.Location = New System.Drawing.Point(10, 115)
+        Me.chkAutoIncrement.Name = "chkAutoIncrement"
+        Me.chkAutoIncrement.Size = New System.Drawing.Size(220, 24)
+        Me.chkAutoIncrement.TabIndex = 8
+        Me.chkAutoIncrement.Text = "Auto-increment take numbers"
+        Me.chkAutoIncrement.UseVisualStyleBackColor = True
+        '
+        'numLoopDelay
+        '
+        Me.numLoopDelay.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.numLoopDelay.Location = New System.Drawing.Point(140, 83)
+        Me.numLoopDelay.Maximum = New Decimal(New Integer() {60, 0, 0, 0})
+        Me.numLoopDelay.Name = "numLoopDelay"
+        Me.numLoopDelay.Size = New System.Drawing.Size(70, 27)
+        Me.numLoopDelay.TabIndex = 7
+        Me.numLoopDelay.Value = New Decimal(New Integer() {2, 0, 0, 0})
+        '
+        'lblLoopDelay
+        '
+        Me.lblLoopDelay.AutoSize = True
+        Me.lblLoopDelay.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblLoopDelay.Location = New System.Drawing.Point(10, 85)
+        Me.lblLoopDelay.Name = "lblLoopDelay"
+        Me.lblLoopDelay.Size = New System.Drawing.Size(147, 20)
+        Me.lblLoopDelay.TabIndex = 6
+        Me.lblLoopDelay.Text = "Delay between (sec):"
+        '
+        'numLoopSeconds
+        '
+        Me.numLoopSeconds.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.numLoopSeconds.Location = New System.Drawing.Point(240, 53)
+        Me.numLoopSeconds.Maximum = New Decimal(New Integer() {59, 0, 0, 0})
+        Me.numLoopSeconds.Name = "numLoopSeconds"
+        Me.numLoopSeconds.Size = New System.Drawing.Size(40, 27)
+        Me.numLoopSeconds.TabIndex = 5
+        Me.numLoopSeconds.Value = New Decimal(New Integer() {30, 0, 0, 0})
+        '
+        'numLoopMinutes
+        '
+        Me.numLoopMinutes.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.numLoopMinutes.Location = New System.Drawing.Point(190, 53)
+        Me.numLoopMinutes.Maximum = New Decimal(New Integer() {59, 0, 0, 0})
+        Me.numLoopMinutes.Name = "numLoopMinutes"
+        Me.numLoopMinutes.Size = New System.Drawing.Size(40, 27)
+        Me.numLoopMinutes.TabIndex = 4
+        '
+        'numLoopHours
+        '
+        Me.numLoopHours.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.numLoopHours.Location = New System.Drawing.Point(140, 53)
+        Me.numLoopHours.Maximum = New Decimal(New Integer() {23, 0, 0, 0})
+        Me.numLoopHours.Name = "numLoopHours"
+        Me.numLoopHours.Size = New System.Drawing.Size(40, 27)
+        Me.numLoopHours.TabIndex = 3
+        '
+        'lblLoopDuration
+        '
+        Me.lblLoopDuration.AutoSize = True
+        Me.lblLoopDuration.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblLoopDuration.Location = New System.Drawing.Point(10, 55)
+        Me.lblLoopDuration.Name = "lblLoopDuration"
+        Me.lblLoopDuration.Size = New System.Drawing.Size(129, 20)
+        Me.lblLoopDuration.TabIndex = 2
+        Me.lblLoopDuration.Text = "Duration per take:"
+        '
+        'numLoopCount
+        '
+        Me.numLoopCount.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.numLoopCount.Location = New System.Drawing.Point(140, 23)
+        Me.numLoopCount.Minimum = New Decimal(New Integer() {1, 0, 0, 0})
+        Me.numLoopCount.Name = "numLoopCount"
+        Me.numLoopCount.Size = New System.Drawing.Size(70, 27)
+        Me.numLoopCount.TabIndex = 1
+        Me.numLoopCount.Value = New Decimal(New Integer() {3, 0, 0, 0})
+        '
+        'lblLoopCount
+        '
+        Me.lblLoopCount.AutoSize = True
+        Me.lblLoopCount.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblLoopCount.Location = New System.Drawing.Point(10, 25)
+        Me.lblLoopCount.Name = "lblLoopCount"
+        Me.lblLoopCount.Size = New System.Drawing.Size(129, 20)
+        Me.lblLoopCount.TabIndex = 0
+        Me.lblLoopCount.Text = "Number of takes:"
+        '
+        'grpPresets
+        '
+        Me.grpPresets.Controls.Add(Me.btn5Takes)
+        Me.grpPresets.Controls.Add(Me.btn60Sec)
+        Me.grpPresets.Controls.Add(Me.btn30Sec)
+        Me.grpPresets.Font = New System.Drawing.Font("Segoe UI", 9.0!, System.Drawing.FontStyle.Bold)
+        Me.grpPresets.ForeColor = System.Drawing.Color.White
+        Me.grpPresets.Location = New System.Drawing.Point(10, 470)
+        Me.grpPresets.Name = "grpPresets"
+        Me.grpPresets.Size = New System.Drawing.Size(320, 80)
+        Me.grpPresets.TabIndex = 3
+        Me.grpPresets.TabStop = False
+        Me.grpPresets.Text = "Quick Presets"
+        '
+        'btn5Takes
+        '
+        Me.btn5Takes.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.btn5Takes.ForeColor = System.Drawing.Color.Black
+        Me.btn5Takes.Location = New System.Drawing.Point(214, 25)
+        Me.btn5Takes.Name = "btn5Takes"
+        Me.btn5Takes.Size = New System.Drawing.Size(95, 35)
+        Me.btn5Takes.TabIndex = 2
+        Me.btn5Takes.Text = "5 × 30sec Loop"
+        Me.btn5Takes.UseVisualStyleBackColor = True
+        '
+        'btn60Sec
+        '
+        Me.btn60Sec.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.btn60Sec.ForeColor = System.Drawing.Color.Black
+        Me.btn60Sec.Location = New System.Drawing.Point(112, 25)
+        Me.btn60Sec.Name = "btn60Sec"
+        Me.btn60Sec.Size = New System.Drawing.Size(95, 35)
+        Me.btn60Sec.TabIndex = 1
+        Me.btn60Sec.Text = "60 Second Take"
+        Me.btn60Sec.UseVisualStyleBackColor = True
+        '
+        'btn30Sec
+        '
+        Me.btn30Sec.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.btn30Sec.ForeColor = System.Drawing.Color.Black
+        Me.btn30Sec.Location = New System.Drawing.Point(10, 25)
+        Me.btn30Sec.Name = "btn30Sec"
+        Me.btn30Sec.Size = New System.Drawing.Size(95, 35)
+        Me.btn30Sec.TabIndex = 0
+        Me.btn30Sec.Text = "30 Second Take"
+        Me.btn30Sec.UseVisualStyleBackColor = True
+        '
+        'RecordingOptionsPanel
+        '
+        Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 20.0!)
+        Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
+        Me.AutoScroll = True
+        Me.BackColor = System.Drawing.Color.FromArgb(CType(CType(45, Byte), Integer), CType(CType(45, Byte), Integer), CType(CType(48, Byte), Integer))
+        Me.Controls.Add(Me.grpPresets)
+        Me.Controls.Add(Me.grpLoopOptions)
+        Me.Controls.Add(Me.grpTimedOptions)
+        Me.Controls.Add(Me.grpRecordingMode)
+        Me.Name = "RecordingOptionsPanel"
+        Me.Size = New System.Drawing.Size(350, 580)
+        Me.grpRecordingMode.ResumeLayout(False)
+        Me.grpRecordingMode.PerformLayout()
+        Me.grpTimedOptions.ResumeLayout(False)
+        Me.grpTimedOptions.PerformLayout()
+        CType(Me.numTimedSeconds, System.ComponentModel.ISupportInitialize).EndInit()
+        CType(Me.numTimedMinutes, System.ComponentModel.ISupportInitialize).EndInit()
+        CType(Me.numTimedHours, System.ComponentModel.ISupportInitialize).EndInit()
+        Me.grpLoopOptions.ResumeLayout(False)
+        Me.grpLoopOptions.PerformLayout()
+        CType(Me.numLoopDelay, System.ComponentModel.ISupportInitialize).EndInit()
+        CType(Me.numLoopSeconds, System.ComponentModel.ISupportInitialize).EndInit()
+        CType(Me.numLoopMinutes, System.ComponentModel.ISupportInitialize).EndInit()
+        CType(Me.numLoopHours, System.ComponentModel.ISupportInitialize).EndInit()
+        CType(Me.numLoopCount, System.ComponentModel.ISupportInitialize).EndInit()
+        Me.grpPresets.ResumeLayout(False)
+        Me.ResumeLayout(False)
+
+    End Sub
+
+    Friend WithEvents grpRecordingMode As GroupBox
+    Friend WithEvents lblModeDescription As Label
+    Friend WithEvents radioLoop As RadioButton
+    Friend WithEvents radioTimed As RadioButton
+    Friend WithEvents radioManual As RadioButton
+    Friend WithEvents grpTimedOptions As GroupBox
+    Friend WithEvents lblTimedFormat As Label
+    Friend WithEvents numTimedSeconds As NumericUpDown
+    Friend WithEvents numTimedMinutes As NumericUpDown
+    Friend WithEvents numTimedHours As NumericUpDown
+    Friend WithEvents lblTimedDuration As Label
+    Friend WithEvents grpLoopOptions As GroupBox
+    Friend WithEvents chkAutoIncrement As CheckBox
+    Friend WithEvents numLoopDelay As NumericUpDown
+    Friend WithEvents lblLoopDelay As Label
+    Friend WithEvents numLoopSeconds As NumericUpDown
+    Friend WithEvents numLoopMinutes As NumericUpDown
+    Friend WithEvents numLoopHours As NumericUpDown
+    Friend WithEvents lblLoopDuration As Label
+    Friend WithEvents numLoopCount As NumericUpDown
+    Friend WithEvents lblLoopCount As Label
+    Friend WithEvents grpPresets As GroupBox
+    Friend WithEvents btn5Takes As Button
+    Friend WithEvents btn60Sec As Button
+    Friend WithEvents btn30Sec As Button
+
+End Class
+
+End Namespace

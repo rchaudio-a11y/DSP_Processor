@@ -1,0 +1,168 @@
+Imports DSP_Processor.AudioIO
+Imports DSP_Processor.Managers
+
+Namespace UI.TabPanels
+
+<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()>
+Partial Class RoutingPanel
+    Inherits System.Windows.Forms.UserControl
+
+    'UserControl overrides dispose to clean up the component list.
+    <System.Diagnostics.DebuggerNonUserCode()>
+    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+        Try
+            If disposing AndAlso components IsNot Nothing Then
+                components.Dispose()
+            End If
+        Finally
+            MyBase.Dispose(disposing)
+        End Try
+    End Sub
+
+    'Required by the Windows Form Designer
+    Private components As System.ComponentModel.IContainer
+
+    'NOTE: The following procedure is required by the Windows Form Designer
+    'It can be modified using the Windows Form Designer.  
+    'Do not modify it using the code editor.
+    <System.Diagnostics.DebuggerStepThrough()>
+    Private Sub InitializeComponent()
+        Me.grpRouting = New System.Windows.Forms.GroupBox()
+        Me.cmbOutputDevice = New System.Windows.Forms.ComboBox()
+        Me.lblOutputDevice = New System.Windows.Forms.Label()
+        Me.lblSelectedFile = New System.Windows.Forms.Label()
+        Me.btnBrowseInputFile = New System.Windows.Forms.Button()
+        Me.radioFilePlayback = New System.Windows.Forms.RadioButton()
+        Me.radioMicrophone = New System.Windows.Forms.RadioButton()
+        Me.lblInputSource = New System.Windows.Forms.Label()
+        Me.grpRouting.SuspendLayout()
+        Me.SuspendLayout()
+        '
+        'grpRouting
+        '
+        Me.grpRouting.Controls.Add(Me.cmbOutputDevice)
+        Me.grpRouting.Controls.Add(Me.lblOutputDevice)
+        Me.grpRouting.Controls.Add(Me.lblSelectedFile)
+        Me.grpRouting.Controls.Add(Me.btnBrowseInputFile)
+        Me.grpRouting.Controls.Add(Me.radioFilePlayback)
+        Me.grpRouting.Controls.Add(Me.radioMicrophone)
+        Me.grpRouting.Controls.Add(Me.lblInputSource)
+        Me.grpRouting.Font = New System.Drawing.Font("Segoe UI", 9.0!, System.Drawing.FontStyle.Bold)
+        Me.grpRouting.ForeColor = System.Drawing.Color.White
+        Me.grpRouting.Location = New System.Drawing.Point(10, 10)
+        Me.grpRouting.Name = "grpRouting"
+        Me.grpRouting.Size = New System.Drawing.Size(380, 250)
+        Me.grpRouting.TabIndex = 0
+        Me.grpRouting.TabStop = False
+        Me.grpRouting.Text = "Audio Routing"
+        '
+        'cmbOutputDevice
+        '
+        Me.cmbOutputDevice.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
+        Me.cmbOutputDevice.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        Me.cmbOutputDevice.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.cmbOutputDevice.ForeColor = System.Drawing.Color.White
+        Me.cmbOutputDevice.FormattingEnabled = True
+        Me.cmbOutputDevice.Location = New System.Drawing.Point(10, 215)
+        Me.cmbOutputDevice.Name = "cmbOutputDevice"
+        Me.cmbOutputDevice.Size = New System.Drawing.Size(290, 28)
+        Me.cmbOutputDevice.TabIndex = 6
+        '
+        'lblOutputDevice
+        '
+        Me.lblOutputDevice.AutoSize = True
+        Me.lblOutputDevice.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblOutputDevice.ForeColor = System.Drawing.Color.White
+        Me.lblOutputDevice.Location = New System.Drawing.Point(10, 190)
+        Me.lblOutputDevice.Name = "lblOutputDevice"
+        Me.lblOutputDevice.Size = New System.Drawing.Size(110, 20)
+        Me.lblOutputDevice.TabIndex = 5
+        Me.lblOutputDevice.Text = "Output Device:"
+        '
+        'lblSelectedFile
+        '
+        Me.lblSelectedFile.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblSelectedFile.ForeColor = System.Drawing.Color.Cyan
+        Me.lblSelectedFile.Location = New System.Drawing.Point(30, 145)
+        Me.lblSelectedFile.Name = "lblSelectedFile"
+        Me.lblSelectedFile.Size = New System.Drawing.Size(270, 40)
+        Me.lblSelectedFile.TabIndex = 4
+        Me.lblSelectedFile.Text = "No file selected"
+        '
+        'btnBrowseInputFile
+        '
+        Me.btnBrowseInputFile.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
+        Me.btnBrowseInputFile.Enabled = False
+        Me.btnBrowseInputFile.FlatStyle = System.Windows.Forms.FlatStyle.Flat
+        Me.btnBrowseInputFile.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.btnBrowseInputFile.ForeColor = System.Drawing.Color.White
+        Me.btnBrowseInputFile.Location = New System.Drawing.Point(30, 110)
+        Me.btnBrowseInputFile.Name = "btnBrowseInputFile"
+        Me.btnBrowseInputFile.Size = New System.Drawing.Size(270, 30)
+        Me.btnBrowseInputFile.TabIndex = 3
+        Me.btnBrowseInputFile.Text = "Browse for audio file..."
+        Me.btnBrowseInputFile.UseVisualStyleBackColor = False
+        '
+        'radioFilePlayback
+        '
+        Me.radioFilePlayback.AutoSize = True
+        Me.radioFilePlayback.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.radioFilePlayback.ForeColor = System.Drawing.Color.White
+        Me.radioFilePlayback.Location = New System.Drawing.Point(10, 80)
+        Me.radioFilePlayback.Name = "radioFilePlayback"
+        Me.radioFilePlayback.Size = New System.Drawing.Size(151, 24)
+        Me.radioFilePlayback.TabIndex = 2
+        Me.radioFilePlayback.Text = "?? File Playback"
+        Me.radioFilePlayback.UseVisualStyleBackColor = True
+        '
+        'radioMicrophone
+        '
+        Me.radioMicrophone.AutoSize = True
+        Me.radioMicrophone.Checked = True
+        Me.radioMicrophone.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.radioMicrophone.ForeColor = System.Drawing.Color.White
+        Me.radioMicrophone.Location = New System.Drawing.Point(10, 50)
+        Me.radioMicrophone.Name = "radioMicrophone"
+        Me.radioMicrophone.Size = New System.Drawing.Size(143, 24)
+        Me.radioMicrophone.TabIndex = 1
+        Me.radioMicrophone.TabStop = True
+        Me.radioMicrophone.Text = "?? Microphone"
+        Me.radioMicrophone.UseVisualStyleBackColor = True
+        '
+        'lblInputSource
+        '
+        Me.lblInputSource.AutoSize = True
+        Me.lblInputSource.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblInputSource.ForeColor = System.Drawing.Color.White
+        Me.lblInputSource.Location = New System.Drawing.Point(10, 25)
+        Me.lblInputSource.Name = "lblInputSource"
+        Me.lblInputSource.Size = New System.Drawing.Size(99, 20)
+        Me.lblInputSource.TabIndex = 0
+        Me.lblInputSource.Text = "Input Source:"
+        '
+        'RoutingPanel
+        '
+        Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 20.0!)
+        Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
+        Me.BackColor = System.Drawing.Color.FromArgb(CType(CType(45, Byte), Integer), CType(CType(45, Byte), Integer), CType(CType(48, Byte), Integer))
+        Me.Controls.Add(Me.grpRouting)
+        Me.Name = "RoutingPanel"
+        Me.Size = New System.Drawing.Size(400, 270)
+        Me.grpRouting.ResumeLayout(False)
+        Me.grpRouting.PerformLayout()
+        Me.ResumeLayout(False)
+
+    End Sub
+
+    Friend WithEvents grpRouting As GroupBox
+    Friend WithEvents cmbOutputDevice As ComboBox
+    Friend WithEvents lblOutputDevice As Label
+    Friend WithEvents lblSelectedFile As Label
+    Friend WithEvents btnBrowseInputFile As Button
+    Friend WithEvents radioFilePlayback As RadioButton
+    Friend WithEvents radioMicrophone As RadioButton
+    Friend WithEvents lblInputSource As Label
+
+End Class
+
+End Namespace

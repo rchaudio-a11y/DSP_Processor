@@ -41,6 +41,8 @@ Namespace AudioIO
         Private _selectedInputFile As String
         Private feederThread As System.Threading.Thread
         Private feederCancellation As Boolean = False ' Cancellation flag for feeder thread
+        Private _inputGainProcessor As DSP.GainProcessor ' Input gain stage (Phase 2.5)
+        Private _outputGainProcessor As DSP.GainProcessor ' Output gain stage (Phase 2.5)
 
         ' Playback position tracking (for TransportControl integration)
         Private _playbackStartTime As DateTime = DateTime.MinValue
@@ -135,6 +137,187 @@ Namespace AudioIO
                 Return fileReader?.WaveFormat
             End Get
         End Property
+
+        ''' <summary>Gets the INPUT GainProcessor instance (for UI control - Phase 2.5)</summary>
+        Public ReadOnly Property InputGainProcessor As DSP.GainProcessor
+            Get
+                Return _inputGainProcessor
+            End Get
+        End Property
+
+        ''' <summary>Gets the OUTPUT GainProcessor instance (for UI control - Phase 2.5)</summary>
+        Public ReadOnly Property OutputGainProcessor As DSP.GainProcessor
+            Get
+                Return _outputGainProcessor
+            End Get
+        End Property
+
+        ''' <summary>DEPRECATED: Use InputGainProcessor instead (kept for compatibility)</summary>
+        Public ReadOnly Property GainProcessor As DSP.GainProcessor
+            Get
+                Return _inputGainProcessor
+            End Get
+        End Property
+
+        ''' <summary>Gets input samples for meter display (reads from monitor buffer)</summary>
+        Public ReadOnly Property InputSamples As Single()
+            Get
+                If dspThread IsNot Nothing Then
+                    Dim available = dspThread.InputMonitorAvailable()
+                    If available > 0 Then
+                        ' Read up to 4KB for meters (0.1 seconds at 44.1kHz stereo)
+                        Dim bufferSize = Math.Min(available, 4096)
+                        Dim buffer(bufferSize - 1) As Byte
+                        Dim bytesRead = dspThread.ReadInputMonitor(buffer, 0, buffer.Length)
+
+                        If bytesRead > 0 Then
+                            ' Convert Int16 PCM to Float32 samples
+                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+                            Dim samples(sampleCount - 1) As Single
+                            For i = 0 To sampleCount - 1
+                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
+                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
+                            Next
+                            Return samples
+                        End If
+                    End If
+                End If
+                Return Nothing
+            End Get
+        End Property
+
+        ''' <summary>Gets post-gain samples for meter display (reads from PostGain tap point - DSP TAP PATTERN)</summary>
+        Public ReadOnly Property PostGainSamples As Single()
+            Get
+                If dspThread IsNot Nothing Then
+                    Dim available = dspThread.PostGainMonitorAvailable()
+                    If available > 0 Then
+                        ' Read up to 4KB for meters
+                        Dim bufferSize = Math.Min(available, 4096)
+                        Dim buffer(bufferSize - 1) As Byte
+                        Dim bytesRead = dspThread.ReadPostGainMonitor(buffer, 0, buffer.Length)
+
+                        If bytesRead > 0 Then
+                            ' Convert Int16 PCM to Float32 samples
+                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+                            Dim samples(sampleCount - 1) As Single
+                            For i = 0 To sampleCount - 1
+                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
+                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
+                            Next
+                            Return samples
+                        End If
+                    End If
+                End If
+                Return Nothing
+            End Get
+        End Property
+
+        ''' <summary>Gets post-OUTPUT-gain samples for meter display (Phase 2.5 - Output tap point)</summary>
+        Public ReadOnly Property PostOutputGainSamples As Single()
+            Get
+                If dspThread IsNot Nothing Then
+                    Dim available = dspThread.PostOutputGainMonitorAvailable()
+                    If available > 0 Then
+                        ' Read up to 4KB for meters
+                        Dim bufferSize = Math.Min(available, 4096)
+                        Dim buffer(bufferSize - 1) As Byte
+                        Dim bytesRead = dspThread.ReadPostOutputGainMonitor(buffer, 0, buffer.Length)
+
+                        If bytesRead > 0 Then
+                            ' Convert Int16 PCM to Float32 samples
+                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+                            Dim samples(sampleCount - 1) As Single
+                            For i = 0 To sampleCount - 1
+                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
+                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
+                            Next
+                            Return samples
+                        End If
+                    End If
+                End If
+                Return Nothing
+            End Get
+        End Property
+
+        ''' <summary>Gets output samples for meter display (reads from monitor buffer)</summary>
+        Public ReadOnly Property OutputSamples As Single()
+            Get
+                If dspThread IsNot Nothing Then
+                    Dim available = dspThread.OutputMonitorAvailable()
+                    If available > 0 Then
+                        ' Read up to 4KB for meters
+                        Dim bufferSize = Math.Min(available, 4096)
+                        Dim buffer(bufferSize - 1) As Byte
+                        Dim bytesRead = dspThread.ReadOutputMonitor(buffer, 0, buffer.Length)
+
+                        If bytesRead > 0 Then
+                            ' Convert Int16 PCM to Float32 samples
+                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+                            Dim samples(sampleCount - 1) As Single
+                            For i = 0 To sampleCount - 1
+                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
+                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
+                            Next
+                            Return samples
+                        End If
+                    End If
+                End If
+                Return Nothing
+            End Get
+        End Property
+
+#Region "Multi-Reader Tap Point API (Phase 2.5 - Architecture Rule #4)"
+
+        ''' <summary>
+        ''' Create a custom reader for a specific DSP tap point
+        ''' Enables flexible routing of instruments (FFT, meters, analyzers) to any tap
+        ''' </summary>
+        ''' <param name="tapLocation">Which tap point to read from (PreDSP, PostGain, PostDSP, PreOutput)</param>
+        ''' <param name="readerName">Unique name for reader (e.g., "CustomFFT", "PhaseAnalyzer")</param>
+        ''' <returns>Reader handle for use with ReadFromTap()</returns>
+        Public Function CreateTapReader(tapLocation As DSP.DSPThread.TapLocation, readerName As String) As String
+            If dspThread Is Nothing Then
+                Throw New InvalidOperationException("DSP thread not initialized! Call StartDSPPlayback() first.")
+            End If
+
+            Return dspThread.CreateTapReader(tapLocation, readerName)
+        End Function
+
+        ''' <summary>
+        ''' Remove a custom tap reader
+        ''' </summary>
+        Public Sub RemoveTapReader(tapLocation As DSP.DSPThread.TapLocation, readerName As String)
+            If dspThread IsNot Nothing Then
+                dspThread.RemoveTapReader(tapLocation, readerName)
+            End If
+        End Sub
+
+        ''' <summary>
+        ''' Read audio from a custom tap reader
+        ''' </summary>
+        Public Function ReadFromTap(tapLocation As DSP.DSPThread.TapLocation, readerName As String, buffer As Byte(), offset As Integer, count As Integer) As Integer
+            If dspThread Is Nothing Then Return 0
+            Return dspThread.ReadFromTap(tapLocation, readerName, buffer, offset, count)
+        End Function
+
+        ''' <summary>
+        ''' Check how many bytes are available for a specific reader
+        ''' </summary>
+        Public Function TapAvailable(tapLocation As DSP.DSPThread.TapLocation, readerName As String) As Integer
+            If dspThread Is Nothing Then Return 0
+            Return dspThread.TapAvailable(tapLocation, readerName)
+        End Function
+
+        ''' <summary>
+        ''' Check if a custom reader exists
+        ''' </summary>
+        Public Function HasTapReader(tapLocation As DSP.DSPThread.TapLocation, readerName As String) As Boolean
+            If dspThread Is Nothing Then Return False
+            Return dspThread.HasTapReader(tapLocation, readerName)
+        End Function
+
+#End Region
 
 #End Region
 
@@ -297,12 +480,55 @@ Namespace AudioIO
                 Utils.Logger.Instance.Info($"DSP format: {dspThread.Format.SampleRate}Hz, {dspThread.Format.Channels}ch, {dspThread.Format.BitsPerSample}bit, Encoding={dspThread.Format.Encoding}, BlockAlign={dspThread.Format.BlockAlign}, AvgBytes/sec={dspThread.Format.AverageBytesPerSecond}", "AudioRouter")
                 Utils.Logger.Instance.Info($"DSP buffers: {inputBufferSize} bytes input, {outputBufferSize} bytes output (2 seconds each)", "AudioRouter")
 
-                ' Add gain processor (unity gain for now - adjustable later)
-                Dim gainProcessor As DSP.ProcessorBase = New DSP.GainProcessor(pcm16Format) With {
+                ' PHASE 2.5: Add INPUT gain processor (first in chain)
+                _inputGainProcessor = New DSP.GainProcessor(pcm16Format) With {
                     .GainDB = 0.0F ' 0 dB = unity gain (no change)
                 }
-                dspThread.Chain.AddProcessor(gainProcessor)
-                Utils.Logger.Instance.Info("Added Gain processor to chain (0 dB)", "AudioRouter")
+                dspThread.Chain.AddProcessor(_inputGainProcessor)
+                Utils.Logger.Instance.Info("Added INPUT Gain processor to chain (0 dB)", "AudioRouter")
+
+                ' DSP TAP POINT PATTERN: Wire INPUT GainProcessor output to PostGainMonitor buffer
+                Dim inputTapCallCount As Integer = 0 ' Diagnostic counter
+                _inputGainProcessor.SetMonitorOutputCallback(
+                    Sub(buffer As DSP.AudioBuffer)
+                        ' Write processed audio (after INPUT gain/pan) to monitor buffer (non-blocking)
+                        If buffer IsNot Nothing AndAlso buffer.ByteCount > 0 Then
+                            dspThread.postGainMonitorBuffer.Write(buffer.Buffer, 0, buffer.ByteCount)
+
+                            ' DIAGNOSTIC: Log first few calls
+                            inputTapCallCount += 1
+                            If inputTapCallCount <= 5 OrElse inputTapCallCount Mod 100 = 0 Then
+                                Utils.Logger.Instance.Debug($"PostInputGain tap callback #{inputTapCallCount}: {buffer.ByteCount} bytes written", "AudioRouter")
+                            End If
+                        End If
+                    End Sub
+                )
+                Utils.Logger.Instance.Info("✅ INPUT GainProcessor tap point wired to PostGainMonitor buffer", "AudioRouter")
+
+                ' PHASE 2.5: Add OUTPUT gain processor (last in chain)
+                _outputGainProcessor = New DSP.GainProcessor(pcm16Format) With {
+                    .GainDB = 0.0F ' 0 dB = unity gain (no change)
+                }
+                dspThread.Chain.AddProcessor(_outputGainProcessor)
+                Utils.Logger.Instance.Info("Added OUTPUT Gain processor to chain (0 dB)", "AudioRouter")
+
+                ' DSP TAP POINT PATTERN: Wire OUTPUT GainProcessor output to PostOutputGainMonitor buffer
+                Dim outputTapCallCount As Integer = 0 ' Diagnostic counter
+                _outputGainProcessor.SetMonitorOutputCallback(
+                    Sub(buffer As DSP.AudioBuffer)
+                        ' Write processed audio (after OUTPUT gain/pan) to monitor buffer (non-blocking)
+                        If buffer IsNot Nothing AndAlso buffer.ByteCount > 0 Then
+                            dspThread.postOutputGainMonitorBuffer.Write(buffer.Buffer, 0, buffer.ByteCount)
+
+                            ' DIAGNOSTIC: Log first few calls
+                            outputTapCallCount += 1
+                            If outputTapCallCount <= 5 OrElse outputTapCallCount Mod 100 = 0 Then
+                                Utils.Logger.Instance.Debug($"PostOutputGain tap callback #{outputTapCallCount}: {buffer.ByteCount} bytes written", "AudioRouter")
+                            End If
+                        End If
+                    End Sub
+                )
+                Utils.Logger.Instance.Info("✅ OUTPUT GainProcessor tap point wired to PostOutputGainMonitor buffer", "AudioRouter")
 
                 ' Create DSP output provider (bridges DSPThread to NAudio)
                 dspOutputProvider = New DSPOutputProvider(dspThread)
@@ -447,28 +673,33 @@ Namespace AudioIO
 
                         ' Raise PlaybackStopped if we finished the file naturally (triggers OnWaveOutStopped)
                         If reachedEOF Then
-                            Utils.Logger.Instance.Info("🎬 File feeder reached EOF - draining buffers before stopping...", "AudioRouter")
+                            Utils.Logger.Instance.Info("🎬 File feeder reached EOF - draining DSP buffers...", "AudioRouter")
 
-                            ' CRITICAL FIX: Wait for DSP buffers to drain before stopping
-                            ' Use local reference to prevent race condition with StopDSPPlayback()
-                            Dim maxWaitMs = 5000 ' 5 seconds max wait
-                            Dim startWait = DateTime.Now
+                            ' PHASE 2.5 FIX: Wait for DSP buffers to drain!
+                            ' DSP has ~200ms of audio still in buffers (input + output)
+                            ' Don't stop immediately or we'll lose the end of the file
+                            
+                            ' Wait for DSP input buffer to empty
+                            Dim maxWait As Integer = 50 ' Max 50 iterations (500ms at 10ms each)
+                            Dim waitCount As Integer = 0
+                            While localDspThread.InputAvailable() > 1024 AndAlso waitCount < maxWait
+                                System.Threading.Thread.Sleep(10) ' 10ms
+                                waitCount += 1
+                            End While
+                            Utils.Logger.Instance.Info($"DSP input drained after {waitCount * 10}ms", "AudioRouter")
+                            
+                            ' Brief delay for DSP worker to process remaining input
+                            System.Threading.Thread.Sleep(50)
+                            
+                            Utils.Logger.Instance.Info("DSP buffers drained, stopping WaveOut...", "AudioRouter")
 
-                            ' Check if localDspThread is still valid before using it
-                            If localDspThread IsNot Nothing Then
-                                While localDspThread.InputAvailable() < 176400 AndAlso (DateTime.Now - startWait).TotalMilliseconds < maxWaitMs
-                                    System.Threading.Thread.Sleep(50) ' Check every 50ms
-                                End While
-                            End If
-
-                            Utils.Logger.Instance.Info($"Buffer drain complete after {(DateTime.Now - startWait).TotalMilliseconds:F0}ms - stopping WaveOut...", "AudioRouter")
-
-                            ' Now stop waveOut which will trigger OnWaveOutStopped event
-                            ' Use local reference to prevent race condition
+                            ' Stop waveOut which will trigger OnWaveOutStopped event
+                            ' WaveOut will drain its own internal buffers naturally
                             If localWaveOut IsNot Nothing Then
                                 localWaveOut.Stop()
                             End If
                         End If
+
 
                     Catch ex As System.Threading.ThreadAbortException
                         Utils.Logger.Instance.Info("File feeder thread aborted", "AudioRouter")

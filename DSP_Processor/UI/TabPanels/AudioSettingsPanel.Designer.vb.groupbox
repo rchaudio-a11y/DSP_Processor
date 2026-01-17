@@ -1,0 +1,240 @@
+Imports DSP_Processor.Models
+Imports DSP_Processor.Managers
+Imports NAudio.Wave
+
+Namespace UI.TabPanels
+
+<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()>
+Partial Class AudioSettingsPanel
+    Inherits System.Windows.Forms.UserControl
+
+    'UserControl overrides dispose to clean up the component list.
+    <System.Diagnostics.DebuggerNonUserCode()>
+    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+        Try
+            If disposing AndAlso components IsNot Nothing Then
+                components.Dispose()
+            End If
+        Finally
+            MyBase.Dispose(disposing)
+        End Try
+    End Sub
+
+    'Required by the Windows Form Designer
+    Private components As System.ComponentModel.IContainer
+
+    'NOTE: The following procedure is required by the Windows Form Designer
+    'It can be modified using the Windows Form Designer.  
+    'Do not modify it using the code editor.
+    <System.Diagnostics.DebuggerStepThrough()>
+    Private Sub InitializeComponent()
+        Me.grpAudioSettings = New System.Windows.Forms.GroupBox()
+        Me.cmbBufferSize = New System.Windows.Forms.ComboBox()
+        Me.lblBufferSize = New System.Windows.Forms.Label()
+        Me.cmbChannelMode = New System.Windows.Forms.ComboBox()
+        Me.lblChannelMode = New System.Windows.Forms.Label()
+        Me.cmbBitDepths = New System.Windows.Forms.ComboBox()
+        Me.lblBitDepth = New System.Windows.Forms.Label()
+        Me.cmbSampleRates = New System.Windows.Forms.ComboBox()
+        Me.lblSampleRate = New System.Windows.Forms.Label()
+        Me.cmbInputDevices = New System.Windows.Forms.ComboBox()
+        Me.lblInputDevice = New System.Windows.Forms.Label()
+        Me.cmbAudioDriver = New System.Windows.Forms.ComboBox()
+        Me.lblAudioDriver = New System.Windows.Forms.Label()
+        Me.grpAudioSettings.SuspendLayout()
+        Me.SuspendLayout()
+        '
+        'grpAudioSettings
+        '
+        Me.grpAudioSettings.BackColor = System.Drawing.Color.FromArgb(CType(CType(45, Byte), Integer), CType(CType(45, Byte), Integer), CType(CType(48, Byte), Integer))
+        Me.grpAudioSettings.Controls.Add(Me.cmbBufferSize)
+        Me.grpAudioSettings.Controls.Add(Me.lblBufferSize)
+        Me.grpAudioSettings.Controls.Add(Me.cmbChannelMode)
+        Me.grpAudioSettings.Controls.Add(Me.lblChannelMode)
+        Me.grpAudioSettings.Controls.Add(Me.cmbBitDepths)
+        Me.grpAudioSettings.Controls.Add(Me.lblBitDepth)
+        Me.grpAudioSettings.Controls.Add(Me.cmbSampleRates)
+        Me.grpAudioSettings.Controls.Add(Me.lblSampleRate)
+        Me.grpAudioSettings.Controls.Add(Me.cmbInputDevices)
+        Me.grpAudioSettings.Controls.Add(Me.lblInputDevice)
+        Me.grpAudioSettings.Controls.Add(Me.cmbAudioDriver)
+        Me.grpAudioSettings.Controls.Add(Me.lblAudioDriver)
+        Me.grpAudioSettings.Font = New System.Drawing.Font("Segoe UI", 9.0!, System.Drawing.FontStyle.Bold)
+        Me.grpAudioSettings.ForeColor = System.Drawing.Color.White
+        Me.grpAudioSettings.Location = New System.Drawing.Point(10, 10)
+        Me.grpAudioSettings.Name = "grpAudioSettings"
+        Me.grpAudioSettings.Size = New System.Drawing.Size(320, 320)
+        Me.grpAudioSettings.TabIndex = 0
+        Me.grpAudioSettings.TabStop = False
+        Me.grpAudioSettings.Text = "Audio Device Settings"
+        '
+        'cmbBufferSize
+        '
+        Me.cmbBufferSize.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
+        Me.cmbBufferSize.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        Me.cmbBufferSize.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.cmbBufferSize.ForeColor = System.Drawing.Color.White
+        Me.cmbBufferSize.FormattingEnabled = True
+        Me.cmbBufferSize.Location = New System.Drawing.Point(160, 222)
+        Me.cmbBufferSize.Name = "cmbBufferSize"
+        Me.cmbBufferSize.Size = New System.Drawing.Size(140, 28)
+        Me.cmbBufferSize.TabIndex = 11
+        '
+        'lblBufferSize
+        '
+        Me.lblBufferSize.AutoSize = True
+        Me.lblBufferSize.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblBufferSize.ForeColor = System.Drawing.Color.White
+        Me.lblBufferSize.Location = New System.Drawing.Point(160, 199)
+        Me.lblBufferSize.Name = "lblBufferSize"
+        Me.lblBufferSize.Size = New System.Drawing.Size(84, 20)
+        Me.lblBufferSize.TabIndex = 10
+        Me.lblBufferSize.Text = "Buffer Size:"
+        '
+        'cmbChannelMode
+        '
+        Me.cmbChannelMode.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
+        Me.cmbChannelMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        Me.cmbChannelMode.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.cmbChannelMode.ForeColor = System.Drawing.Color.White
+        Me.cmbChannelMode.FormattingEnabled = True
+        Me.cmbChannelMode.Location = New System.Drawing.Point(10, 222)
+        Me.cmbChannelMode.Name = "cmbChannelMode"
+        Me.cmbChannelMode.Size = New System.Drawing.Size(140, 28)
+        Me.cmbChannelMode.TabIndex = 9
+        '
+        'lblChannelMode
+        '
+        Me.lblChannelMode.AutoSize = True
+        Me.lblChannelMode.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblChannelMode.ForeColor = System.Drawing.Color.White
+        Me.lblChannelMode.Location = New System.Drawing.Point(10, 199)
+        Me.lblChannelMode.Name = "lblChannelMode"
+        Me.lblChannelMode.Size = New System.Drawing.Size(109, 20)
+        Me.lblChannelMode.TabIndex = 8
+        Me.lblChannelMode.Text = "Channel Mode:"
+        '
+        'cmbBitDepths
+        '
+        Me.cmbBitDepths.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
+        Me.cmbBitDepths.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        Me.cmbBitDepths.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.cmbBitDepths.ForeColor = System.Drawing.Color.White
+        Me.cmbBitDepths.FormattingEnabled = True
+        Me.cmbBitDepths.Location = New System.Drawing.Point(160, 164)
+        Me.cmbBitDepths.Name = "cmbBitDepths"
+        Me.cmbBitDepths.Size = New System.Drawing.Size(140, 28)
+        Me.cmbBitDepths.TabIndex = 7
+        '
+        'lblBitDepth
+        '
+        Me.lblBitDepth.AutoSize = True
+        Me.lblBitDepth.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblBitDepth.ForeColor = System.Drawing.Color.White
+        Me.lblBitDepth.Location = New System.Drawing.Point(160, 141)
+        Me.lblBitDepth.Name = "lblBitDepth"
+        Me.lblBitDepth.Size = New System.Drawing.Size(76, 20)
+        Me.lblBitDepth.TabIndex = 6
+        Me.lblBitDepth.Text = "Bit Depth:"
+        '
+        'cmbSampleRates
+        '
+        Me.cmbSampleRates.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
+        Me.cmbSampleRates.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        Me.cmbSampleRates.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.cmbSampleRates.ForeColor = System.Drawing.Color.White
+        Me.cmbSampleRates.FormattingEnabled = True
+        Me.cmbSampleRates.Location = New System.Drawing.Point(10, 164)
+        Me.cmbSampleRates.Name = "cmbSampleRates"
+        Me.cmbSampleRates.Size = New System.Drawing.Size(140, 28)
+        Me.cmbSampleRates.TabIndex = 5
+        '
+        'lblSampleRate
+        '
+        Me.lblSampleRate.AutoSize = True
+        Me.lblSampleRate.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblSampleRate.ForeColor = System.Drawing.Color.White
+        Me.lblSampleRate.Location = New System.Drawing.Point(10, 141)
+        Me.lblSampleRate.Name = "lblSampleRate"
+        Me.lblSampleRate.Size = New System.Drawing.Size(96, 20)
+        Me.lblSampleRate.TabIndex = 4
+        Me.lblSampleRate.Text = "Sample Rate:"
+        '
+        'cmbInputDevices
+        '
+        Me.cmbInputDevices.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
+        Me.cmbInputDevices.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        Me.cmbInputDevices.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.cmbInputDevices.ForeColor = System.Drawing.Color.White
+        Me.cmbInputDevices.FormattingEnabled = True
+        Me.cmbInputDevices.Location = New System.Drawing.Point(10, 106)
+        Me.cmbInputDevices.Name = "cmbInputDevices"
+        Me.cmbInputDevices.Size = New System.Drawing.Size(290, 28)
+        Me.cmbInputDevices.TabIndex = 3
+        '
+        'lblInputDevice
+        '
+        Me.lblInputDevice.AutoSize = True
+        Me.lblInputDevice.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblInputDevice.ForeColor = System.Drawing.Color.White
+        Me.lblInputDevice.Location = New System.Drawing.Point(10, 83)
+        Me.lblInputDevice.Name = "lblInputDevice"
+        Me.lblInputDevice.Size = New System.Drawing.Size(97, 20)
+        Me.lblInputDevice.TabIndex = 2
+        Me.lblInputDevice.Text = "Input Device:"
+        '
+        'cmbAudioDriver
+        '
+        Me.cmbAudioDriver.BackColor = System.Drawing.Color.FromArgb(CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer), CType(CType(60, Byte), Integer))
+        Me.cmbAudioDriver.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        Me.cmbAudioDriver.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.cmbAudioDriver.ForeColor = System.Drawing.Color.White
+        Me.cmbAudioDriver.FormattingEnabled = True
+        Me.cmbAudioDriver.Location = New System.Drawing.Point(10, 48)
+        Me.cmbAudioDriver.Name = "cmbAudioDriver"
+        Me.cmbAudioDriver.Size = New System.Drawing.Size(290, 28)
+        Me.cmbAudioDriver.TabIndex = 1
+        '
+        'lblAudioDriver
+        '
+        Me.lblAudioDriver.AutoSize = True
+        Me.lblAudioDriver.Font = New System.Drawing.Font("Segoe UI", 9.0!)
+        Me.lblAudioDriver.ForeColor = System.Drawing.Color.White
+        Me.lblAudioDriver.Location = New System.Drawing.Point(10, 25)
+        Me.lblAudioDriver.Name = "lblAudioDriver"
+        Me.lblAudioDriver.Size = New System.Drawing.Size(97, 20)
+        Me.lblAudioDriver.TabIndex = 0
+        Me.lblAudioDriver.Text = "Audio Driver:"
+        '
+        'AudioSettingsPanel
+        '
+        Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 20.0!)
+        Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
+        Me.AutoScroll = True
+        Me.BackColor = System.Drawing.Color.FromArgb(CType(CType(45, Byte), Integer), CType(CType(45, Byte), Integer), CType(CType(48, Byte), Integer))
+        Me.Controls.Add(Me.grpAudioSettings)
+        Me.Name = "AudioSettingsPanel"
+        Me.Size = New System.Drawing.Size(350, 350)
+        Me.grpAudioSettings.ResumeLayout(False)
+        Me.grpAudioSettings.PerformLayout()
+        Me.ResumeLayout(False)
+
+    End Sub
+
+    Friend WithEvents grpAudioSettings As GroupBox
+    Friend WithEvents cmbBufferSize As ComboBox
+    Friend WithEvents lblBufferSize As Label
+    Friend WithEvents cmbChannelMode As ComboBox
+    Friend WithEvents lblChannelMode As Label
+    Friend WithEvents cmbBitDepths As ComboBox
+    Friend WithEvents lblBitDepth As Label
+    Friend WithEvents cmbSampleRates As ComboBox
+    Friend WithEvents lblSampleRate As Label
+    Friend WithEvents cmbInputDevices As ComboBox
+    Friend WithEvents lblInputDevice As Label
+    Friend WithEvents cmbAudioDriver As ComboBox
+    Friend WithEvents lblAudioDriver As Label
+
+End Class
+
+End Namespace

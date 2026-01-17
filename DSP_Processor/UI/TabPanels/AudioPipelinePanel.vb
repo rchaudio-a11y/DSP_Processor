@@ -210,6 +210,7 @@ End Sub
                 .TickFrequency = 25
             }
             AddHandler trkInputGain.ValueChanged, AddressOf trkInputGain_ValueChanged
+            AddHandler trkInputGain.DoubleClick, AddressOf trkInputGain_DoubleClick
 
             lblInputGainValue = New Label With {
                 .Text = "100%",
@@ -234,6 +235,7 @@ End Sub
                 .TickFrequency = 25
             }
             AddHandler trkOutputGain.ValueChanged, AddressOf trkOutputGain_ValueChanged
+            AddHandler trkOutputGain.DoubleClick, AddressOf trkOutputGain_DoubleClick
 
             lblOutputGainValue = New Label With {
                 .Text = "100%",
@@ -497,10 +499,22 @@ End Sub
             OnSettingChanged(sender, e)
         End Sub
 
+        Private Sub trkInputGain_DoubleClick(sender As Object, e As EventArgs)
+            ' Reset to default (100% = unity gain)
+            trkInputGain.Value = 100
+            Utils.Logger.Instance.Info("Input gain reset to default (100%)", "AudioPipelinePanel")
+        End Sub
+
         Private Sub trkOutputGain_ValueChanged(sender As Object, e As EventArgs)
             lblOutputGainValue.Text = $"{trkOutputGain.Value}%"
             Utils.Logger.Instance.Debug($"Output gain changed: {trkOutputGain.Value}%", "AudioPipelinePanel")
             OnSettingChanged(sender, e)
+        End Sub
+
+        Private Sub trkOutputGain_DoubleClick(sender As Object, e As EventArgs)
+            ' Reset to default (100% = unity gain)
+            trkOutputGain.Value = 100
+            Utils.Logger.Instance.Info("Output gain reset to default (100%)", "AudioPipelinePanel")
         End Sub
 
         Private Sub cmbPresets_SelectedIndexChanged(sender As Object, e As EventArgs)

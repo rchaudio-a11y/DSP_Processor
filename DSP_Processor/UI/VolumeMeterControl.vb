@@ -19,12 +19,28 @@ Namespace UI
     Public Class VolumeMeterControl
         Inherits UserControl
 
+        ' Mono mode
         Private peakLevelDB As Single = -60
         Private rmsLevelDB As Single = -60
         Private peakHoldDB As Single = -60
         Private peakHoldTime As DateTime = DateTime.MinValue
         Private isClipping As Boolean = False
         Private clipTime As DateTime = DateTime.MinValue
+
+        ' Stereo mode
+        Private _stereoMode As Boolean = False
+        Private peakLeftDB As Single = -60
+        Private peakRightDB As Single = -60
+        Private rmsLeftDB As Single = -60
+        Private rmsRightDB As Single = -60
+        Private peakHoldLeftDB As Single = -60
+        Private peakHoldRightDB As Single = -60
+        Private peakHoldLeftTime As DateTime = DateTime.MinValue
+        Private peakHoldRightTime As DateTime = DateTime.MinValue
+        Private isClippingLeft As Boolean = False
+        Private isClippingRight As Boolean = False
+        Private clipLeftTime As DateTime = DateTime.MinValue
+        Private clipRightTime As DateTime = DateTime.MinValue
 
         Private Const PeakDecayRate As Single = 20.0F ' dB per second
         Private Const ClipHoldTime As Single = 1.0F ' seconds
@@ -56,6 +72,21 @@ Namespace UI
             Get
                 Return isClipping
             End Get
+        End Property
+
+        ''' <summary>
+        ''' Enable stereo mode (shows L/R bars separately)
+        ''' </summary>
+        <System.ComponentModel.Browsable(True)>
+        <System.ComponentModel.DefaultValue(False)>
+        Public Property StereoMode As Boolean
+            Get
+                Return _stereoMode
+            End Get
+            Set(value As Boolean)
+                _stereoMode = value
+                Me.Invalidate()
+            End Set
         End Property
 
 #End Region
@@ -122,15 +153,106 @@ Namespace UI
         End Sub
 
         ''' <summary>
+        ''' Updates the meter with stereo level data
+        ''' </summary>
+        ''' <param name="leftPeakDB">Left channel peak level in dB</param>
+        ''' <param name="rightPeakDB">Right channel peak level in dB</param>
+        ''' <param name="leftRmsDB">Left channel RMS level in dB</param>
+        ''' <param name="rightRmsDB">Right channel RMS level in dB</param>
+        ''' <param name="leftClipping">True if left channel is clipping</param>
+        ''' <param name="rightClipping">True if right channel is clipping</param>
+        Public Sub SetLevelStereo(leftPeakDB As Single, rightPeakDB As Single,
+                                   leftRmsDB As Single, rightRmsDB As Single,
+                                   leftClipping As Boolean, rightClipping As Boolean)
+            ' Clamp values
+            leftPeakDB = Math.Max(-60, Math.Min(0, leftPeakDB))
+            rightPeakDB = Math.Max(-60, Math.Min(0, rightPeakDB))
+            leftRmsDB = Math.Max(-60, Math.Min(0, leftRmsDB))
+            rightRmsDB = Math.Max(-60, Math.Min(0, rightRmsDB))
+
+            Me.peakLeftDB = leftPeakDB
+            Me.peakRightDB = rightPeakDB
+            Me.rmsLeftDB = leftRmsDB
+            Me.rmsRightDB = rightRmsDB
+
+            ' Left channel peak hold
+            If leftPeakDB > peakHoldLeftDB Then
+                peakHoldLeftDB = leftPeakDB
+                peakHoldLeftTime = DateTime.Now
+            Else
+                If peakHoldLeftTime <> DateTime.MinValue Then
+                    Dim elapsed = DateTime.Now.Subtract(peakHoldLeftTime).TotalSeconds
+                    Dim decay = CSng(elapsed * PeakDecayRate)
+                    peakHoldLeftDB = Math.Max(leftPeakDB, peakLeftDB - decay)
+                End If
+            End If
+
+            ' Right channel peak hold
+            If rightPeakDB > peakHoldRightDB Then
+                peakHoldRightDB = rightPeakDB
+                peakHoldRightTime = DateTime.Now
+            Else
+                If peakHoldRightTime <> DateTime.MinValue Then
+                    Dim elapsed = DateTime.Now.Subtract(peakHoldRightTime).TotalSeconds
+                    Dim decay = CSng(elapsed * PeakDecayRate)
+                    peakHoldRightDB = Math.Max(rightPeakDB, peakRightDB - decay)
+                End If
+            End If
+
+            ' Left clip indicator
+            If leftClipping Then
+                isClippingLeft = True
+                clipLeftTime = DateTime.Now
+            Else
+                If clipLeftTime <> DateTime.MinValue Then
+                    If DateTime.Now.Subtract(clipLeftTime).TotalSeconds > ClipHoldTime Then
+                        isClippingLeft = False
+                    End If
+                End If
+            End If
+
+            ' Right clip indicator
+            If rightClipping Then
+                isClippingRight = True
+                clipRightTime = DateTime.Now
+            Else
+                If clipRightTime <> DateTime.MinValue Then
+                    If DateTime.Now.Subtract(clipRightTime).TotalSeconds > ClipHoldTime Then
+                        isClippingRight = False
+                    End If
+                End If
+            End If
+
+            ' Redraw
+            Me.Invalidate()
+        End Sub
+
+        ''' <summary>
         ''' Resets meter to zero/idle state
         ''' </summary>
         Public Sub Reset()
+            ' Mono
             peakLevelDB = -60
             rmsLevelDB = -60
             peakHoldDB = -60
             peakHoldTime = DateTime.MinValue
             isClipping = False
             clipTime = DateTime.MinValue
+
+            ' Stereo
+            peakLeftDB = -60
+            peakRightDB = -60
+            rmsLeftDB = -60
+            rmsRightDB = -60
+            peakHoldLeftDB = -60
+            peakHoldRightDB = -60
+            peakHoldLeftTime = DateTime.MinValue
+            peakHoldRightTime = DateTime.MinValue
+            isClippingLeft = False
+            isClippingRight = False
+            clipLeftTime = DateTime.MinValue
+            clipRightTime = DateTime.MinValue
+
             Me.Invalidate()
         End Sub
 
@@ -144,6 +266,17 @@ Namespace UI
             Dim g = e.Graphics
             g.SmoothingMode = SmoothingMode.AntiAlias
 
+            ' Draw background
+            g.FillRectangle(Brushes.Black, Me.ClientRectangle)
+
+            If _stereoMode Then
+                DrawStereoMeters(g)
+            Else
+                DrawMonoMeter(g)
+            End If
+        End Sub
+
+        Private Sub DrawMonoMeter(g As Graphics)
             ' Calculate meter area (leave space for clip indicator and scale)
             Dim clipHeight As Integer = 20
             Dim meterLeft As Integer = 25
@@ -152,9 +285,6 @@ Namespace UI
             Dim meterHeight As Integer = Me.Height - meterTop - 5
 
             Dim meterRect As New Rectangle(meterLeft, meterTop, meterWidth, meterHeight)
-
-            ' Draw background
-            g.FillRectangle(Brushes.Black, Me.ClientRectangle)
 
             ' Draw meter background (dark gray)
             g.FillRectangle(Brushes.DarkGray, meterRect)
@@ -178,6 +308,92 @@ Namespace UI
 
             ' Draw clip indicator
             DrawClipIndicator(g, meterLeft, 2, meterWidth, clipHeight - 4)
+        End Sub
+
+        Private Sub DrawStereoMeters(g As Graphics)
+            ' Calculate layout for L/R meters
+            Dim clipHeight As Integer = 20
+            Dim scaleWidth As Integer = 25
+            Dim meterTop As Integer = clipHeight + 5
+            Dim meterHeight As Integer = Me.Height - meterTop - 5
+            Dim spacing As Integer = 3
+
+            ' Calculate width for each meter (split available width)
+            Dim availableWidth As Integer = Me.Width - scaleWidth - 5
+            Dim meterWidth As Integer = Math.Max(10, (availableWidth - spacing) \ 2)
+
+            ' Left meter
+            Dim leftMeterRect As New Rectangle(scaleWidth, meterTop, meterWidth, meterHeight)
+            ' Right meter
+            Dim rightMeterRect As New Rectangle(scaleWidth + meterWidth + spacing, meterTop, meterWidth, meterHeight)
+
+            ' Draw left meter
+            g.FillRectangle(Brushes.DarkGray, leftMeterRect)
+            g.DrawRectangle(Pens.Gray, leftMeterRect)
+            If rmsLeftDB > -60 Then
+                DrawLevelBar(g, leftMeterRect, rmsLeftDB, fillSolid:=True)
+            End If
+            If peakHoldLeftDB > -60 Then
+                Dim peakY = DBToPixelY(peakHoldLeftDB, leftMeterRect)
+                Using pen As New Pen(Color.White, 2)
+                    g.DrawLine(pen, leftMeterRect.Left, peakY, leftMeterRect.Right, peakY)
+                End Using
+            End If
+
+            ' Draw right meter
+            g.FillRectangle(Brushes.DarkGray, rightMeterRect)
+            g.DrawRectangle(Pens.Gray, rightMeterRect)
+            If rmsRightDB > -60 Then
+                DrawLevelBar(g, rightMeterRect, rmsRightDB, fillSolid:=True)
+            End If
+            If peakHoldRightDB > -60 Then
+                Dim peakY = DBToPixelY(peakHoldRightDB, rightMeterRect)
+                Using pen As New Pen(Color.White, 2)
+                    g.DrawLine(pen, rightMeterRect.Left, peakY, rightMeterRect.Right, peakY)
+                End Using
+            End If
+
+            ' Draw scale on left
+            DrawScale(g, leftMeterRect)
+
+            ' Draw clip indicators (L and R)
+            Dim clipWidth As Integer = meterWidth
+            DrawStereoClipIndicator(g, scaleWidth, 2, clipWidth, spacing, clipHeight - 4)
+        End Sub
+
+        Private Sub DrawStereoClipIndicator(g As Graphics, x As Integer, y As Integer, clipWidth As Integer, spacing As Integer, height As Integer)
+            Dim leftClipRect As New Rectangle(x, y, clipWidth, height)
+            Dim rightClipRect As New Rectangle(x + clipWidth + spacing, y, clipWidth, height)
+
+            ' Left clip
+            If isClippingLeft Then
+                g.FillRectangle(Brushes.Red, leftClipRect)
+                g.DrawRectangle(Pens.DarkRed, leftClipRect)
+                Dim font As New Font("Arial", 7, FontStyle.Bold)
+                Dim textSize = g.MeasureString("L", font)
+                g.DrawString("L", font, Brushes.White,
+                            x + (clipWidth - textSize.Width) / 2,
+                            y + (height - textSize.Height) / 2)
+                font.Dispose()
+            Else
+                g.FillRectangle(Brushes.DarkGreen, leftClipRect)
+                g.DrawRectangle(Pens.Gray, leftClipRect)
+            End If
+
+            ' Right clip
+            If isClippingRight Then
+                g.FillRectangle(Brushes.Red, rightClipRect)
+                g.DrawRectangle(Pens.DarkRed, rightClipRect)
+                Dim font As New Font("Arial", 7, FontStyle.Bold)
+                Dim textSize = g.MeasureString("R", font)
+                g.DrawString("R", font, Brushes.White,
+                            x + clipWidth + spacing + (clipWidth - textSize.Width) / 2,
+                            y + (height - textSize.Height) / 2)
+                font.Dispose()
+            Else
+                g.FillRectangle(Brushes.DarkGreen, rightClipRect)
+                g.DrawRectangle(Pens.Gray, rightClipRect)
+            End If
         End Sub
 
         Private Sub DrawLevelBar(g As Graphics, meterRect As Rectangle, levelDB As Single, fillSolid As Boolean)

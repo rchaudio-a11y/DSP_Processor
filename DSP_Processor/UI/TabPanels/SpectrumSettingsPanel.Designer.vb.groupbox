@@ -1,0 +1,293 @@
+Imports DSP_Processor.Models
+
+Namespace UI.TabPanels
+
+<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()>
+Partial Class SpectrumSettingsPanel
+    Inherits System.Windows.Forms.UserControl
+
+    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+        Try
+            If disposing AndAlso components IsNot Nothing Then
+                components.Dispose()
+            End If
+        Finally
+            MyBase.Dispose(disposing)
+        End Try
+    End Sub
+
+    Private components As System.ComponentModel.IContainer
+
+        <System.Diagnostics.DebuggerStepThrough()>
+        Private Sub InitializeComponent()
+            grpFFTSettings = New GroupBox()
+            btnResetSpectrum = New Button()
+            lblDBRangeValue = New Label()
+            trackDBRange = New TrackBar()
+            lblDBRange = New Label()
+            lblMaxFreqValue = New Label()
+            trackMaxFreq = New TrackBar()
+            lblMaxFreq = New Label()
+            lblMinFreqValue = New Label()
+            trackMinFreq = New TrackBar()
+            lblMinFreq = New Label()
+            chkPeakHold = New CheckBox()
+            numSmoothing = New NumericUpDown()
+            lblSmoothing = New Label()
+            cmbWindowFunction = New ComboBox()
+            lblWindowFunction = New Label()
+            cmbFFTSize = New ComboBox()
+            lblFFTSize = New Label()
+            grpFFTSettings.SuspendLayout()
+            CType(trackDBRange, ComponentModel.ISupportInitialize).BeginInit()
+            CType(trackMaxFreq, ComponentModel.ISupportInitialize).BeginInit()
+            CType(trackMinFreq, ComponentModel.ISupportInitialize).BeginInit()
+            CType(numSmoothing, ComponentModel.ISupportInitialize).BeginInit()
+            SuspendLayout()
+            ' 
+            ' grpFFTSettings
+            ' 
+            grpFFTSettings.Controls.Add(btnResetSpectrum)
+            grpFFTSettings.Controls.Add(lblDBRangeValue)
+            grpFFTSettings.Controls.Add(trackDBRange)
+            grpFFTSettings.Controls.Add(lblDBRange)
+            grpFFTSettings.Controls.Add(lblMaxFreqValue)
+            grpFFTSettings.Controls.Add(trackMaxFreq)
+            grpFFTSettings.Controls.Add(lblMaxFreq)
+            grpFFTSettings.Controls.Add(lblMinFreqValue)
+            grpFFTSettings.Controls.Add(trackMinFreq)
+            grpFFTSettings.Controls.Add(lblMinFreq)
+            grpFFTSettings.Controls.Add(chkPeakHold)
+            grpFFTSettings.Controls.Add(numSmoothing)
+            grpFFTSettings.Controls.Add(lblSmoothing)
+            grpFFTSettings.Controls.Add(cmbWindowFunction)
+            grpFFTSettings.Controls.Add(lblWindowFunction)
+            grpFFTSettings.Controls.Add(cmbFFTSize)
+            grpFFTSettings.Controls.Add(lblFFTSize)
+            grpFFTSettings.Dock = DockStyle.Fill
+            grpFFTSettings.Font = New Font("Segoe UI", 9F, FontStyle.Bold)
+            grpFFTSettings.ForeColor = Color.White
+            grpFFTSettings.Location = New Point(0, 0)
+            grpFFTSettings.Name = "grpFFTSettings"
+            grpFFTSettings.Size = New Size(440, 550)
+            grpFFTSettings.TabIndex = 0
+            grpFFTSettings.TabStop = False
+            grpFFTSettings.Text = "Spectrum Analyzer Settings"
+            ' 
+            ' btnResetSpectrum
+            ' 
+            btnResetSpectrum.Font = New Font("Segoe UI", 9F)
+            btnResetSpectrum.ForeColor = Color.Black
+            btnResetSpectrum.Location = New Point(15, 448)
+            btnResetSpectrum.Name = "btnResetSpectrum"
+            btnResetSpectrum.Size = New Size(150, 35)
+            btnResetSpectrum.TabIndex = 16
+            btnResetSpectrum.Text = "Reset to Defaults"
+            btnResetSpectrum.UseVisualStyleBackColor = True
+            ' 
+            ' lblDBRangeValue
+            ' 
+            lblDBRangeValue.AutoSize = True
+            lblDBRangeValue.Font = New Font("Segoe UI", 9F)
+            lblDBRangeValue.Location = New Point(350, 361)
+            lblDBRangeValue.Name = "lblDBRangeValue"
+            lblDBRangeValue.Size = New Size(47, 20)
+            lblDBRangeValue.TabIndex = 15
+            lblDBRangeValue.Text = "90 dB"
+            ' 
+            ' trackDBRange
+            ' 
+            trackDBRange.Location = New Point(15, 386)
+            trackDBRange.Maximum = 120
+            trackDBRange.Minimum = 30
+            trackDBRange.Name = "trackDBRange"
+            trackDBRange.Size = New Size(400, 56)
+            trackDBRange.TabIndex = 14
+            trackDBRange.TickFrequency = 10
+            trackDBRange.Value = 90
+            ' 
+            ' lblDBRange
+            ' 
+            lblDBRange.AutoSize = True
+            lblDBRange.Font = New Font("Segoe UI", 9F)
+            lblDBRange.Location = New Point(15, 361)
+            lblDBRange.Name = "lblDBRange"
+            lblDBRange.Size = New Size(76, 20)
+            lblDBRange.TabIndex = 13
+            lblDBRange.Text = "dB Range:"
+            ' 
+            ' lblMaxFreqValue
+            ' 
+            lblMaxFreqValue.AutoSize = True
+            lblMaxFreqValue.Font = New Font("Segoe UI", 9F)
+            lblMaxFreqValue.Location = New Point(330, 281)
+            lblMaxFreqValue.Name = "lblMaxFreqValue"
+            lblMaxFreqValue.Size = New Size(71, 20)
+            lblMaxFreqValue.TabIndex = 12
+            lblMaxFreqValue.Text = "20000 Hz"
+            ' 
+            ' trackMaxFreq
+            ' 
+            trackMaxFreq.Location = New Point(15, 306)
+            trackMaxFreq.Maximum = 22000
+            trackMaxFreq.Minimum = 1000
+            trackMaxFreq.Name = "trackMaxFreq"
+            trackMaxFreq.Size = New Size(400, 56)
+            trackMaxFreq.TabIndex = 11
+            trackMaxFreq.TickFrequency = 2000
+            trackMaxFreq.Value = 20000
+            ' 
+            ' lblMaxFreq
+            ' 
+            lblMaxFreq.AutoSize = True
+            lblMaxFreq.Font = New Font("Segoe UI", 9F)
+            lblMaxFreq.Location = New Point(15, 281)
+            lblMaxFreq.Name = "lblMaxFreq"
+            lblMaxFreq.Size = New Size(111, 20)
+            lblMaxFreq.TabIndex = 10
+            lblMaxFreq.Text = "Max Frequency:"
+            ' 
+            ' lblMinFreqValue
+            ' 
+            lblMinFreqValue.AutoSize = True
+            lblMinFreqValue.Font = New Font("Segoe UI", 9F)
+            lblMinFreqValue.Location = New Point(350, 203)
+            lblMinFreqValue.Name = "lblMinFreqValue"
+            lblMinFreqValue.Size = New Size(47, 20)
+            lblMinFreqValue.TabIndex = 9
+            lblMinFreqValue.Text = "20 Hz"
+            ' 
+            ' trackMinFreq
+            ' 
+            trackMinFreq.Location = New Point(15, 228)
+            trackMinFreq.Maximum = 1000
+            trackMinFreq.Minimum = 10
+            trackMinFreq.Name = "trackMinFreq"
+            trackMinFreq.Size = New Size(400, 56)
+            trackMinFreq.TabIndex = 8
+            trackMinFreq.TickFrequency = 100
+            trackMinFreq.Value = 20
+            ' 
+            ' lblMinFreq
+            ' 
+            lblMinFreq.AutoSize = True
+            lblMinFreq.Font = New Font("Segoe UI", 9F)
+            lblMinFreq.Location = New Point(15, 203)
+            lblMinFreq.Name = "lblMinFreq"
+            lblMinFreq.Size = New Size(108, 20)
+            lblMinFreq.TabIndex = 7
+            lblMinFreq.Text = "Min Frequency:"
+            ' 
+            ' chkPeakHold
+            ' 
+            chkPeakHold.AutoSize = True
+            chkPeakHold.Font = New Font("Segoe UI", 9F)
+            chkPeakHold.Location = New Point(15, 170)
+            chkPeakHold.Name = "chkPeakHold"
+            chkPeakHold.Size = New Size(147, 24)
+            chkPeakHold.TabIndex = 6
+            chkPeakHold.Text = "Enable Peak Hold"
+            chkPeakHold.UseVisualStyleBackColor = True
+            ' 
+            ' numSmoothing
+            ' 
+            numSmoothing.Font = New Font("Segoe UI", 9F)
+            numSmoothing.Location = New Point(140, 126)
+            numSmoothing.Maximum = New Decimal(New Integer() {10, 0, 0, 0})
+            numSmoothing.Name = "numSmoothing"
+            numSmoothing.Size = New Size(120, 27)
+            numSmoothing.TabIndex = 5
+            numSmoothing.Value = New Decimal(New Integer() {5, 0, 0, 0})
+            ' 
+            ' lblSmoothing
+            ' 
+            lblSmoothing.AutoSize = True
+            lblSmoothing.Font = New Font("Segoe UI", 9F)
+            lblSmoothing.Location = New Point(15, 126)
+            lblSmoothing.Name = "lblSmoothing"
+            lblSmoothing.Size = New Size(129, 20)
+            lblSmoothing.TabIndex = 4
+            lblSmoothing.Text = "Smoothing (0-10):"
+            ' 
+            ' cmbWindowFunction
+            ' 
+            cmbWindowFunction.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbWindowFunction.Font = New Font("Segoe UI", 9F)
+            cmbWindowFunction.FormattingEnabled = True
+            cmbWindowFunction.Items.AddRange(New Object() {"None", "Hann", "Hamming", "Blackman"})
+            cmbWindowFunction.Location = New Point(140, 75)
+            cmbWindowFunction.Name = "cmbWindowFunction"
+            cmbWindowFunction.Size = New Size(180, 28)
+            cmbWindowFunction.TabIndex = 3
+            ' 
+            ' lblWindowFunction
+            ' 
+            lblWindowFunction.AutoSize = True
+            lblWindowFunction.Font = New Font("Segoe UI", 9F)
+            lblWindowFunction.Location = New Point(15, 75)
+            lblWindowFunction.Name = "lblWindowFunction"
+            lblWindowFunction.Size = New Size(127, 20)
+            lblWindowFunction.TabIndex = 2
+            lblWindowFunction.Text = "Window Function:"
+            ' 
+            ' cmbFFTSize
+            ' 
+            cmbFFTSize.DropDownStyle = ComboBoxStyle.DropDownList
+            cmbFFTSize.Font = New Font("Segoe UI", 9F)
+            cmbFFTSize.FormattingEnabled = True
+            cmbFFTSize.Items.AddRange(New Object() {"1024", "2048", "4096", "8192", "16384"})
+            cmbFFTSize.Location = New Point(140, 26)
+            cmbFFTSize.Name = "cmbFFTSize"
+            cmbFFTSize.Size = New Size(180, 28)
+            cmbFFTSize.TabIndex = 1
+            ' 
+            ' lblFFTSize
+            ' 
+            lblFFTSize.AutoSize = True
+            lblFFTSize.Font = New Font("Segoe UI", 9F)
+            lblFFTSize.Location = New Point(15, 34)
+            lblFFTSize.Name = "lblFFTSize"
+            lblFFTSize.Size = New Size(65, 20)
+            lblFFTSize.TabIndex = 0
+            lblFFTSize.Text = "FFT Size:"
+            ' 
+            ' SpectrumSettingsPanel
+            ' 
+            AutoScaleDimensions = New SizeF(8F, 20F)
+            AutoScaleMode = AutoScaleMode.Font
+            BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+            Controls.Add(grpFFTSettings)
+            Name = "SpectrumSettingsPanel"
+            Size = New Size(440, 550)
+            grpFFTSettings.ResumeLayout(False)
+            grpFFTSettings.PerformLayout()
+            CType(trackDBRange, ComponentModel.ISupportInitialize).EndInit()
+            CType(trackMaxFreq, ComponentModel.ISupportInitialize).EndInit()
+            CType(trackMinFreq, ComponentModel.ISupportInitialize).EndInit()
+            CType(numSmoothing, ComponentModel.ISupportInitialize).EndInit()
+            ResumeLayout(False)
+
+        End Sub
+
+        Friend WithEvents grpFFTSettings As GroupBox
+    Friend WithEvents btnResetSpectrum As Button
+    Friend WithEvents lblDBRangeValue As Label
+    Friend WithEvents trackDBRange As TrackBar
+    Friend WithEvents lblDBRange As Label
+    Friend WithEvents lblMaxFreqValue As Label
+    Friend WithEvents trackMaxFreq As TrackBar
+    Friend WithEvents lblMaxFreq As Label
+    Friend WithEvents lblMinFreqValue As Label
+    Friend WithEvents trackMinFreq As TrackBar
+    Friend WithEvents lblMinFreq As Label
+    Friend WithEvents chkPeakHold As CheckBox
+    Friend WithEvents numSmoothing As NumericUpDown
+    Friend WithEvents lblSmoothing As Label
+    Friend WithEvents cmbWindowFunction As ComboBox
+    Friend WithEvents lblWindowFunction As Label
+    Friend WithEvents cmbFFTSize As ComboBox
+    Friend WithEvents lblFFTSize As Label
+
+End Class
+
+End Namespace

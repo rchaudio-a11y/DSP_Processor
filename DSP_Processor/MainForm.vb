@@ -69,6 +69,7 @@ Partial Public Class MainForm
         WireAudioPipelinePanel()
         WireRoutingPanel()
         WireSpectrumSettingsPanel()
+        WireDSPSignalFlowPanel()
 
         ' Load all settings (this will trigger OnSettingsLoaded event)
         settingsManager.LoadAll()
@@ -96,12 +97,10 @@ Partial Public Class MainForm
         ' Apply dark theme to visualization tabs
         DarkTheme.ApplyToControl(visualizationTabs)
 
-        ' Initialize volume controls
-        trackVolume.Value = 100
-        lblVolume.Text = "100%"
+        ' NOTE: Volume control removed - use AudioPipelinePanel or DSPSignalFlowPanel for gain control
 
         ' Start timers for UI updates
-        TimerMeters.Start() ' For volume meters
+        ' NOTE: TimerMeters removed - DSPSignalFlowPanel now event-driven via OnRecordingBufferAvailable!
         ' TimerPlayback will be started when playback begins (in OnPlaybackStarted)
 
         ' NOTE: Microphone will be armed after settings are loaded (in OnSettingsLoaded)
@@ -258,6 +257,22 @@ Partial Public Class MainForm
         Logger.Instance.Info("SpectrumSettingsPanel wired", "MainForm")
     End Sub
 
+    Private Sub WireDSPSignalFlowPanel()
+        ' Wire DSP Signal Flow Panel to AudioRouter's GainProcessor
+        ' The AudioRouter now exposes its GainProcessor for UI control
+        If audioRouter IsNot Nothing Then
+            ' Note: GainProcessor won't exist until PlayFile() is called
+            ' We'll wire it when playback starts
+            Logger.Instance.Info("DSPSignalFlowPanel wiring deferred until playback starts", "MainForm")
+        Else
+            Logger.Instance.Warning("Cannot wire DSPSignalFlowPanel - audioRouter is Nothing", "MainForm")
+        End If
+    End Sub
+
+
+
+
+
     ''' <summary>Deferred microphone arming - called 500ms after form load completes</summary>
     Private Sub DeferredArmTimer_Tick(sender As Object, e As EventArgs) Handles deferredArmTimer.Tick
         ' Stop the timer
@@ -394,11 +409,21 @@ Partial Public Class MainForm
             e.Channels,
             e.SampleRate)
 
-        ' FAST PATH: Update meter immediately (must be real-time)
+        ' FAST PATH: Update meters immediately (EVENT-DRIVEN, not timer-based!)
         ' NOTE: This is direct - not routed through pipeline for lowest latency
         Try
             Dim levelData = AudioLevelMeter.AnalyzeSamples(e.Buffer, e.BitsPerSample, e.Channels)
+
+            ' Waveform tab meter (existing)
             meterRecording.SetLevel(levelData.PeakDB, levelData.RMSDB, levelData.IsClipping)
+
+            ' DSP Signal Flow Panel meters (NEW - event-driven!)
+            ' For now, use same levels for input and output (future: read from DSP tap points)
+            DspSignalFlowPanel1.UpdateMeters(
+                levelData.PeakDB,  ' Input Left
+                levelData.PeakDB,  ' Input Right
+                levelData.PeakDB,  ' Output Left
+                levelData.PeakDB)  ' Output Right
         Catch
             ' Ignore metering errors
         End Try
@@ -409,6 +434,12 @@ Partial Public Class MainForm
             panelLED.BackColor = Color.Yellow
             lblStatus.Text = "Status: Ready (Mic Armed)"
             transportControl.IsRecordArmed = True
+
+            ' Wire DSPSignalFlowPanel to RecordingManager's INPUT gain processor
+            If recordingManager IsNot Nothing AndAlso recordingManager.InputGainProcessor IsNot Nothing Then
+                DspSignalFlowPanel1.SetGainProcessor(recordingManager.InputGainProcessor)
+                Logger.Instance.Info("DSPSignalFlowPanel wired to RecordingManager INPUT GainProcessor", "MainForm")
+            End If
         Else
             panelLED.BackColor = Color.Gray
             lblStatus.Text = "Status: Mic Disarmed"
@@ -777,14 +808,58 @@ Partial Public Class MainForm
             progressPlayback.Value = 0
             btnStopPlayback.Enabled = False
             Services.LoggingServiceAdapter.Instance.LogInfo("Playback stopped")
+
         ElseIf audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
-            Services.LoggingServiceAdapter.Instance.LogInfo("Stopping DSP playback...")
-            audioRouter.StopDSPPlayback()
+            Logger.Instance.Info("⏹️ STOP CLICKED - Synchronous stop starting...", "MainForm")
 
-            ' TransportControl will be updated via PlaybackStopped event (event-driven!)
+            ' PHASE 1 FIX: Synchronous stop with immediate UI update
+            Try
+                ' Stop DSP playback (will complete synchronously now)
+                audioRouter.StopDSPPlayback()
 
-            TimerPlayback.Stop()
-            Services.LoggingServiceAdapter.Instance.LogInfo("DSP playback stopped")
+                ' Update transport state IMMEDIATELY (don't wait for events!)
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                transportControl.TrackPosition = TimeSpan.Zero
+                transportControl.TrackDuration = TimeSpan.Zero
+
+                ' Stop timer
+                TimerPlayback.Stop()
+                progressPlayback.Value = 0
+                btnStopPlayback.Enabled = False
+
+                ' Update UI immediately
+                panelLED.BackColor = Color.Orange ' Orange = Stopping (will turn yellow when mic armed)
+                lblStatus.Text = "Status: Stopping..."
+
+                Logger.Instance.Info("✅ Stop: UI updated immediately (<100ms)", "MainForm")
+
+                ' Re-arm microphone in background (don't block UI)
+                Task.Run(Sub()
+                             Try
+                                 Logger.Instance.Info("Background: Re-arming microphone...", "MainForm")
+                                 recordingManager.ArmMicrophone()
+
+                                 ' Update UI when mic is ready (invoke to UI thread)
+                                 BeginInvoke(Sub()
+                                                 panelLED.BackColor = Color.Yellow
+                                                 lblStatus.Text = "Status: Ready (Mic Armed)"
+                                                 Logger.Instance.Info("✅ Microphone re-armed successfully", "MainForm")
+                                             End Sub)
+
+                             Catch ex As Exception
+                                 Logger.Instance.Error("Failed to re-arm microphone", ex, "MainForm")
+                                 BeginInvoke(Sub()
+                                                 panelLED.BackColor = Color.Gray
+                                                 lblStatus.Text = "Status: Idle (Mic Error)"
+                                             End Sub)
+                             End Try
+                         End Sub)
+
+            Catch ex As Exception
+                Logger.Instance.Error("❌ Stop failed!", ex, "MainForm")
+                MessageBox.Show($"Failed to stop: {ex.Message}", "Stop Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            End Try
+
         ElseIf recordingManager.IsRecording Then
             Services.LoggingServiceAdapter.Instance.LogInfo("Stopping recording...")
             recordingManager.StopRecording()
@@ -840,15 +915,6 @@ Partial Public Class MainForm
         TimerPlayback.Stop()
         progressPlayback.Value = 0
         btnStopPlayback.Enabled = False
-    End Sub
-
-    Private Sub trackVolume_Scroll(sender As Object, e As EventArgs) Handles trackVolume.Scroll
-        ' Update playback volume via PlaybackManager
-        Dim volumePercent = trackVolume.Value
-        playbackManager.Volume = volumePercent / 100.0F
-        lblVolume.Text = $"{volumePercent}%"
-
-        Services.LoggingServiceAdapter.Instance.LogInfo($"Playback volume changed: {volumePercent}%")
     End Sub
 
     Private Sub OnPlaybackStarted(sender As Object, filepath As String)
@@ -912,6 +978,9 @@ Partial Public Class MainForm
         If audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
             audioRouter.UpdateInputSamples()  ' PRE-DSP (raw audio)
             audioRouter.UpdateOutputSamples() ' POST-DSP (processed audio)
+
+            ' NOTE: DSP Signal Flow meters removed from timer - now event-driven!
+            ' Meters updated via OnRecordingBufferAvailable (for mic) and future file playback events
         End If
 
         ' REMOVED UpdateTransportState() - events handle state now!
@@ -932,6 +1001,12 @@ Partial Public Class MainForm
     Private Sub OnAudioRouterPlaybackStarted(sender As Object, filename As String)
         Logger.Instance.Info($"🎵 AudioRouter playback started: {filename}", "MainForm")
 
+        ' Wire DSP panel to the GainProcessor (now that it exists)
+        If audioRouter.GainProcessor IsNot Nothing Then
+            DspSignalFlowPanel1.SetGainProcessor(audioRouter.GainProcessor)
+            Logger.Instance.Info("✅ DSPSignalFlowPanel wired to AudioRouter.GainProcessor", "MainForm")
+        End If
+
         ' Update TransportControl (event-driven, like RecordingManager!)
         transportControl.State = UI.TransportControl.TransportState.Playing
         transportControl.TrackDuration = audioRouter.TotalDuration
@@ -948,31 +1023,48 @@ Partial Public Class MainForm
     ''' </summary>
     Private Sub OnAudioRouterPlaybackStopped(sender As Object, e As EventArgs)
         Try
-            Logger.Instance.Info("🛑 AudioRouter playback stopped - HANDLER CALLED!", "MainForm")
+            Logger.Instance.Info("🛑 AudioRouter playback stopped - NATURAL EOF DETECTED!", "MainForm")
 
-            ' STOP THE TIMER! (Important when file ends naturally)
-            Logger.Instance.Info("Stopping timer...", "MainForm")
-            TimerPlayback.Stop()
-            Logger.Instance.Info("✅ Timer stopped!", "MainForm")
+            ' PHASE 1 FIX: Fast-path EOF handling with immediate UI update
 
-            ' RE-ARM MICROPHONE (was disarmed during playback to prevent feedback)
-            Logger.Instance.Info("Re-arming microphone...", "MainForm")
-            If recordingManager IsNot Nothing Then
-                recordingManager.ArmMicrophone()
-                Logger.Instance.Info("✅ Microphone re-armed!", "MainForm")
-            End If
-
-            ' Update TransportControl (event-driven, like RecordingManager!)
+            ' Update TransportControl immediately
             transportControl.State = UI.TransportControl.TransportState.Stopped
             transportControl.TrackPosition = TimeSpan.Zero
             transportControl.TrackDuration = TimeSpan.Zero
 
-            ' Update UI
-            panelLED.BackColor = Color.Yellow ' Yellow = Armed
-            lblStatus.Text = "Status: Ready (Mic Armed)"
+            ' Stop timer
+            TimerPlayback.Stop()
+            progressPlayback.Value = 0
             btnStopPlayback.Enabled = False
 
-            Logger.Instance.Info("✅ Playback stopped handler complete!", "MainForm")
+            ' Update UI immediately
+            panelLED.BackColor = Color.Orange ' Orange = Stopping (will turn yellow when mic armed)
+            lblStatus.Text = "Status: Playback Complete, Re-arming..."
+
+            Logger.Instance.Info("✅ EOF: UI updated immediately (<50ms)", "MainForm")
+
+            ' Re-arm microphone in background (don't block)
+            Task.Run(Sub()
+                         Try
+                             Logger.Instance.Info("Background: Re-arming microphone after EOF...", "MainForm")
+                             recordingManager.ArmMicrophone()
+
+                             ' Update UI when mic is ready
+                             BeginInvoke(Sub()
+                                             panelLED.BackColor = Color.Yellow
+                                             lblStatus.Text = "Status: Ready (Mic Armed)"
+                                             Logger.Instance.Info("✅ Microphone re-armed after EOF", "MainForm")
+                                         End Sub)
+
+                         Catch ex As Exception
+                             Logger.Instance.Error("Failed to re-arm microphone after EOF", ex, "MainForm")
+                             BeginInvoke(Sub()
+                                             panelLED.BackColor = Color.Gray
+                                             lblStatus.Text = "Status: Idle (Mic Error)"
+                                         End Sub)
+                         End Try
+                     End Sub)
+
         Catch ex As Exception
             Logger.Instance.Error("❌ ERROR in OnAudioRouterPlaybackStopped!", ex, "MainForm")
         End Try
@@ -992,6 +1084,37 @@ Partial Public Class MainForm
             progressPlayback.Value = Math.Min(1000, Math.Max(0, pct))
         End If
     End Sub
+
+    ''' <summary>
+    ''' Calculate peak level in dB for a specific channel
+    ''' </summary>
+    Private Function CalculatePeakDb(samples As Single(), channel As Integer) As Single
+        If samples Is Nothing OrElse samples.Length = 0 Then
+            Return -60.0F
+        End If
+
+        Dim peak As Single = 0.0F
+        Dim channels As Integer = 2 ' Stereo
+
+        ' Find peak sample for the specified channel (interleaved stereo)
+        For i As Integer = channel To samples.Length - 1 Step channels
+            Dim absSample = Math.Abs(samples(i))
+            If absSample > peak Then
+                peak = absSample
+            End If
+        Next
+
+        ' Convert to dB (with floor at -60dB)
+        If peak < 0.00001F Then ' -100dB
+            Return -60.0F
+        End If
+
+        Dim db = 20.0F * CSng(Math.Log10(peak))
+        Return Math.Max(-60.0F, Math.Min(0.0F, db))
+    End Function
+
+
+
 
     Private Sub UpdateTransportState()
         If recordingManager IsNot Nothing AndAlso recordingManager.IsRecording Then

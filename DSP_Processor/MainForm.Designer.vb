@@ -34,8 +34,6 @@ Partial Class MainForm
         progressPlayback = New ProgressBar()
         TimerPlayback = New Timer(components)
         TimerMeters = New Timer(components)
-        trackVolume = New TrackBar()
-        lblVolume = New Label()
         btnDelete = New Button()
         transportControl = New UI.TransportControl()
         splitWaveformArea = New SplitContainer()
@@ -68,7 +66,8 @@ Partial Class MainForm
         SpectrumAnalyzerControl1 = New UI.SpectrumAnalyzerControl()
         tabPhase = New TabPage()
         tabMeters = New TabPage()
-        CType(trackVolume, ComponentModel.ISupportInitialize).BeginInit()
+        TabPage1 = New TabPage()
+        DspSignalFlowPanel1 = New DSPSignalFlowPanel()
         CType(splitWaveformArea, ComponentModel.ISupportInitialize).BeginInit()
         splitWaveformArea.Panel1.SuspendLayout()
         splitWaveformArea.Panel2.SuspendLayout()
@@ -85,6 +84,7 @@ Partial Class MainForm
         tabWaveform.SuspendLayout()
         tabSpectrum1.SuspendLayout()
         tabMeters.SuspendLayout()
+        TabPage1.SuspendLayout()
         SuspendLayout()
         ' 
         ' TimerAudio
@@ -140,7 +140,7 @@ Partial Class MainForm
         ' lblRecordingTime
         ' 
         lblRecordingTime.AutoSize = True
-        lblRecordingTime.Font = New Font("Segoe UI", 16F, FontStyle.Bold)
+        lblRecordingTime.Font = New Font("Segoe UI", 16.0F, FontStyle.Bold)
         lblRecordingTime.ForeColor = Color.Red
         lblRecordingTime.Location = New Point(172, 50)
         lblRecordingTime.Name = "lblRecordingTime"
@@ -176,25 +176,6 @@ Partial Class MainForm
         ' TimerMeters
         ' 
         TimerMeters.Interval = 33
-        ' 
-        ' trackVolume
-        ' 
-        trackVolume.Location = New Point(6, 52)
-        trackVolume.Maximum = 100
-        trackVolume.Name = "trackVolume"
-        trackVolume.Size = New Size(324, 56)
-        trackVolume.TabIndex = 7
-        trackVolume.TickFrequency = 10
-        trackVolume.Value = 100
-        ' 
-        ' lblVolume
-        ' 
-        lblVolume.AutoSize = True
-        lblVolume.Location = New Point(274, 29)
-        lblVolume.Name = "lblVolume"
-        lblVolume.Size = New Size(45, 20)
-        lblVolume.TabIndex = 8
-        lblVolume.Text = "100%"
         ' 
         ' btnDelete
         ' 
@@ -270,8 +251,6 @@ Partial Class MainForm
         tabFiles.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabFiles.Controls.Add(lstRecordings)
         tabFiles.Controls.Add(btnDelete)
-        tabFiles.Controls.Add(trackVolume)
-        tabFiles.Controls.Add(lblVolume)
         tabFiles.Location = New Point(4, 54)
         tabFiles.Name = "tabFiles"
         tabFiles.Padding = New Padding(3)
@@ -284,10 +263,10 @@ Partial Class MainForm
         tabProgram.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabProgram.Controls.Add(AudioSettingsPanel1)
         tabProgram.Controls.Add(RoutingPanel1)
-        tabProgram.Location = New Point(4, 54)
+        tabProgram.Location = New Point(4, 29)
         tabProgram.Name = "tabProgram"
         tabProgram.Padding = New Padding(3)
-        tabProgram.Size = New Size(446, 793)
+        tabProgram.Size = New Size(192, 67)
         tabProgram.TabIndex = 1
         tabProgram.Text = "⚙️ Program"
         ' 
@@ -298,7 +277,7 @@ Partial Class MainForm
         AudioSettingsPanel1.Dock = DockStyle.Top
         AudioSettingsPanel1.Location = New Point(3, 3)
         AudioSettingsPanel1.Name = "AudioSettingsPanel1"
-        AudioSettingsPanel1.Size = New Size(440, 338)
+        AudioSettingsPanel1.Size = New Size(186, 338)
         AudioSettingsPanel1.TabIndex = 1
         ' 
         ' RoutingPanel1
@@ -338,7 +317,7 @@ Partial Class MainForm
         tabRecording.Location = New Point(4, 54)
         tabRecording.Name = "tabRecording"
         tabRecording.Padding = New Padding(3)
-        tabRecording.Size = New Size(446, 793)
+        tabRecording.Size = New Size(192, 42)
         tabRecording.TabIndex = 2
         tabRecording.Text = "🎛️ Recording"
         ' 
@@ -350,17 +329,17 @@ Partial Class MainForm
         RecordingOptionsPanel1.ForeColor = Color.FromArgb(CByte(241), CByte(241), CByte(241))
         RecordingOptionsPanel1.Location = New Point(3, 3)
         RecordingOptionsPanel1.Name = "RecordingOptionsPanel1"
-        RecordingOptionsPanel1.Size = New Size(440, 787)
+        RecordingOptionsPanel1.Size = New Size(186, 36)
         RecordingOptionsPanel1.TabIndex = 0
         ' 
         ' tabPipeline
         ' 
         tabPipeline.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabPipeline.Controls.Add(AudioPipelinePanel1)
-        tabPipeline.Location = New Point(4, 54)
+        tabPipeline.Location = New Point(4, 79)
         tabPipeline.Name = "tabPipeline"
         tabPipeline.Padding = New Padding(3)
-        tabPipeline.Size = New Size(446, 793)
+        tabPipeline.Size = New Size(192, 17)
         tabPipeline.TabIndex = 8
         tabPipeline.Text = "🔀 Pipeline"
         ' 
@@ -371,7 +350,7 @@ Partial Class MainForm
         AudioPipelinePanel1.Dock = DockStyle.Fill
         AudioPipelinePanel1.Location = New Point(3, 3)
         AudioPipelinePanel1.Name = "AudioPipelinePanel1"
-        AudioPipelinePanel1.Size = New Size(440, 787)
+        AudioPipelinePanel1.Size = New Size(186, 11)
         AudioPipelinePanel1.TabIndex = 0
         ' 
         ' tabSpectrum
@@ -379,10 +358,10 @@ Partial Class MainForm
         tabSpectrum.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabSpectrum.Controls.Add(SpectrumSettingsPanel1)
         tabSpectrum.Controls.Add(lblSpectrumInfo)
-        tabSpectrum.Location = New Point(4, 54)
+        tabSpectrum.Location = New Point(4, 79)
         tabSpectrum.Name = "tabSpectrum"
         tabSpectrum.Padding = New Padding(3)
-        tabSpectrum.Size = New Size(446, 793)
+        tabSpectrum.Size = New Size(192, 17)
         tabSpectrum.TabIndex = 6
         tabSpectrum.Text = "🌈 Spectrum"
         ' 
@@ -404,10 +383,10 @@ Partial Class MainForm
         ' tabAnalysis
         ' 
         tabAnalysis.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
-        tabAnalysis.Location = New Point(4, 54)
+        tabAnalysis.Location = New Point(4, 104)
         tabAnalysis.Name = "tabAnalysis"
         tabAnalysis.Padding = New Padding(3)
-        tabAnalysis.Size = New Size(446, 793)
+        tabAnalysis.Size = New Size(192, 0)
         tabAnalysis.TabIndex = 3
         tabAnalysis.Text = "📊 Analysis"
         ' 
@@ -420,10 +399,10 @@ Partial Class MainForm
         tabLogs.Controls.Add(chkAutoScroll)
         tabLogs.Controls.Add(cmbLogLevel)
         tabLogs.Controls.Add(lblLogLevel)
-        tabLogs.Location = New Point(4, 54)
+        tabLogs.Location = New Point(4, 104)
         tabLogs.Name = "tabLogs"
         tabLogs.Padding = New Padding(3)
-        tabLogs.Size = New Size(446, 793)
+        tabLogs.Size = New Size(192, 0)
         tabLogs.TabIndex = 5
         tabLogs.Text = "📜 Logs"
         ' 
@@ -435,7 +414,7 @@ Partial Class MainForm
         txtLogViewer.Location = New Point(6, 42)
         txtLogViewer.Name = "txtLogViewer"
         txtLogViewer.ReadOnly = True
-        txtLogViewer.Size = New Size(434, 745)
+        txtLogViewer.Size = New Size(180, 0)
         txtLogViewer.TabIndex = 0
         txtLogViewer.Text = ""
         ' 
@@ -505,6 +484,7 @@ Partial Class MainForm
         visualizationTabs.Controls.Add(tabSpectrum1)
         visualizationTabs.Controls.Add(tabPhase)
         visualizationTabs.Controls.Add(tabMeters)
+        visualizationTabs.Controls.Add(TabPage1)
         visualizationTabs.Location = New Point(456, 200)
         visualizationTabs.Multiline = True
         visualizationTabs.Name = "visualizationTabs"
@@ -564,9 +544,29 @@ Partial Class MainForm
         tabMeters.TabIndex = 3
         tabMeters.Text = "📊 Meters"
         ' 
+        ' TabPage1
+        ' 
+        TabPage1.Controls.Add(DspSignalFlowPanel1)
+        TabPage1.Location = New Point(4, 29)
+        TabPage1.Name = "TabPage1"
+        TabPage1.Size = New Size(1318, 818)
+        TabPage1.TabIndex = 4
+        TabPage1.Text = "DSP Sigal Flow"
+        TabPage1.UseVisualStyleBackColor = True
+        ' 
+        ' DspSignalFlowPanel1
+        ' 
+        DspSignalFlowPanel1.AutoScroll = True
+        DspSignalFlowPanel1.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
+        DspSignalFlowPanel1.Dock = DockStyle.Fill
+        DspSignalFlowPanel1.Location = New Point(0, 0)
+        DspSignalFlowPanel1.Name = "DspSignalFlowPanel1"
+        DspSignalFlowPanel1.Size = New Size(1318, 818)
+        DspSignalFlowPanel1.TabIndex = 0
+        ' 
         ' MainForm
         ' 
-        AutoScaleDimensions = New SizeF(8F, 20F)
+        AutoScaleDimensions = New SizeF(8.0F, 20.0F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1782, 1053)
         Controls.Add(transportControl)
@@ -575,14 +575,12 @@ Partial Class MainForm
         Controls.Add(lblRecordingTime)
         Name = "MainForm"
         Text = "DSP Processor - Dark Mode"
-        CType(trackVolume, ComponentModel.ISupportInitialize).EndInit()
         splitWaveformArea.Panel1.ResumeLayout(False)
         splitWaveformArea.Panel2.ResumeLayout(False)
         CType(splitWaveformArea, ComponentModel.ISupportInitialize).EndInit()
         splitWaveformArea.ResumeLayout(False)
         mainTabs.ResumeLayout(False)
         tabFiles.ResumeLayout(False)
-        tabFiles.PerformLayout()
         tabProgram.ResumeLayout(False)
         tabInput.ResumeLayout(False)
         tabRecording.ResumeLayout(False)
@@ -594,6 +592,7 @@ Partial Class MainForm
         tabWaveform.ResumeLayout(False)
         tabSpectrum1.ResumeLayout(False)
         tabMeters.ResumeLayout(False)
+        TabPage1.ResumeLayout(False)
         ResumeLayout(False)
         PerformLayout()
     End Sub
@@ -609,8 +608,6 @@ Partial Class MainForm
     Friend WithEvents lstRecordings As ListBox
     Friend WithEvents progressPlayback As ProgressBar
     Friend WithEvents TimerPlayback As Timer
-    Friend WithEvents trackVolume As TrackBar
-    Friend WithEvents lblVolume As Label
     Friend WithEvents btnDelete As Button
     Friend WithEvents transportControl As DSP_Processor.UI.TransportControl
     Friend WithEvents splitWaveformArea As SplitContainer
@@ -643,4 +640,6 @@ Partial Class MainForm
     Friend WithEvents tabPipeline As TabPage
     Friend WithEvents WaveformDisplayControl1 As UI.WaveformDisplayControl
     Friend WithEvents lblSpectrumInfo As Label
+    Friend WithEvents TabPage1 As TabPage
+    Friend WithEvents DspSignalFlowPanel1 As DSPSignalFlowPanel
 End Class

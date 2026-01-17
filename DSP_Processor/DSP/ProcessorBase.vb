@@ -14,6 +14,9 @@ Namespace DSP
         Private _enabled As Boolean = True
         Private _bypassed As Boolean = False
         Protected disposed As Boolean = False
+        
+        ''' <summary>Optional callback for sending processed output to monitoring/analysis (tap point)</summary>
+        Protected monitorOutputCallback As Action(Of AudioBuffer)
 
 #End Region
 
@@ -112,6 +115,19 @@ Namespace DSP
             ' Derived classes can override to reset internal state
         End Sub
 
+        ''' <summary>
+        ''' Sets the monitor output callback for this processor (tap point pattern)
+        ''' </summary>
+        ''' <param name="callback">Callback to receive processed audio for monitoring/analysis</param>
+        ''' <remarks>
+        ''' This establishes a tap point after this processor's output.
+        ''' The callback receives a COPY of the processed audio without blocking the main audio path.
+        ''' Use this for meters, FFT analysis, or any non-realtime monitoring.
+        ''' </remarks>
+        Public Sub SetMonitorOutputCallback(callback As Action(Of AudioBuffer))
+            monitorOutputCallback = callback
+        End Sub
+
 #End Region
 
 #Region "Protected Methods"
@@ -151,6 +167,27 @@ Namespace DSP
                    format.Channels = Me.Format.Channels AndAlso
                    format.BitsPerSample = Me.Format.BitsPerSample
         End Function
+
+        ''' <summary>
+        ''' Sends processed audio to the monitor output (tap point) if callback is set
+        ''' </summary>
+        ''' <param name="buffer">Buffer to send to monitor (will be copied, not blocking)</param>
+        ''' <remarks>
+        ''' Call this from ProcessInternal() AFTER processing is complete.
+        ''' This is the DSP TAP POINT PATTERN - every processor should call this.
+        ''' </remarks>
+        Protected Sub SendToMonitor(buffer As AudioBuffer)
+            Try
+                ' Only send if callback is registered
+                If monitorOutputCallback IsNot Nothing Then
+                    ' Invoke callback (should be non-blocking - up to DSPThread to handle properly)
+                    monitorOutputCallback.Invoke(buffer)
+                End If
+            Catch ex As Exception
+                ' Don't let monitoring errors crash audio processing
+                Utils.Logger.Instance.Error($"Monitor output callback failed in {Name}", ex, "ProcessorBase")
+            End Try
+        End Sub
 
 #End Region
 

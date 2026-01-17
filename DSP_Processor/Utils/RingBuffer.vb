@@ -99,7 +99,7 @@ Namespace Utils
         Public Function Write(data As Byte(), offset As Integer, count As Integer) As Integer
             If disposed Then Throw New ObjectDisposedException(NameOf(RingBuffer))
             If data Is Nothing Then Throw New ArgumentNullException(NameOf(data))
-            If offset < 0 OrElse offset >= data.Length Then Throw New ArgumentOutOfRangeException(NameOf(offset))
+            If offset < 0 OrElse offset > data.Length Then Throw New ArgumentOutOfRangeException(NameOf(offset))
             If count < 0 OrElse offset + count > data.Length Then Throw New ArgumentOutOfRangeException(NameOf(count))
 
             ' Limit write to available space
@@ -133,7 +133,7 @@ Namespace Utils
         Public Function Read(data As Byte(), offset As Integer, count As Integer) As Integer
             If disposed Then Throw New ObjectDisposedException(NameOf(RingBuffer))
             If data Is Nothing Then Throw New ArgumentNullException(NameOf(data))
-            If offset < 0 OrElse offset >= data.Length Then Throw New ArgumentOutOfRangeException(NameOf(offset))
+            If offset < 0 OrElse offset > data.Length Then Throw New ArgumentOutOfRangeException(NameOf(offset))
             If count < 0 OrElse offset + count > data.Length Then Throw New ArgumentOutOfRangeException(NameOf(count))
 
             ' Limit read to available data

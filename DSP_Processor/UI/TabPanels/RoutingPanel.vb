@@ -5,23 +5,10 @@ Namespace UI.TabPanels
 
     ''' <summary>
     ''' Audio routing panel - input source and output device selection.
-    ''' Replaces hard-coded grpRouting on Program tab.
+    ''' NOW USES DESIGNER! All controls are in RoutingPanel.Designer.vb
     ''' </summary>
-    Public Class RoutingPanel
+    Partial Public Class RoutingPanel
         Inherits UserControl
-
-#Region "Controls"
-
-        Private grpRouting As GroupBox
-        Private lblInputSource As Label
-        Private radioMicrophone As RadioButton
-        Private radioFilePlayback As RadioButton
-        Private btnBrowseInputFile As Button
-        Private lblSelectedFile As Label
-        Private lblOutputDevice As Label
-        Private cmbOutputDevice As ComboBox
-
-#End Region
 
 #Region "Events"
 
@@ -89,107 +76,12 @@ Namespace UI.TabPanels
 
         Public Sub New()
             InitializeComponent()
-        End Sub
 
-#End Region
-
-#Region "Initialization"
-
-        Private Sub InitializeComponent()
-            Me.SuspendLayout()
-
-            ' Main container
-            Me.AutoScaleMode = AutoScaleMode.Font
-            Me.Size = New Size(400, 270)
-            Me.BackColor = Color.FromArgb(45, 45, 48)
-
-            ' Create group box
-            grpRouting = New GroupBox With {
-                .Text = "Audio Routing",
-                .Location = New Point(10, 10),
-                .Size = New Size(380, 250),
-                .ForeColor = Color.White
-            }
-
-            ' Input source label
-            lblInputSource = New Label With {
-                .Text = "Input Source:",
-                .Location = New Point(10, 25),
-                .Size = New Size(95, 20),
-                .ForeColor = Color.White
-            }
-
-            ' Radio buttons
-            radioMicrophone = New RadioButton With {
-                .Text = "?? Microphone",
-                .Location = New Point(10, 50),
-                .Size = New Size(135, 24),
-                .Checked = True,
-                .ForeColor = Color.White
-            }
+            ' Wire up events (controls already exist in Designer!)
             AddHandler radioMicrophone.CheckedChanged, AddressOf OnInputSourceChanged
-
-            radioFilePlayback = New RadioButton With {
-                .Text = "?? File Playback",
-                .Location = New Point(10, 80),
-                .Size = New Size(140, 24),
-                .ForeColor = Color.White
-            }
             AddHandler radioFilePlayback.CheckedChanged, AddressOf OnInputSourceChanged
-
-            ' Browse button
-            btnBrowseInputFile = New Button With {
-                .Text = "Browse for audio file...",
-                .Location = New Point(30, 110),
-                .Size = New Size(270, 30),
-                .Enabled = False,
-                .BackColor = Color.FromArgb(60, 60, 60),
-                .FlatStyle = FlatStyle.Flat,
-                .ForeColor = Color.White
-            }
             AddHandler btnBrowseInputFile.Click, AddressOf OnBrowseFileClick
-
-            ' Selected file label
-            lblSelectedFile = New Label With {
-                .Text = "No file selected",
-                .Location = New Point(30, 145),
-                .Size = New Size(270, 40),
-                .ForeColor = Color.Cyan
-            }
-
-            ' Output device label
-            lblOutputDevice = New Label With {
-                .Text = "Output Device:",
-                .Location = New Point(10, 190),
-                .Size = New Size(110, 20),
-                .ForeColor = Color.White
-            }
-
-            ' Output device combo
-            cmbOutputDevice = New ComboBox With {
-                .Location = New Point(10, 215),
-                .Size = New Size(290, 21),
-                .DropDownStyle = ComboBoxStyle.DropDownList,
-                .BackColor = Color.FromArgb(60, 60, 60),
-                .ForeColor = Color.White
-            }
             AddHandler cmbOutputDevice.SelectedIndexChanged, AddressOf OnOutputDeviceChanged
-
-            ' Add controls to group box
-            grpRouting.Controls.AddRange(New Control() {
-                lblInputSource,
-                radioMicrophone,
-                radioFilePlayback,
-                btnBrowseInputFile,
-                lblSelectedFile,
-                lblOutputDevice,
-                cmbOutputDevice
-            })
-
-            ' Add group box to panel
-            Me.Controls.Add(grpRouting)
-
-            Me.ResumeLayout(False)
         End Sub
 
 #End Region
