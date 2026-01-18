@@ -68,6 +68,8 @@ Partial Class MainForm
         tabMeters = New TabPage()
         TabPage1 = New TabPage()
         DspSignalFlowPanel1 = New DSPSignalFlowPanel()
+        TabPage2 = New TabPage()
+        CognitiveDashboardPanel1 = New UI.CognitiveDashboardPanel()
         CType(splitWaveformArea, ComponentModel.ISupportInitialize).BeginInit()
         splitWaveformArea.Panel1.SuspendLayout()
         splitWaveformArea.Panel2.SuspendLayout()
@@ -85,6 +87,7 @@ Partial Class MainForm
         tabSpectrum1.SuspendLayout()
         tabMeters.SuspendLayout()
         TabPage1.SuspendLayout()
+        TabPage2.SuspendLayout()
         SuspendLayout()
         ' 
         ' TimerAudio
@@ -140,7 +143,7 @@ Partial Class MainForm
         ' lblRecordingTime
         ' 
         lblRecordingTime.AutoSize = True
-        lblRecordingTime.Font = New Font("Segoe UI", 16.0F, FontStyle.Bold)
+        lblRecordingTime.Font = New Font("Segoe UI", 16F, FontStyle.Bold)
         lblRecordingTime.ForeColor = Color.Red
         lblRecordingTime.Location = New Point(172, 50)
         lblRecordingTime.Name = "lblRecordingTime"
@@ -336,10 +339,10 @@ Partial Class MainForm
         ' 
         tabPipeline.BackColor = Color.FromArgb(CByte(45), CByte(45), CByte(48))
         tabPipeline.Controls.Add(AudioPipelinePanel1)
-        tabPipeline.Location = New Point(4, 54)
+        tabPipeline.Location = New Point(4, 79)
         tabPipeline.Name = "tabPipeline"
         tabPipeline.Padding = New Padding(3)
-        tabPipeline.Size = New Size(446, 793)
+        tabPipeline.Size = New Size(192, 17)
         tabPipeline.TabIndex = 8
         tabPipeline.Text = "🔀 Pipeline"
         ' 
@@ -350,7 +353,7 @@ Partial Class MainForm
         AudioPipelinePanel1.Dock = DockStyle.Fill
         AudioPipelinePanel1.Location = New Point(3, 3)
         AudioPipelinePanel1.Name = "AudioPipelinePanel1"
-        AudioPipelinePanel1.Size = New Size(440, 787)
+        AudioPipelinePanel1.Size = New Size(186, 11)
         AudioPipelinePanel1.TabIndex = 0
         ' 
         ' tabSpectrum
@@ -485,6 +488,7 @@ Partial Class MainForm
         visualizationTabs.Controls.Add(tabPhase)
         visualizationTabs.Controls.Add(tabMeters)
         visualizationTabs.Controls.Add(TabPage1)
+        visualizationTabs.Controls.Add(TabPage2)
         visualizationTabs.Location = New Point(456, 200)
         visualizationTabs.Multiline = True
         visualizationTabs.Name = "visualizationTabs"
@@ -564,9 +568,30 @@ Partial Class MainForm
         DspSignalFlowPanel1.Size = New Size(1318, 818)
         DspSignalFlowPanel1.TabIndex = 0
         ' 
+        ' TabPage2
+        ' 
+        TabPage2.Controls.Add(CognitiveDashboardPanel1)
+        TabPage2.Location = New Point(4, 29)
+        TabPage2.Name = "TabPage2"
+        TabPage2.Padding = New Padding(3)
+        TabPage2.Size = New Size(1318, 818)
+        TabPage2.TabIndex = 5
+        TabPage2.Text = "Brains"
+        TabPage2.UseVisualStyleBackColor = True
+        ' 
+        ' CognitiveDashboardPanel1
+        ' 
+        CognitiveDashboardPanel1.BackColor = Color.FromArgb(CByte(240), CByte(240), CByte(240))
+        CognitiveDashboardPanel1.Dock = DockStyle.Fill
+        CognitiveDashboardPanel1.Location = New Point(3, 3)
+        CognitiveDashboardPanel1.Name = "CognitiveDashboardPanel1"
+        CognitiveDashboardPanel1.Padding = New Padding(10)
+        CognitiveDashboardPanel1.Size = New Size(1312, 812)
+        CognitiveDashboardPanel1.TabIndex = 0
+        ' 
         ' MainForm
         ' 
-        AutoScaleDimensions = New SizeF(8.0F, 20.0F)
+        AutoScaleDimensions = New SizeF(8F, 20F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1782, 1053)
         Controls.Add(transportControl)
@@ -593,6 +618,7 @@ Partial Class MainForm
         tabSpectrum1.ResumeLayout(False)
         tabMeters.ResumeLayout(False)
         TabPage1.ResumeLayout(False)
+        TabPage2.ResumeLayout(False)
         ResumeLayout(False)
         PerformLayout()
     End Sub
@@ -642,4 +668,6 @@ Partial Class MainForm
     Friend WithEvents lblSpectrumInfo As Label
     Friend WithEvents TabPage1 As TabPage
     Friend WithEvents DspSignalFlowPanel1 As DSPSignalFlowPanel
+    Friend WithEvents TabPage2 As TabPage
+    Friend WithEvents CognitiveDashboardPanel1 As UI.CognitiveDashboardPanel
 End Class
