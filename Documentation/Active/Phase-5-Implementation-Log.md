@@ -41,9 +41,17 @@ _None yet - starting now!_
 
 ### **Step 21: Wire StateCoordinator to RecordingManager**
 
-**Started:** TBD  
-**Status:** ? PENDING  
+**Started:** 2026-01-17  
+**Status:** ? IN PROGRESS (Part 1 Complete!)  
 **Files:** `Managers\RecordingManager.vb`, `MainForm.vb`, `State\StateCoordinator.vb`
+
+**Progress:**
+- [x] Part 1: Add StateCoordinator.Initialize() call to MainForm ? DONE!
+- [ ] Part 2: Remove _isArmed, _isRecording flags from RecordingManager
+- [ ] Part 3: Replace with StateCoordinator queries
+- [ ] Part 4: Test recording flow
+
+**Build Status:** ? SUCCESSFUL
 
 **Design Reference:**
 - State-Coordinator-Design.md Part 6: Integration Points

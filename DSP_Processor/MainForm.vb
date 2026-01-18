@@ -299,6 +299,38 @@ Partial Public Class MainForm
         ' Mark form as fully loaded
         isFormFullyLoaded = True
 
+        ' PHASE 5 STEP 21: Initialize StateCoordinator BEFORE arming microphone
+        ' This creates all state machines and transitions to Idle state
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo("Initializing StateCoordinator...")
+            
+            ' Get DSPThread reference from RecordingManager
+            ' Note: DSPThread is created when microphone is armed, so we'll pass Nothing for now
+            ' DSPThreadSSM will be wired after arming
+            Dim dspThreadRef As DSP.DSPThread = Nothing
+            If recordingManager IsNot Nothing AndAlso recordingManager.TapManager IsNot Nothing Then
+                ' Try to get DSPThread from TapManager (may be Nothing if not yet armed)
+                ' This is OK - DSPThreadSSM will handle Nothing gracefully
+            End If
+            
+            ' Initialize StateCoordinator with subsystem references
+            StateCoordinator.Instance.Initialize(
+                recordingManager,
+                dspThreadRef,  ' May be Nothing - will be wired after mic armed
+                audioRouter,
+                Me)
+            
+            Services.LoggingServiceAdapter.Instance.LogInfo("✅ StateCoordinator initialized - System IDLE")
+            Utils.Logger.Instance.Info("StateCoordinator initialized successfully", "MainForm")
+            
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to initialize StateCoordinator: {ex.Message}", ex)
+            Utils.Logger.Instance.Error("StateCoordinator initialization failed", ex, "MainForm")
+            MessageBox.Show($"Critical error initializing state system:{vbCrLf}{ex.Message}",
+                           "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            Return ' Don't arm microphone if StateCoordinator failed
+        End Try
+
         ' Now arm the microphone
         Try
             Services.LoggingServiceAdapter.Instance.LogInfo("Arming microphone (deferred)")
