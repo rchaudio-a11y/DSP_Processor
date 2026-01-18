@@ -69,7 +69,7 @@ Partial Class MainForm
         TabPage1 = New TabPage()
         DspSignalFlowPanel1 = New DSPSignalFlowPanel()
         TabPage2 = New TabPage()
-        CognitiveDashboardPanel1 = New UI.CognitiveDashboardPanel()
+        CognitiveDashboardPanel1 = New CognitiveDashboardPanel()
         CType(splitWaveformArea, ComponentModel.ISupportInitialize).BeginInit()
         splitWaveformArea.Panel1.SuspendLayout()
         splitWaveformArea.Panel2.SuspendLayout()
@@ -669,5 +669,5 @@ Partial Class MainForm
     Friend WithEvents TabPage1 As TabPage
     Friend WithEvents DspSignalFlowPanel1 As DSPSignalFlowPanel
     Friend WithEvents TabPage2 As TabPage
-    Friend WithEvents CognitiveDashboardPanel1 As UI.CognitiveDashboardPanel
+    Friend WithEvents CognitiveDashboardPanel1 As CognitiveDashboardPanel
 End Class

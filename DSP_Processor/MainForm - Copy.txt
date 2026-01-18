@@ -952,11 +952,10 @@ Partial Public Class MainForm
         Dim fullPath = fileInfo.FullName
 
         Try
-            ' Log user action (Tier 1 - state-changing action)
-            Logger.Instance.Info($"[UI] Play button clicked (file: {fileName})", "MainForm")
             Services.LoggingServiceAdapter.Instance.LogInfo($"Loading file for DSP playback: {fileName}")
 
             ' PHASE 5 STEP 22: Transition GlobalStateMachine to Playing BEFORE starting playback
+            Logger.Instance.Info("🎵 PLAY CLICKED - Requesting GlobalStateMachine transition to Playing...", "MainForm")
             Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Playing, "User started playback")
 
             If Not success Then
@@ -1010,9 +1009,6 @@ Partial Public Class MainForm
             Services.LoggingServiceAdapter.Instance.LogWarning($"File not found: {fileName}")
             Return
         End If
-
-        ' Log file selection (Tier 1 - user action)
-        Logger.Instance.Info($"[UI] File selected: {fileName}", "MainForm")
 
         Dim fullPath = fileInfo.FullName
 
@@ -1103,9 +1099,8 @@ Partial Public Class MainForm
 
     Private Sub OnTransportRecord(sender As Object, e As EventArgs)
         Try
-            ' Log user action (Tier 1 - state-changing action)
-            Logger.Instance.Info("[UI] Record button clicked", "MainForm")
             Services.LoggingServiceAdapter.Instance.LogInfo("Starting recording...")
+            Logger.Instance.Info("🔴 RECORD CLICKED - Requesting GlobalStateMachine transition to Arming...", "MainForm")
 
             ' PHASE 5 STEP 22.5 FIX: Trigger state machine flow instead of direct call
             ' Flow: Idle → Arming → Armed → Recording
@@ -1139,8 +1134,7 @@ Partial Public Class MainForm
         Try
             Dim currentState = StateCoordinator.Instance.GlobalState
 
-            ' Log user action (Tier 1 - state-changing action)
-            Logger.Instance.Info($"[UI] Stop button clicked (current state: {currentState})", "MainForm")
+            Logger.Instance.Info($"⏹️ STOP CLICKED - Current state: {currentState}", "MainForm")
 
             Select Case currentState
                 Case GlobalState.Recording

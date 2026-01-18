@@ -22,13 +22,6 @@ Namespace Cognitive
         Private _activityHistory As New List(Of AttentionEvent)()
         Private ReadOnly _maxHistorySize As Integer
 
-        ' Event handler delegates (for proper unsubscription)
-        Private _globalHandler As EventHandler(Of StateChangedEventArgs(Of GlobalState))
-        Private _recordingHandler As EventHandler(Of StateChangedEventArgs(Of RecordingManagerState))
-        Private _dspHandler As EventHandler(Of StateChangedEventArgs(Of DSPThreadState))
-        Private _playbackHandler As EventHandler(Of StateChangedEventArgs(Of PlaybackState))
-        Private _uiHandler As EventHandler(Of StateChangedEventArgs(Of UIState))
-
         ' Subsystem names
         Private ReadOnly _subsystems As String() = {
             "GlobalStateMachine",
@@ -75,39 +68,16 @@ Namespace Cognitive
         End Property
 
         Public Sub Initialize(coordinator As StateCoordinator) Implements ICognitiveSystem.Initialize
-            ' Store handler delegates for proper unsubscription
-            _globalHandler = Sub(s As Object, e As StateChangedEventArgs(Of GlobalState))
-                                 RecordActivity("GlobalStateMachine", e.Timestamp, e.NewState.ToString())
-                             End Sub
-
-            _recordingHandler = Sub(s As Object, e As StateChangedEventArgs(Of RecordingManagerState))
-                                    RecordActivity("RecordingManagerSSM", e.Timestamp, e.NewState.ToString())
-                                End Sub
-
-            _playbackHandler = Sub(s As Object, e As StateChangedEventArgs(Of PlaybackState))
-                                   RecordActivity("PlaybackSSM", e.Timestamp, e.NewState.ToString())
-                               End Sub
-
-            _uiHandler = Sub(s As Object, e As StateChangedEventArgs(Of UIState))
-                             RecordActivity("UIStateMachine", e.Timestamp, e.NewState.ToString())
-                         End Sub
-
-            _dspHandler = Sub(s As Object, e As StateChangedEventArgs(Of DSPThreadState))
-                              RecordActivity("DSPThreadSSM", e.Timestamp, e.NewState.ToString())
-                          End Sub
-
-            ' Subscribe using stored delegates
-            AddHandler coordinator.GlobalStateMachine.StateChanged, _globalHandler
-            AddHandler coordinator.RecordingManagerSSM.StateChanged, _recordingHandler
-            AddHandler coordinator.PlaybackSSM.StateChanged, _playbackHandler
-            AddHandler coordinator.UIStateMachine.StateChanged, _uiHandler
+            ' Subscribe to all state machines
+            AddHandler coordinator.GlobalStateMachine.StateChanged, Sub(s, e) RecordActivity("GlobalStateMachine", e.Timestamp)
+            AddHandler coordinator.RecordingManagerSSM.StateChanged, Sub(s, e) RecordActivity("RecordingManagerSSM", e.Timestamp)
+            AddHandler coordinator.PlaybackSSM.StateChanged, Sub(s, e) RecordActivity("PlaybackSSM", e.Timestamp)
+            AddHandler coordinator.UIStateMachine.StateChanged, Sub(s, e) RecordActivity("UIStateMachine", e.Timestamp)
 
             ' DSPThreadSSM is optional (created after microphone arming)
             If coordinator.DSPThreadSSM IsNot Nothing Then
-                AddHandler coordinator.DSPThreadSSM.StateChanged, _dspHandler
+                AddHandler coordinator.DSPThreadSSM.StateChanged, Sub(s, e) RecordActivity("DSPThreadSSM", e.Timestamp)
             End If
-
-            Utils.Logger.Instance.Info("AttentionSpotlight initialized with proper handler references", "AttentionSpotlight")
         End Sub
 
         Public Sub OnStateChanged(transitionID As String, oldState As Object, newState As Object) Implements ICognitiveSystem.OnStateChanged
@@ -141,18 +111,16 @@ Namespace Cognitive
         End Sub
 
         Public Sub Dispose() Implements IDisposable.Dispose
-            ' Unsubscribe using stored handler references (prevents memory leaks!)
+            ' Unsubscribe from events
             If _coordinator IsNot Nothing Then
-                RemoveHandler _coordinator.GlobalStateMachine.StateChanged, _globalHandler
-                RemoveHandler _coordinator.RecordingManagerSSM.StateChanged, _recordingHandler
-                RemoveHandler _coordinator.PlaybackSSM.StateChanged, _playbackHandler
-                RemoveHandler _coordinator.UIStateMachine.StateChanged, _uiHandler
+                RemoveHandler _coordinator.GlobalStateMachine.StateChanged, Sub(s, e) RecordActivity("GlobalStateMachine", e.Timestamp)
+                RemoveHandler _coordinator.RecordingManagerSSM.StateChanged, Sub(s, e) RecordActivity("RecordingManagerSSM", e.Timestamp)
+                RemoveHandler _coordinator.PlaybackSSM.StateChanged, Sub(s, e) RecordActivity("PlaybackSSM", e.Timestamp)
+                RemoveHandler _coordinator.UIStateMachine.StateChanged, Sub(s, e) RecordActivity("UIStateMachine", e.Timestamp)
 
                 If _coordinator.DSPThreadSSM IsNot Nothing Then
-                    RemoveHandler _coordinator.DSPThreadSSM.StateChanged, _dspHandler
+                    RemoveHandler _coordinator.DSPThreadSSM.StateChanged, Sub(s, e) RecordActivity("DSPThreadSSM", e.Timestamp)
                 End If
-
-                Utils.Logger.Instance.Info("AttentionSpotlight disposed - handlers properly removed", "AttentionSpotlight")
             End If
         End Sub
 
@@ -163,25 +131,16 @@ Namespace Cognitive
         ''' <summary>
         ''' Record activity for a subsystem
         ''' </summary>
-        Public Sub RecordActivity(subsystemName As String, timestamp As DateTime, Optional stateName As String = "")
+        Public Sub RecordActivity(subsystemName As String, timestamp As DateTime)
             If Not Enabled Then Return
 
-            ' Cooldown: Ignore events within 5ms of previous (prevents micro-bursts)
             SyncLock _lock
-                If _lastActivity.ContainsKey(subsystemName) Then
-                    Dim elapsed = (timestamp - _lastActivity(subsystemName)).TotalMilliseconds
-                    If elapsed < 5 Then
-                        Return ' Too soon, skip
-                    End If
-                End If
-
                 ' Update last activity time
                 _lastActivity(subsystemName) = timestamp
 
-                ' Record attention event (with state name!)
+                ' Record attention event
                 Dim evt As New AttentionEvent With {
                     .Subsystem = subsystemName,
-                    .StateName = stateName,
                     .Timestamp = timestamp,
                     .DurationSinceLast = If(_activityHistory.Count > 0,
                         timestamp - _activityHistory.Last().Timestamp,
@@ -232,52 +191,6 @@ Namespace Cognitive
                     OrderByDescending(Function(e) e.Timestamp).
                     Take(count).
                     ToList()
-            End SyncLock
-        End Function
-
-        ''' <summary>
-        ''' Gets dwell-time metrics for each subsystem (% of time spent)
-        ''' </summary>
-        Public Function GetDwellTimeMetrics(duration As TimeSpan) As Dictionary(Of String, Double)
-            SyncLock _lock
-                Dim now = DateTime.Now
-                Dim startTime = now.Subtract(duration)
-
-                ' Get events in time window
-                Dim events = _activityHistory.
-                    Where(Function(e) e.Timestamp >= startTime).
-                    OrderBy(Function(e) e.Timestamp).
-                    ToList()
-
-                If events.Count = 0 Then
-                    Return New Dictionary(Of String, Double)()
-                End If
-
-                ' Calculate time spent in each subsystem
-                Dim dwellTime As New Dictionary(Of String, Double)()
-
-                For i = 0 To events.Count - 1
-                    Dim currentEvent = events(i)
-                    Dim nextTime = If(i < events.Count - 1, events(i + 1).Timestamp, now)
-
-                    Dim timeSpent = (nextTime - currentEvent.Timestamp).TotalSeconds
-
-                    If Not dwellTime.ContainsKey(currentEvent.Subsystem) Then
-                        dwellTime(currentEvent.Subsystem) = 0
-                    End If
-
-                    dwellTime(currentEvent.Subsystem) += timeSpent
-                Next
-
-                ' Convert to percentages
-                Dim totalTime = duration.TotalSeconds
-                Dim percentages As New Dictionary(Of String, Double)()
-
-                For Each kvp In dwellTime
-                    percentages(kvp.Key) = (kvp.Value / totalTime) * 100
-                Next
-
-                Return percentages
             End SyncLock
         End Function
 
@@ -401,9 +314,6 @@ Namespace Cognitive
     Public Structure AttentionEvent
         ''' <summary>Subsystem that received attention</summary>
         Public Subsystem As String
-
-        ''' <summary>State name that the subsystem transitioned to</summary>
-        Public StateName As String
 
         ''' <summary>When attention shifted</summary>
         Public Timestamp As DateTime

@@ -22,11 +22,6 @@ Namespace Cognitive
         Private _conflictDetector As ConflictDetector
         Private _narrativeGenerator As NarrativeGenerator
 
-        ' v2.0 Introspective Systems
-        Private _predictionEngine As PredictionEngine
-        Private _anomalyDetector As AnomalyDetector
-        Private _adaptiveThresholds As AdaptiveThresholdManager
-
         ' Auto-export timer (exports every 5 seconds for crash recovery)
         Private WithEvents _autoExportTimer As System.Timers.Timer
         Private _lastExportTime As DateTime = DateTime.MinValue
@@ -38,7 +33,6 @@ Namespace Cognitive
         Private _enableHabitAnalysis As Boolean = True
         Private _enableAttentionTracking As Boolean = True
         Private _enableConflictDetection As Boolean = True
-        Private _enableV2Features As Boolean = True ' v2.0 features
 
         ''' <summary>
         ''' Creates cognitive layer coordinator
@@ -50,9 +44,6 @@ Namespace Cognitive
             End If
 
             _coordinator = coordinator
-
-            ' Generate unique session number (find next available)
-            _currentSessionNumber = FindNextSessionNumber()
 
             ' Initialize cognitive systems
             InitializeCognitiveSystems()
@@ -66,7 +57,7 @@ Namespace Cognitive
             ' Export initial state immediately
             ExportToLog()
 
-            Utils.Logger.Instance.Info($"CognitiveLayer initialized - Session #{_currentSessionNumber:D3}", "CognitiveLayer")
+            Utils.Logger.Instance.Info("CognitiveLayer initialized with v1.x systems + auto-export", "CognitiveLayer")
         End Sub
 
         ''' <summary>
@@ -124,27 +115,6 @@ Namespace Cognitive
         Public ReadOnly Property NarrativeGenerator As NarrativeGenerator
             Get
                 Return _narrativeGenerator
-            End Get
-        End Property
-
-        ''' <summary>Prediction Engine - v2.0 Forecasting</summary>
-        Public ReadOnly Property PredictionEngine As PredictionEngine
-            Get
-                Return _predictionEngine
-            End Get
-        End Property
-
-        ''' <summary>Anomaly Detector - v2.0 Unusual behavior detection</summary>
-        Public ReadOnly Property AnomalyDetector As AnomalyDetector
-            Get
-                Return _anomalyDetector
-            End Get
-        End Property
-
-        ''' <summary>Adaptive Thresholds - v2.0 Self-tuning</summary>
-        Public ReadOnly Property AdaptiveThresholds As AdaptiveThresholdManager
-            Get
-                Return _adaptiveThresholds
             End Get
         End Property
 
@@ -332,12 +302,11 @@ Namespace Cognitive
 
         ''' <summary>
         ''' Exports all cognitive data to logs (auto-updated every 5s)
-        ''' Each session gets a unique numbered file (no overwrite!)
         ''' </summary>
         Public Sub ExportToLog()
-            ' Generate session-based filename (e.g., Cognitive_Session_001.log)
+            ' Write to SINGLE persistent cognitive log file (updated in place)
             Dim logDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs")
-            Dim logFile = System.IO.Path.Combine(logDir, $"Cognitive_Session_{_currentSessionNumber:D3}.log")
+            Dim logFile = System.IO.Path.Combine(logDir, "Cognitive_Current.log")
 
             Try
                 ' Ensure Logs directory exists
@@ -349,18 +318,8 @@ Namespace Cognitive
                 Dim report As New System.Text.StringBuilder()
                 report.AppendLine("?????????????????????????????????????????????????????????")
                 report.AppendLine($"   COGNITIVE LAYER EXPORT - {DateTime.Now:yyyy-MM-dd HH:mm:ss}")
-                report.AppendLine($"   SESSION #{_currentSessionNumber:D3}")
                 report.AppendLine("?????????????????????????????????????????????????????????")
                 report.AppendLine()
-
-                ' SESSION SUMMARY (NarrativeGenerator - NEW!)
-                If _narrativeGenerator IsNot Nothing AndAlso _narrativeGenerator.Enabled Then
-                    report.AppendLine("?????????????????????????????????????????????????????????")
-                    report.AppendLine("   SESSION SUMMARY")
-                    report.AppendLine("?????????????????????????????????????????????????????????")
-                    report.AppendLine(_narrativeGenerator.GenerateSessionSummary())
-                    report.AppendLine()
-                End If
 
                 ' Working Memory
                 If _workingMemory.Enabled Then
@@ -402,55 +361,16 @@ Namespace Cognitive
                 report.AppendLine("   END COGNITIVE EXPORT")
                 report.AppendLine("?????????????????????????????????????????????????????????")
 
-                ' Write to session-specific log file (OVERWRITES same session file each time)
+                ' Write to dedicated cognitive log file (OVERWRITES each time)
                 System.IO.File.WriteAllText(logFile, report.ToString())
 
-                Utils.Logger.Instance.Debug($"Cognitive data auto-exported: Session {_currentSessionNumber:D3}", "CognitiveLayer")
+                Utils.Logger.Instance.Debug($"Cognitive data auto-exported: {System.IO.Path.GetFileName(logFile)}", "CognitiveLayer")
 
             Catch ex As Exception
                 Utils.Logger.Instance.Error($"Failed to export cognitive data: {ex.Message}", ex, "CognitiveLayer")
                 ' Don't throw - let auto-export continue
             End Try
         End Sub
-
-        ''' <summary>
-        ''' Find next available session number by checking existing log files
-        ''' </summary>
-        Private Function FindNextSessionNumber() As Integer
-            Try
-                Dim logDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs")
-                If Not System.IO.Directory.Exists(logDir) Then
-                    Return 1 ' Start with session 1
-                End If
-
-                ' Find all existing Cognitive_Session_*.log files
-                Dim existingFiles = System.IO.Directory.GetFiles(logDir, "Cognitive_Session_*.log")
-                
-                If existingFiles.Length = 0 Then
-                    Return 1 ' No sessions yet
-                End If
-
-                ' Extract session numbers and find max
-                Dim maxSession = 0
-                For Each file In existingFiles
-                    Dim filename = System.IO.Path.GetFileNameWithoutExtension(file)
-                    ' Extract number from "Cognitive_Session_001" format
-                    Dim parts = filename.Split("_"c)
-                    If parts.Length >= 3 Then
-                        Dim sessionNum As Integer
-                        If Integer.TryParse(parts(2), sessionNum) Then
-                            maxSession = Math.Max(maxSession, sessionNum)
-                        End If
-                    End If
-                Next
-
-                Return maxSession + 1 ' Next session
-
-            Catch ex As Exception
-                Utils.Logger.Instance.Warning($"Failed to determine session number: {ex.Message}", "CognitiveLayer")
-                Return 1 ' Fallback to session 1
-            End Try
-        End Function
 
 #End Region
 
@@ -480,21 +400,7 @@ Namespace Cognitive
             _narrativeGenerator = New NarrativeGenerator(_coordinator, _workingMemory, _habitAnalyzer, _attentionSpotlight, _conflictDetector)
             _narrativeGenerator.Enabled = True
 
-            ' v2.0 Systems (depends on v1.x)
-            If _enableV2Features Then
-                _predictionEngine = New PredictionEngine(_coordinator, _habitAnalyzer)
-                _predictionEngine.Enabled = True
-
-                _anomalyDetector = New AnomalyDetector(_coordinator, _habitAnalyzer, _workingMemory)
-                _anomalyDetector.Enabled = True
-
-                _adaptiveThresholds = New AdaptiveThresholdManager(_coordinator, _habitAnalyzer)
-                _adaptiveThresholds.Enabled = True
-
-                Utils.Logger.Instance.Info("? v2.0 Introspective Engine ENABLED!", "CognitiveLayer")
-            End If
-
-            Utils.Logger.Instance.Info("Cognitive systems initialized: v1.x + v2.0 features", "CognitiveLayer")
+            Utils.Logger.Instance.Info("Cognitive systems initialized: WorkingMemory, HabitAnalyzer, AttentionSpotlight, ConflictDetector, NarrativeGenerator", "CognitiveLayer")
         End Sub
 
         ''' <summary>
@@ -526,14 +432,7 @@ Namespace Cognitive
             ' Initialize narrative generator (subscribes internally)
             _narrativeGenerator.Initialize(_coordinator)
 
-            ' v2.0 Initialization
-            If _enableV2Features Then
-                _predictionEngine.Initialize(_coordinator)
-                _anomalyDetector.Initialize(_coordinator)
-                _adaptiveThresholds.Initialize(_coordinator)
-            End If
-
-            Utils.Logger.Instance.Info("Event subscriptions established for all cognitive systems", "CognitiveLayer")
+            Utils.Logger.Instance.Info("Event subscriptions established for all state machines", "CognitiveLayer")
         End Sub
 
         ''' <summary>

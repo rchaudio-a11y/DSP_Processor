@@ -1,0 +1,397 @@
+﻿Imports System.Collections.Concurrent
+
+Namespace Cognitive
+
+    ''' <summary>
+    ''' Conflict Detector - Monitors system consistency
+    ''' Detects when state machines disagree or behave unexpectedly
+    ''' Part of v1.x Cognitive Layer - Foundation for v2.0 Consistency Engine
+    ''' </summary>
+    Public Class ConflictDetector
+        Implements ICognitiveSystem
+        Implements IDisposable
+
+        Private ReadOnly _coordinator As StateCoordinator
+        Private ReadOnly _lock As New Object()
+        Private _disposed As Boolean = False
+        Private _enabled As Boolean = True
+
+        ' Conflict tracking
+        Private ReadOnly _conflicts As New ConcurrentQueue(Of ConflictEvent)()
+        Private ReadOnly _maxConflicts As Integer = 100
+        Private _totalConflictsDetected As Integer = 0
+
+        ' Health monitoring
+        Private _lastHealthCheck As DateTime = DateTime.Now
+        Private _healthCheckInterval As TimeSpan = TimeSpan.FromSeconds(5)
+
+        Public Sub New(coordinator As StateCoordinator)
+            If coordinator Is Nothing Then
+                Throw New ArgumentNullException(NameOf(coordinator))
+            End If
+
+            _coordinator = coordinator
+        End Sub
+
+#Region "ICognitiveSystem Implementation"
+
+        Public ReadOnly Property Name As String Implements ICognitiveSystem.Name
+            Get
+                Return "ConflictDetector"
+            End Get
+        End Property
+
+        Public Property Enabled As Boolean Implements ICognitiveSystem.Enabled
+            Get
+                SyncLock _lock
+                    Return _enabled
+                End SyncLock
+            End Get
+            Set(value As Boolean)
+                SyncLock _lock
+                    _enabled = value
+                End SyncLock
+            End Set
+        End Property
+
+        Public Sub Initialize(coordinator As StateCoordinator) Implements ICognitiveSystem.Initialize
+            ' Subscribe to all state machine events
+            AddHandler coordinator.GlobalStateMachine.StateChanged, AddressOf OnGlobalStateChanged
+            AddHandler coordinator.RecordingManagerSSM.StateChanged, AddressOf OnRecordingStateChanged
+            AddHandler coordinator.PlaybackSSM.StateChanged, AddressOf OnPlaybackStateChanged
+            AddHandler coordinator.UIStateMachine.StateChanged, AddressOf OnUIStateChanged
+
+            If coordinator.DSPThreadSSM IsNot Nothing Then
+                AddHandler coordinator.DSPThreadSSM.StateChanged, AddressOf OnDSPStateChanged
+            End If
+
+            Utils.Logger.Instance.Info("ConflictDetector initialized - monitoring all state machines", "ConflictDetector")
+        End Sub
+
+        Public Sub Reset() Implements ICognitiveSystem.Reset
+            SyncLock _lock
+                _conflicts.Clear()
+                _totalConflictsDetected = 0
+                _lastHealthCheck = DateTime.Now
+            End SyncLock
+
+            Utils.Logger.Instance.Info("ConflictDetector reset", "ConflictDetector")
+        End Sub
+
+        Public Function GetStatistics() As Object Implements ICognitiveSystem.GetStatistics
+            SyncLock _lock
+                Return New ConflictStatistics With {
+                    .TotalConflicts = _totalConflictsDetected,
+                    .ActiveConflicts = _conflicts.Count,
+                    .HealthScore = CalculateHealthScore(),
+                    .LastHealthCheck = _lastHealthCheck
+                }
+            End SyncLock
+        End Function
+
+        Public Sub OnStateChanged(transitionID As String, oldState As Object, newState As Object) Implements ICognitiveSystem.OnStateChanged
+            ' Perform consistency check on state change
+            If Not _enabled Then Return
+            CheckConsistency()
+        End Sub
+
+#End Region
+
+#Region "Public Methods"
+
+        ''' <summary>
+        ''' Checks consistency between all state machines
+        ''' </summary>
+        Public Function CheckConsistency() As ConsistencyCheckResult
+            If Not _enabled Then Return New ConsistencyCheckResult With {.Passed = True}
+
+            SyncLock _lock
+                Dim result As New ConsistencyCheckResult With {
+                    .Timestamp = DateTime.Now,
+                    .Passed = True,
+                    .Issues = New List(Of String)
+                }
+
+                ' Check GSM vs SSM alignment
+                CheckGlobalStateAlignment(result)
+
+                ' Check timing consistency
+                CheckTimingConsistency(result)
+
+                ' Update health check time
+                _lastHealthCheck = DateTime.Now
+
+                Return result
+            End SyncLock
+        End Function
+
+        ''' <summary>
+        ''' Gets health score (0.0 = broken, 1.0 = perfect)
+        ''' </summary>
+        Public Function GetHealthScore() As Double
+            Return CalculateHealthScore()
+        End Function
+
+        ''' <summary>
+        ''' Gets recent conflicts
+        ''' </summary>
+        Public Function GetRecentConflicts(count As Integer) As List(Of ConflictEvent)
+            Dim result As New List(Of ConflictEvent)
+            Dim temp As New List(Of ConflictEvent)
+
+            ' Copy from queue
+            For Each conflict In _conflicts
+                temp.Add(conflict)
+            Next
+
+            ' Take last N
+            Return temp.Skip(Math.Max(0, temp.Count - count)).ToList()
+        End Function
+
+        ''' <summary>
+        ''' Generates conflict report
+        ''' </summary>
+        Public Function GenerateConflictReport() As String
+            Dim report As New System.Text.StringBuilder()
+            report.AppendLine("Conflict Detector Report")
+            report.AppendLine("═══════════════════════════════════════════════════════")
+            report.AppendLine()
+
+            Dim stats = CType(GetStatistics(), ConflictStatistics)
+            report.AppendLine($"Health Score: {stats.HealthScore:P0} ({GetHealthRating(stats.HealthScore)})")
+            report.AppendLine($"Total Conflicts: {stats.TotalConflicts}")
+            report.AppendLine($"Active Conflicts: {stats.ActiveConflicts}")
+            report.AppendLine($"Last Check: {stats.LastHealthCheck:HH:mm:ss}")
+            report.AppendLine()
+
+            ' Recent conflicts
+            Dim conflicts = GetRecentConflicts(10)
+            If conflicts.Count > 0 Then
+                report.AppendLine("Recent Conflicts (last 10):")
+                report.AppendLine("───────────────────────────────────────────────────────")
+                For Each conflict In conflicts
+                    report.AppendLine($"[{conflict.Timestamp:HH:mm:ss}] {conflict.Severity}")
+                    report.AppendLine($"  {conflict.Description}")
+                    If conflict.Duration.HasValue Then
+                        report.AppendLine($"  Duration: {conflict.Duration.Value.TotalMilliseconds:F0}ms")
+                    End If
+                    report.AppendLine()
+                Next
+            Else
+                report.AppendLine("✅ No conflicts detected - system is healthy!")
+            End If
+
+            Return report.ToString()
+        End Function
+
+#End Region
+
+#Region "Private Methods - Consistency Checks"
+
+        Private Sub CheckGlobalStateAlignment(result As ConsistencyCheckResult)
+            Dim globalState = _coordinator.GlobalState
+
+            Select Case globalState
+                Case GlobalState.Idle
+                    ' All SSMs should be in Idle state
+                    Dim recState = _coordinator.RecordingManagerSSM.CurrentState
+                    If recState.ToString() <> "Idle" Then
+                        result.Passed = False
+                        result.Issues.Add($"RecordingManagerSSM is {recState} but GSM is Idle")
+                        LogConflict(ConflictSeverity.High, $"RecordingManager not idle when GSM is idle")
+                    End If
+
+                Case GlobalState.Recording
+                    ' RecordingManagerSSM should be in Recording state
+                    Dim recState = _coordinator.RecordingManagerSSM.CurrentState
+                    If recState.ToString() <> "Recording" Then
+                        result.Passed = False
+                        result.Issues.Add($"RecordingManagerSSM is {recState} but GSM is Recording")
+                        LogConflict(ConflictSeverity.High, $"RecordingManager not recording when GSM says recording")
+                    End If
+
+                Case GlobalState.Playing
+                    ' PlaybackSSM should be in Playing state
+                    Dim playState = _coordinator.PlaybackSSM.CurrentState
+                    If playState.ToString() <> "Playing" Then
+                        result.Passed = False
+                        result.Issues.Add($"PlaybackSSM is {playState} but GSM is Playing")
+                        LogConflict(ConflictSeverity.Medium, $"PlaybackSSM not playing when GSM says playing")
+                    End If
+            End Select
+        End Sub
+
+        Private Sub CheckTimingConsistency(result As ConsistencyCheckResult)
+            ' Check if health check interval has passed
+            Dim elapsed = DateTime.Now - _lastHealthCheck
+            If elapsed > _healthCheckInterval.Add(TimeSpan.FromSeconds(2)) Then
+                result.Issues.Add($"Health check interval exceeded by {(elapsed - _healthCheckInterval).TotalSeconds:F1}s")
+            End If
+        End Sub
+
+        Private Function CalculateHealthScore() As Double
+            SyncLock _lock
+                ' Calculate health score based on recent conflicts
+                Dim recentConflicts = GetRecentConflicts(20)
+
+                If recentConflicts.Count = 0 Then
+                    Return 1.0 ' Perfect health
+                End If
+
+                ' Reduce score based on conflict severity
+                Dim score As Double = 1.0
+                For Each conflict In recentConflicts
+                    Select Case conflict.Severity
+                        Case ConflictSeverity.Critical
+                            score -= 0.2
+                        Case ConflictSeverity.High
+                            score -= 0.1
+                        Case ConflictSeverity.Medium
+                            score -= 0.05
+                        Case ConflictSeverity.Low
+                            score -= 0.01
+                    End Select
+                Next
+
+                Return Math.Max(0.0, Math.Min(1.0, score))
+            End SyncLock
+        End Function
+
+        Private Function GetHealthRating(score As Double) As String
+            If score >= 0.95 Then Return "Excellent"
+            If score >= 0.85 Then Return "Good"
+            If score >= 0.7 Then Return "Fair"
+            If score >= 0.5 Then Return "Poor"
+            Return "Critical"
+        End Function
+
+        Private Sub LogConflict(severity As ConflictSeverity, description As String, Optional duration As TimeSpan? = Nothing)
+            Dim conflict As New ConflictEvent With {
+                .Timestamp = DateTime.Now,
+                .Severity = severity,
+                .Description = description,
+                .Duration = duration
+            }
+
+            _conflicts.Enqueue(conflict)
+            _totalConflictsDetected += 1
+
+            ' Trim old conflicts
+            While _conflicts.Count > _maxConflicts
+                Dim dummy As ConflictEvent = Nothing
+                _conflicts.TryDequeue(dummy)
+            End While
+
+            ' Log to main logger
+            Dim severityText = If(severity = ConflictSeverity.Critical OrElse severity = ConflictSeverity.High, "WARNING", "INFO")
+            Utils.Logger.Instance.Warning($"⚠️ CONFLICT: {severity} - {description}", "ConflictDetector")
+        End Sub
+
+#End Region
+
+#Region "Event Handlers"
+
+        Private Sub OnGlobalStateChanged(sender As Object, e As StateChangedEventArgs(Of GlobalState))
+            If Not _enabled Then Return
+
+            ' Perform consistency check on every global state change
+            Dim result = CheckConsistency()
+            If Not result.Passed Then
+                For Each issue In result.Issues
+                    Utils.Logger.Instance.Warning($"Consistency issue detected: {issue}", "ConflictDetector")
+                Next
+            End If
+        End Sub
+
+        Private Sub OnRecordingStateChanged(sender As Object, e As Object)
+            ' SSM state changed - check alignment with GSM
+            If Not _enabled Then Return
+            CheckConsistency()
+        End Sub
+
+        Private Sub OnPlaybackStateChanged(sender As Object, e As Object)
+            If Not _enabled Then Return
+            CheckConsistency()
+        End Sub
+
+        Private Sub OnUIStateChanged(sender As Object, e As Object)
+            If Not _enabled Then Return
+            CheckConsistency()
+        End Sub
+
+        Private Sub OnDSPStateChanged(sender As Object, e As Object)
+            If Not _enabled Then Return
+            CheckConsistency()
+        End Sub
+
+#End Region
+
+#Region "IDisposable Implementation"
+
+        Public Sub Dispose() Implements IDisposable.Dispose
+            Dispose(True)
+            GC.SuppressFinalize(Me)
+        End Sub
+
+        Protected Overridable Sub Dispose(disposing As Boolean)
+            If Not _disposed Then
+                If disposing Then
+                    ' Unsubscribe from events
+                    If _coordinator IsNot Nothing Then
+                        RemoveHandler _coordinator.GlobalStateMachine.StateChanged, AddressOf OnGlobalStateChanged
+                        RemoveHandler _coordinator.RecordingManagerSSM.StateChanged, AddressOf OnRecordingStateChanged
+                        RemoveHandler _coordinator.PlaybackSSM.StateChanged, AddressOf OnPlaybackStateChanged
+                        RemoveHandler _coordinator.UIStateMachine.StateChanged, AddressOf OnUIStateChanged
+
+                        If _coordinator.DSPThreadSSM IsNot Nothing Then
+                            RemoveHandler _coordinator.DSPThreadSSM.StateChanged, AddressOf OnDSPStateChanged
+                        End If
+                    End If
+
+                    Utils.Logger.Instance.Info("ConflictDetector disposed", "ConflictDetector")
+                End If
+
+                _disposed = True
+            End If
+        End Sub
+
+#End Region
+
+    End Class
+
+#Region "Data Structures"
+
+    ''' <summary>Conflict severity levels</summary>
+    Public Enum ConflictSeverity
+        Low = 0
+        Medium = 1
+        High = 2
+        Critical = 3
+    End Enum
+
+    ''' <summary>Conflict event</summary>
+    Public Structure ConflictEvent
+        Public Timestamp As DateTime
+        Public Severity As ConflictSeverity
+        Public Description As String
+        Public Duration As TimeSpan?
+    End Structure
+
+    ''' <summary>Conflict statistics</summary>
+    Public Structure ConflictStatistics
+        Public TotalConflicts As Integer
+        Public ActiveConflicts As Integer
+        Public HealthScore As Double
+        Public LastHealthCheck As DateTime
+    End Structure
+
+    ''' <summary>Consistency check result</summary>
+    Public Class ConsistencyCheckResult
+        Public Timestamp As DateTime
+        Public Passed As Boolean
+        Public Issues As List(Of String)
+    End Class
+
+#End Region
+
+End Namespace

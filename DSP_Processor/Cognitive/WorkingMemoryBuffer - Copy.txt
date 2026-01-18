@@ -87,122 +87,78 @@ Namespace Cognitive
 #Region "Working Memory API"
 
         ''' <summary>
-        ''' Gets current number of transitions in working memory (bounded by maxSize)
+        ''' Gets current number of transitions in working memory
         ''' </summary>
         Public ReadOnly Property Count As Integer
             Get
                 If Not Enabled Then Return 0
-                Dim history = GetBoundedHistory()
-                Return history.Count
+                Return _coordinator.GlobalStateMachine.GetTransitionHistory().Count
             End Get
         End Property
 
         ''' <summary>
-        ''' Gets bounded snapshot of transition history (enforces maxSize limit)
-        ''' </summary>
-        Private Function GetBoundedHistory() As List(Of StateChangedEventArgs(Of GlobalState))
-            Dim history = _coordinator.GlobalStateMachine.GetTransitionHistory()
-            
-            ' Enforce maxSize limit (keep most recent transitions)
-            If history.Count > _maxSize Then
-                Return history.OrderByDescending(Function(t) t.Timestamp).
-                              Take(_maxSize).
-                              OrderBy(Function(t) t.Timestamp).
-                              ToList()
-            End If
-            
-            Return history.ToList() ' Return copy for thread safety
-        End Function
-
-        ''' <summary>
-        ''' Gets recent transitions (most recent first) - bounded by maxSize
+        ''' Gets recent transitions (most recent first)
         ''' </summary>
         ''' <param name="count">Number of transitions to retrieve</param>
         Public Function GetRecentTransitions(Optional count As Integer = 10) As List(Of StateChangedEventArgs(Of GlobalState))
             If Not Enabled Then Return New List(Of StateChangedEventArgs(Of GlobalState))()
 
-            Dim history = GetBoundedHistory()
+            Dim history = _coordinator.GlobalStateMachine.GetTransitionHistory()
             Return history.OrderByDescending(Function(t) t.Timestamp).
                           Take(count).
                           ToList()
         End Function
 
         ''' <summary>
-        ''' Gets transitions within a time window (bounded by maxSize)
+        ''' Gets transitions within a time window
         ''' </summary>
         Public Function GetWindowedView(startTime As DateTime, endTime As DateTime) As List(Of StateChangedEventArgs(Of GlobalState))
             If Not Enabled Then Return New List(Of StateChangedEventArgs(Of GlobalState))()
 
-            Dim history = GetBoundedHistory()
+            Dim history = _coordinator.GlobalStateMachine.GetTransitionHistory()
             Return history.Where(Function(t) t.Timestamp >= startTime AndAlso t.Timestamp <= endTime).
                           OrderBy(Function(t) t.Timestamp).
                           ToList()
         End Function
 
         ''' <summary>
-        ''' Gets transitions matching a specific state UID (bounded by maxSize)
+        ''' Gets transitions matching a specific state UID
         ''' Example: Find all transitions from/to GSM_IDLE
         ''' </summary>
         Public Function GetTransitionsByState(stateUID As String) As List(Of StateChangedEventArgs(Of GlobalState))
             If Not Enabled Then Return New List(Of StateChangedEventArgs(Of GlobalState))()
 
-            Dim history = GetBoundedHistory()
+            Dim history = _coordinator.GlobalStateMachine.GetTransitionHistory()
             Return history.Where(Function(t) t.OldStateUID = stateUID OrElse t.NewStateUID = stateUID).
                           OrderBy(Function(t) t.Timestamp).
                           ToList()
         End Function
 
         ''' <summary>
-        ''' Gets transitions matching a specific TransitionID pattern (bounded by maxSize)
+        ''' Gets transitions matching a specific TransitionID pattern
         ''' Example: Find all "T01" transitions (first transition in each session)
         ''' </summary>
         Public Function GetTransitionsByID(transitionIDPattern As String) As List(Of StateChangedEventArgs(Of GlobalState))
             If Not Enabled Then Return New List(Of StateChangedEventArgs(Of GlobalState))()
 
-            Dim history = GetBoundedHistory()
+            Dim history = _coordinator.GlobalStateMachine.GetTransitionHistory()
             Return history.Where(Function(t) t.TransitionID.Contains(transitionIDPattern)).
                           OrderBy(Function(t) t.Timestamp).
                           ToList()
         End Function
 
         ''' <summary>
-        ''' Gets all transitions (most recent first) - bounded by maxSize
+        ''' Gets all transitions (most recent first)
         ''' </summary>
         Public Function GetAllTransitions() As List(Of StateChangedEventArgs(Of GlobalState))
             If Not Enabled Then Return New List(Of StateChangedEventArgs(Of GlobalState))()
 
-            Dim history = GetBoundedHistory()
+            Dim history = _coordinator.GlobalStateMachine.GetTransitionHistory()
             Return history.OrderByDescending(Function(t) t.Timestamp).ToList()
         End Function
 
         ''' <summary>
-        ''' Gets semantic summary of transitions (human-readable strings)
-        ''' Example: "GlobalStateMachine: Idle ? Playing (User started playback)"
-        ''' </summary>
-        Public Function GetSemanticSummary(Optional count As Integer = 10) As List(Of String)
-            If Not Enabled Then Return New List(Of String)()
-
-            Dim recent = GetRecentTransitions(count)
-            Dim semanticList As New List(Of String)()
-
-            For Each t In recent
-                Dim semantic = FormatSemanticTransition(t)
-                semanticList.Add(semantic)
-            Next
-
-            Return semanticList
-        End Function
-
-        ''' <summary>
-        ''' Formats a transition as a semantic string
-        ''' </summary>
-        Private Function FormatSemanticTransition(t As StateChangedEventArgs(Of GlobalState)) As String
-            ' Format: "OldState ? NewState (Reason)"
-            Return $"{t.OldState} ? {t.NewState} ({t.Reason})"
-        End Function
-
-        ''' <summary>
-        ''' Generates human-readable summary of recent activity (with semantic formatting)
+        ''' Generates human-readable summary of recent activity
         ''' </summary>
         Public Function GenerateSummary(Optional count As Integer = 10) As String
             If Not Enabled Then Return "Working Memory Buffer disabled"
@@ -218,83 +174,10 @@ Namespace Cognitive
 
             For i = 0 To recent.Count - 1
                 Dim t = recent(i)
-                summary.AppendLine($"{i + 1}. [{t.Timestamp:HH:mm:ss.fff}] [GSM] {t.TransitionID}: {FormatSemanticTransition(t)}")
+                summary.AppendLine($"{i + 1}. {t}")
             Next
 
             Return summary.ToString()
-        End Function
-
-        ''' <summary>
-        ''' Detects episodic boundaries in transition history
-        ''' Episodes are separated by returns to Idle state
-        ''' </summary>
-        Public Function GetEpisodes() As List(Of CognitiveEpisode)
-            If Not Enabled Then Return New List(Of CognitiveEpisode)()
-
-            Dim history = GetBoundedHistory().OrderBy(Function(t) t.Timestamp).ToList()
-            Dim episodes As New List(Of CognitiveEpisode)()
-            Dim currentEpisodeTransitions As New List(Of StateChangedEventArgs(Of GlobalState))()
-
-            For Each transition In history
-                currentEpisodeTransitions.Add(transition)
-
-                ' Episode boundary: transition TO Idle state
-                If transition.NewState = GlobalState.Idle AndAlso currentEpisodeTransitions.Count > 1 Then
-                    ' Create episode
-                    Dim episode As New CognitiveEpisode With {
-                        .StartTime = currentEpisodeTransitions.First().Timestamp,
-                        .EndTime = transition.Timestamp,
-                        .Transitions = New List(Of StateChangedEventArgs(Of GlobalState))(currentEpisodeTransitions),
-                        .EpisodeType = ClassifyEpisode(currentEpisodeTransitions)
-                    }
-
-                    episodes.Add(episode)
-
-                    ' Start new episode with this transition
-                    currentEpisodeTransitions.Clear()
-                    currentEpisodeTransitions.Add(transition)
-                End If
-            Next
-
-            ' Add final incomplete episode if exists
-            If currentEpisodeTransitions.Count > 1 Then
-                episodes.Add(New CognitiveEpisode With {
-                    .StartTime = currentEpisodeTransitions.First().Timestamp,
-                    .EndTime = currentEpisodeTransitions.Last().Timestamp,
-                    .Transitions = currentEpisodeTransitions,
-                    .EpisodeType = ClassifyEpisode(currentEpisodeTransitions)
-                })
-            End If
-
-            Return episodes
-        End Function
-
-        ''' <summary>
-        ''' Classifies an episode based on its transitions
-        ''' </summary>
-        Private Function ClassifyEpisode(transitions As List(Of StateChangedEventArgs(Of GlobalState))) As String
-            ' Check for recording episode
-            If transitions.Any(Function(t) t.NewState = GlobalState.Recording) Then
-                Return "Recording Session"
-            End If
-
-            ' Check for playback episode
-            If transitions.Any(Function(t) t.NewState = GlobalState.Playing) Then
-                Return "Playback Session"
-            End If
-
-            ' Check for error episode
-            If transitions.Any(Function(t) t.NewState = GlobalState.Error) Then
-                Return "Error Recovery"
-            End If
-
-            ' Check for aborted arming
-            If transitions.Any(Function(t) t.NewState = GlobalState.Arming) AndAlso
-               Not transitions.Any(Function(t) t.NewState = GlobalState.Recording) Then
-                Return "Aborted Setup"
-            End If
-
-            Return "Unknown Episode"
         End Function
 
         ''' <summary>
@@ -334,46 +217,5 @@ Namespace Cognitive
 #End Region
 
     End Class
-
-#Region "Data Structures"
-
-    ''' <summary>
-    ''' Represents a cognitive episode (bounded sequence of related transitions)
-    ''' Episodes are separated by returns to Idle state
-    ''' </summary>
-    Public Class CognitiveEpisode
-        ''' <summary>When episode started</summary>
-        Public Property StartTime As DateTime
-
-        ''' <summary>When episode ended</summary>
-        Public Property EndTime As DateTime
-
-        ''' <summary>Transitions in this episode</summary>
-        Public Property Transitions As List(Of StateChangedEventArgs(Of GlobalState))
-
-        ''' <summary>Type of episode (e.g., "Recording Session", "Playback Session")</summary>
-        Public Property EpisodeType As String
-
-        ''' <summary>Duration of episode</summary>
-        Public ReadOnly Property Duration As TimeSpan
-            Get
-                Return EndTime - StartTime
-            End Get
-        End Property
-
-        ''' <summary>Number of transitions in episode</summary>
-        Public ReadOnly Property TransitionCount As Integer
-            Get
-                Return If(Transitions IsNot Nothing, Transitions.Count, 0)
-            End Get
-        End Property
-
-        ''' <summary>Human-readable summary</summary>
-        Public Overrides Function ToString() As String
-            Return $"{EpisodeType} ({Duration.TotalSeconds:F1}s, {TransitionCount} transitions)"
-        End Function
-    End Class
-
-#End Region
 
 End Namespace

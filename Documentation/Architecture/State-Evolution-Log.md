@@ -429,9 +429,55 @@ Idle ? Playing ? Stopping ? Idle
 
 ---
 
+## ?? **FUTURE SSMs (Post v1.3.2.1)**
+
+### **Architectural Discovery (2026-01-19)**
+
+**Discovered During:** RDF Phase 4 (Recursive Debugging)  
+**Analysis:** SYSTEM ARCHITECTURE REPORT.md  
+**Status:** Documented for v1.4.0+ implementation
+
+**Discovery Context:**
+After completing Step 24 (State Registry Pattern) and reviewing the UI, discovered that 4 critical **modeful subsystems** are currently managed as scattered UI state and parameter flags instead of proper state machines.
+
+---
+
+### **Missing Modeful Subsystems:**
+
+#### **1. AudioDevice SSM - Driver Backend Control**
+- **Problem:** WASAPI/ASIO/DirectSound selection managed as UI state
+- **States:** IDLE, WASAPI, ASIO, DIRECTSOUND, ERROR
+- **Target:** v1.4.0
+
+#### **2. AudioInput SSM - Physical Device Selection**
+- **Problem:** Device selection managed as UI state
+- **States:** UNINITIALIZED, DEVICE_SELECTED, DEVICE_UNAVAILABLE, ERROR
+- **Target:** v1.4.0
+
+#### **3. DSP Mode SSM - DSP Enable/Disable Mode**
+- **Problem:** DSP enable/disable managed as checkbox state
+- **States:** DISABLED, ENABLED, ERROR
+- **Target:** v1.4.0
+
+#### **4. AudioRouting SSM - Routing Topology Control**
+- **Problem:** Routing topology scattered across UI
+- **States:** MIC_TO_OUTPUT, FILE_TO_OUTPUT, MIC_TO_DSP_TO_OUTPUT, etc.
+- **Target:** v1.5.0 (complex)
+
+**Full Specification:** See `SYSTEM ARCHITECTURE REPORT.md` and `SSM-Expansion-Roadmap.md`
+
+**Why This Matters:**
+- ALL modeful subsystems should be state machines
+- Validation, logging, cognitive awareness
+- Complete architectural coverage
+
+**This discovery is EXACTLY what RDF Phase 4 is for!**
+
+---
+
 **Created:** 2026-01-17  
-**Last Updated:** 2026-01-17  
+**Last Updated:** 2026-01-19  
 **Author:** Rick + GitHub Copilot  
 **Status:** Living document - update when states change
 
-**This is meta-cognition for your codebase!** ???
+**This is meta-cognition for your codebase!**

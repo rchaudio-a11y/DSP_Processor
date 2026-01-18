@@ -1,4 +1,4 @@
-﻿Imports System.Collections.Generic
+Imports System.Collections.Generic
 Imports System.Linq
 Imports System.Text
 
@@ -20,7 +20,6 @@ Namespace Cognitive
         ' Pattern tracking
         Private _sequenceTracker As New Dictionary(Of String, HabitPattern)()
         Private _recentTransitions As New Queue(Of String)()
-        Private _transitionTimestamps As New Queue(Of DateTime)() ' Track timing!
         Private ReadOnly _sequenceLength As Integer
         Private ReadOnly _habitThreshold As Integer
 
@@ -89,7 +88,6 @@ Namespace Cognitive
             SyncLock _lock
                 _sequenceTracker.Clear()
                 _recentTransitions.Clear()
-                _transitionTimestamps.Clear()
             End SyncLock
         End Sub
 
@@ -110,50 +108,21 @@ Namespace Cognitive
         Public Sub RecordTransition(transitionID As String)
             If Not Enabled Then Return
 
-            ' Get state transition from coordinator (e.g., "Idle → Playing")
-            Dim transition = _coordinator.GlobalStateMachine.GetTransitionHistory().LastOrDefault()
-            If transition.TransitionID <> transitionID Then
-                ' Transition not found in history yet, skip
-                Return
-            End If
-
-            ' Store INDIVIDUAL states in the queue (not transition strings!)
-            ' This prevents duplicate states when joining
-            Dim oldStateName = transition.OldState.ToString()
-            Dim newStateName = transition.NewState.ToString()
-
-            Utils.Logger.Instance.Debug($"🧠 HabitAnalyzer: Recording state transition '{oldStateName} → {newStateName}' (ID: {transitionID})", "HabitAnalyzer")
+            Utils.Logger.Instance.Debug($"?? HabitAnalyzer: Recording transition '{transitionID}'", "HabitAnalyzer")
 
             SyncLock _lock
-                Dim now = DateTime.Now
-                
-                ' Add both old and new states to the queue
-                ' But avoid duplicates (if previous newState == current oldState, skip oldState)
-                If _recentTransitions.Count = 0 OrElse _recentTransitions.Last() <> oldStateName Then
-                    _recentTransitions.Enqueue(oldStateName)
-                    _transitionTimestamps.Enqueue(now)
-                End If
-                
-                _recentTransitions.Enqueue(newStateName)
-                _transitionTimestamps.Enqueue(now)
+                ' Add to recent transitions queue
+                _recentTransitions.Enqueue(transitionID)
 
-                ' Keep only last N states
+                ' Keep only last N transitions
                 While _recentTransitions.Count > _sequenceLength
                     _recentTransitions.Dequeue()
-                    _transitionTimestamps.Dequeue()
                 End While
 
-                ' If we have enough states, record the sequence
+                ' If we have enough transitions, record the sequence
                 If _recentTransitions.Count = _sequenceLength Then
-                    Dim sequence = String.Join(" → ", _recentTransitions)
-                    
-                    ' Calculate sequence duration (first to last state)
-                    Dim duration = _transitionTimestamps.Last() - _transitionTimestamps.First()
-                    
-                    RecordSequence(sequence, duration)
-
-                    ' DEBUG: Log pattern detection
-                    Utils.Logger.Instance.Debug($"🧠 Pattern recorded: '{sequence}' (duration: {duration.TotalSeconds:F1}s, total patterns: {_sequenceTracker.Count})", "HabitAnalyzer")
+                    Dim sequence = String.Join(" ? ", _recentTransitions)
+                    RecordSequence(sequence)
                 End If
             End SyncLock
         End Sub
@@ -267,26 +236,13 @@ Namespace Cognitive
         ''' <summary>
         ''' Record a sequence pattern
         ''' </summary>
-        Private Sub RecordSequence(sequence As String, duration As TimeSpan)
+        Private Sub RecordSequence(sequence As String)
             If _sequenceTracker.ContainsKey(sequence) Then
                 ' Update existing pattern
                 Dim pattern = _sequenceTracker(sequence)
                 pattern.Frequency += 1
                 pattern.LastOccurrence = DateTime.Now
-                
-                ' Update average duration (rolling average)
-                Dim totalDuration = pattern.AverageDuration.TotalSeconds * (pattern.Frequency - 1) + duration.TotalSeconds
-                pattern.AverageDuration = TimeSpan.FromSeconds(totalDuration / pattern.Frequency)
-                
                 _sequenceTracker(sequence) = pattern
-
-                ' DEBUG: Log frequency increase
-                Utils.Logger.Instance.Debug($"🧠 Pattern '{sequence}' frequency: {pattern.Frequency} (avg duration: {pattern.AverageDuration.TotalSeconds:F1}s, threshold: {_habitThreshold})", "HabitAnalyzer")
-
-                ' Alert when pattern becomes a habit
-                If pattern.Frequency = _habitThreshold Then
-                    Utils.Logger.Instance.Info($"🎯 NEW HABIT DETECTED: '{pattern.Label}' ({pattern.Frequency}x, avg {pattern.AverageDuration.TotalSeconds:F1}s)", "HabitAnalyzer")
-                End If
             Else
                 ' New pattern
                 Dim label = LabelSequence(sequence)
@@ -295,10 +251,8 @@ Namespace Cognitive
                     .Frequency = 1,
                     .LastOccurrence = DateTime.Now,
                     .Label = label,
-                    .AverageDuration = duration
+                    .AverageDuration = TimeSpan.Zero
                 }
-
-                Utils.Logger.Instance.Debug($"🧠 NEW pattern detected: '{label}' → '{sequence}' (duration: {duration.TotalSeconds:F1}s)", "HabitAnalyzer")
             End If
         End Sub
 
@@ -330,19 +284,11 @@ Namespace Cognitive
         ''' </summary>
         Private Function InitializeKnownPatterns() As Dictionary(Of String, String)
             Return New Dictionary(Of String, String) From {
-                {"Idle → Arming → Armed → Recording → Stopping → Idle", "Full Record Cycle"},
-                {"Idle → Playing → Idle", "Quick Playback"},
-                {"Idle → Playing → Stopping", "Playback with Stop"},
-                {"Error → Idle → Playing", "Error Recovery to Play"},
-                {"Arming → Armed → Idle", "Aborted Recording"},
-                {"Idle → Playing", "Playback Start"},
-                {"Playing → Idle", "Playback End"},
-                {"Idle → Arming", "Recording Setup"},
-                {"Arming → Armed", "Mic Armed"},
-                {"Armed → Recording", "Recording Start"},
-                {"Recording → Stopping", "Recording Stop"},
-                {"Stopping → Idle", "Finalize Recording"},
-                {"Error → Idle", "Error Recovery"}
+                {"GSM_IDLE.*GSM_ARMING.*GSM_ARMED.*GSM_RECORDING.*GSM_STOPPING.*GSM_IDLE", "Full Record Cycle"},
+                {"GSM_IDLE.*GSM_PLAYING.*GSM_IDLE", "Quick Playback"},
+                {"GSM_IDLE.*GSM_PLAYING.*GSM_STOPPING.*GSM_IDLE", "Playback with Stop"},
+                {"GSM_ERROR.*GSM_IDLE", "Error Recovery"},
+                {"GSM_ARMING.*GSM_ARMED.*GSM_IDLE", "Aborted Recording"}
             }
         End Function
 
