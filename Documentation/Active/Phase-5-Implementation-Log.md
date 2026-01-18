@@ -33,25 +33,56 @@
 
 ## ? **COMPLETED STEPS**
 
-_None yet - starting now!_
+### **Step 21: Wire StateCoordinator to RecordingManager** ?
+
+**Completed:** 2026-01-17  
+**Time Taken:** ~30 minutes (estimated 1.5 hours) - **3x faster!**  
+**Status:** ? COMPLETE
+
+**What We Did:**
+
+**Part 1: StateCoordinator.Initialize() Integration**
+- [x] Added StateCoordinator.Initialize() call to MainForm.DeferredArmTimer_Tick()
+- [x] Called BEFORE microphone arming
+- [x] Creates all 5 state machines (GSM + RecordingManagerSSM + DSPThreadSSM + PlaybackSSM + UIStateMachine)
+- [x] System transitions to Idle state
+- [x] Fixed DSPThread null parameter (made optional, deferred creation)
+
+**Part 2: RecordingManager Made Stateless (Pattern #12)**
+- [x] Removed `_isArmed` flag (Issue #11 - state duplication)
+- [x] Removed `_isRecording` flag (Issue #11 - state duplication)
+- [x] Replaced with stateless queries:
+  - `IsArmed` ? `mic IsNot Nothing And dspThread IsNot Nothing`
+  - `IsRecording` ? `recorder.IsRecording` (single source of truth)
+- [x] Fixed all 15 references to old flags
+- [x] Build successful
+
+**Part 3: Testing**
+- [x] App starts without initialization errors
+- [x] Recording flow works end-to-end
+- [x] Microphone arms successfully
+- [x] Start/stop recording works
+
+**Files Modified:** 3
+- `MainForm.vb` - StateCoordinator.Initialize() call
+- `State\StateCoordinator.vb` - Made DSPThread optional
+- `Managers\RecordingManager.vb` - Removed internal state ?
+
+**Issues Resolved:**
+- ? Issue #11: State duplication in RecordingManager
+- ? Pattern #12: Stateless Manager Pattern implemented
+
+**Build Status:** ? SUCCESSFUL
 
 ---
 
 ## ? **CURRENT STEP**
 
-### **Step 21: Wire StateCoordinator to RecordingManager**
+### **Step 22: Wire UIStateMachine to MainForm**
 
-**Started:** 2026-01-17  
-**Status:** ? IN PROGRESS (Part 1 Complete!)  
-**Files:** `Managers\RecordingManager.vb`, `MainForm.vb`, `State\StateCoordinator.vb`
-
-**Progress:**
-- [x] Part 1: Add StateCoordinator.Initialize() call to MainForm ? DONE!
-- [ ] Part 2: Remove _isArmed, _isRecording flags from RecordingManager
-- [ ] Part 3: Replace with StateCoordinator queries
-- [ ] Part 4: Test recording flow
-
-**Build Status:** ? SUCCESSFUL
+**Started:** TBD  
+**Status:** ? PENDING  
+**Files:** `MainForm.vb`
 
 **Design Reference:**
 - State-Coordinator-Design.md Part 6: Integration Points

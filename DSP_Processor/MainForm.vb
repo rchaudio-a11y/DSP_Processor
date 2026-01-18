@@ -188,9 +188,9 @@ Partial Public Class MainForm
         AddHandler fileManager.FileDeleted, AddressOf OnFileDeleted
         AddHandler fileManager.FileValidationFailed, AddressOf OnFileValidationFailed
 
-        ' RecordingManager events
-        AddHandler recordingManager.RecordingStarted, AddressOf OnRecordingStarted
-        AddHandler recordingManager.RecordingStopped, AddressOf OnRecordingStopped
+        ' PHASE 5 STEP 22: Subscribe to UIStateMachine instead of RecordingManager for UI updates
+        ' UIStateMachine.StateChanged is guaranteed to fire on UI thread (no InvokeRequired needed!)
+        ' Recording events still fire for non-UI logic (buffer processing, time updates)
         AddHandler recordingManager.RecordingTimeUpdated, AddressOf OnRecordingTimeUpdated
         AddHandler recordingManager.BufferAvailable, AddressOf OnRecordingBufferAvailable
         AddHandler recordingManager.MicrophoneArmed, AddressOf OnMicrophoneArmed
@@ -320,6 +320,10 @@ Partial Public Class MainForm
                 audioRouter,
                 Me)
             
+            ' PHASE 5 STEP 22: Subscribe to UIStateMachine.StateChanged for UI updates
+            ' This replaces direct RecordingManager event subscriptions for UI state
+            AddHandler StateCoordinator.Instance.UIStateMachine.StateChanged, AddressOf OnUIStateChanged
+            
             Services.LoggingServiceAdapter.Instance.LogInfo("✅ StateCoordinator initialized - System IDLE")
             Utils.Logger.Instance.Info("StateCoordinator initialized successfully", "MainForm")
             
@@ -405,48 +409,87 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnRecordingStarted(sender As Object, e As EventArgs)
-        ' Thread-safe UI update (event may fire from audio callback thread)
-        If Me.InvokeRequired Then
-            Me.BeginInvoke(Sub() OnRecordingStarted(sender, e))
-            Return
-        End If
-        
-        ' Update UI
-        transportControl.State = UI.TransportControl.TransportState.Recording
-        panelLED.BackColor = Color.Red
-        lblStatus.Text = "Status: Recording"
-
-        ' Clear FFT buffers for fresh spectrum (Task 2.0.4)
-        spectrumManager.Clear()
-
-        ' Clear both PRE and POST spectrum displays
-        SpectrumAnalyzerControl1.InputDisplay.Clear()
-        SpectrumAnalyzerControl1.OutputDisplay.Clear()
-
-        Services.LoggingServiceAdapter.Instance.LogInfo("Recording started")
+        ' PHASE 5 STEP 22: This handler is NO LONGER USED for UI updates
+        ' UI updates now happen in OnUIStateChanged (UIStateMachine.StateChanged event)
+        ' This handler kept for backward compatibility but does nothing
+        ' The actual UI update happens when UIStateMachine transitions to RecordingUI
     End Sub
 
     Private Sub OnRecordingStopped(sender As Object, e As RecordingStoppedEventArgs)
-        ' Thread-safe UI update (event may fire from audio callback thread)
-        If Me.InvokeRequired Then
-            Me.BeginInvoke(Sub() OnRecordingStopped(sender, e))
-            Return
-        End If
+        ' PHASE 5 STEP 22: This handler is NO LONGER USED for UI updates
+        ' UI updates now happen in OnUIStateChanged (UIStateMachine.StateChanged event)
+        ' This handler kept for backward compatibility but does nothing
+        ' The actual UI update happens when UIStateMachine transitions back to IdleUI
         
-        ' Update UI
-        transportControl.State = UI.TransportControl.TransportState.Stopped
-        transportControl.RecordingTime = TimeSpan.Zero
-        panelLED.BackColor = Color.Yellow ' Yellow = Armed
-        lblStatus.Text = "Status: Ready (Mic Armed)"
-        lblRecordingTime.Text = "00:00"
+        ' Still refresh file list (not UI state, but data update)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() fileManager.RefreshFileList())
+        Else
+            fileManager.RefreshFileList()
+        End If
+    End Sub
 
-        ' Reset meter
-        meterRecording.Reset()
-
-        ' Refresh file list
-        fileManager.RefreshFileList()
-
-        Services.LoggingServiceAdapter.Instance.LogInfo($"Recording stopped: {e.Duration.TotalSeconds:F1}s")
+    ''' <summary>
+    ''' PHASE 5 STEP 22: NEW! UI State Machine event handler
+    ''' This is the SINGLE point where UI updates happen based on state
+    ''' UIStateMachine guarantees this fires on UI thread - no InvokeRequired needed!
+    ''' </summary>
+    Private Sub OnUIStateChanged(sender As Object, e As StateChangedEventArgs(Of UIState))
+        ' NOTE: UIStateMachine guarantees this is ALWAYS on UI thread!
+        ' No need for InvokeRequired checks
+        
+        Utils.Logger.Instance.Info($"UI State Changed: {e.OldState} → {e.NewState} (Reason: {e.Reason})", "MainForm")
+        
+        Select Case e.NewState
+            Case UIState.Uninitialized
+                ' System not yet initialized
+                lblStatus.Text = "Status: Initializing..."
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                panelLED.BackColor = Color.Gray
+                
+            Case UIState.IdleUI
+                ' System idle - ready for user input
+                lblStatus.Text = "Status: Ready (Mic Armed)"
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                transportControl.RecordingTime = TimeSpan.Zero
+                panelLED.BackColor = Color.Yellow ' Yellow = Armed and ready
+                lblRecordingTime.Text = "00:00"
+                
+                ' Reset meter
+                meterRecording.Reset()
+                
+                Services.LoggingServiceAdapter.Instance.LogInfo("UI State: Idle - Ready")
+                
+            Case UIState.RecordingUI
+                ' Recording in progress (includes Arming, Armed, Recording, Stopping states)
+                lblStatus.Text = "Status: Recording"
+                transportControl.State = UI.TransportControl.TransportState.Recording
+                panelLED.BackColor = Color.Red ' Red = Recording
+                
+                ' Clear FFT buffers for fresh spectrum
+                spectrumManager.Clear()
+                SpectrumAnalyzerControl1.InputDisplay.Clear()
+                SpectrumAnalyzerControl1.OutputDisplay.Clear()
+                
+                Services.LoggingServiceAdapter.Instance.LogInfo("UI State: Recording")
+                
+            Case UIState.PlayingUI
+                ' Playback in progress
+                lblStatus.Text = "Status: Playing"
+                transportControl.State = UI.TransportControl.TransportState.Playing
+                panelLED.BackColor = Color.Green ' Green = Playing
+                
+                Services.LoggingServiceAdapter.Instance.LogInfo("UI State: Playing")
+                
+            Case UIState.ErrorUI
+                ' Error state
+                lblStatus.Text = "Status: ERROR"
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                panelLED.BackColor = Color.DarkRed ' Dark Red = Error
+                
+                Services.LoggingServiceAdapter.Instance.LogError("UI State: ERROR", Nothing)
+                
+        End Select
     End Sub
 
 
@@ -849,6 +892,18 @@ Partial Public Class MainForm
         Try
             Services.LoggingServiceAdapter.Instance.LogInfo($"Loading file for DSP playback: {fileName}")
 
+            ' PHASE 5 STEP 22: Transition GlobalStateMachine to Playing BEFORE starting playback
+            Logger.Instance.Info("🎵 PLAY CLICKED - Requesting GlobalStateMachine transition to Playing...", "MainForm")
+            Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Playing, "User started playback")
+            
+            If Not success Then
+                Logger.Instance.Warning("⚠️ GlobalStateMachine transition to Playing FAILED!", "MainForm")
+                MessageBox.Show("Cannot start playback - invalid state transition", "Playback Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                Return
+            End If
+            
+            Logger.Instance.Info("✅ GlobalStateMachine transitioned to Playing", "MainForm")
+
             ' DISARM MICROPHONE during playback to prevent feedback/conflicts
             If recordingManager IsNot Nothing Then
                 recordingManager.DisarmMicrophone()
@@ -983,11 +1038,21 @@ Partial Public Class MainForm
     Private Sub OnTransportRecord(sender As Object, e As EventArgs)
         Try
             Services.LoggingServiceAdapter.Instance.LogInfo("Starting recording...")
+            Logger.Instance.Info("🔴 RECORD CLICKED - Starting recording directly (state machine integration pending)", "MainForm")
+            
+            ' PHASE 5 STEP 22: TODO - Full state machine integration for recording flow
+            ' For now, call RecordingManager.StartRecording() directly
+            ' Future: RecordingManager should trigger GlobalStateMachine transitions internally:
+            '   Idle → Arming → Armed → Recording
+            
             lstRecordings.ClearSelected()
             WaveformDisplayControl1.ClearCache()
             GC.Collect()
             GC.WaitForPendingFinalizers()
+            
+            ' Call RecordingManager directly (old behavior - works!)
             recordingManager.StartRecording()
+            
         Catch ex As Exception
             Services.LoggingServiceAdapter.Instance.LogError($"Failed to start recording: {ex.Message}", ex)
             MessageBox.Show($"Failed to start recording: {ex.Message}", "Recording Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
@@ -996,69 +1061,87 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub OnTransportStop(sender As Object, e As EventArgs)
-        If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
-            Services.LoggingServiceAdapter.Instance.LogInfo("Stopping playback...")
-            playbackManager.Stop()
-            TimerPlayback.Stop()
-            progressPlayback.Value = 0
-            btnStopPlayback.Enabled = False
-            Services.LoggingServiceAdapter.Instance.LogInfo("Playback stopped")
-
-        ElseIf audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
-            Logger.Instance.Info("⏹️ STOP CLICKED - Synchronous stop starting...", "MainForm")
-
-            ' PHASE 1 FIX: Synchronous stop with immediate UI update
-            Try
-                ' Stop DSP playback (will complete synchronously now)
-                audioRouter.StopDSPPlayback()
-
-                ' Update transport state IMMEDIATELY (don't wait for events!)
-                transportControl.State = UI.TransportControl.TransportState.Stopped
-                transportControl.TrackPosition = TimeSpan.Zero
-                transportControl.TrackDuration = TimeSpan.Zero
-
-                ' Stop timer
-                TimerPlayback.Stop()
-                progressPlayback.Value = 0
-                btnStopPlayback.Enabled = False
-
-                ' Update UI immediately
-                panelLED.BackColor = Color.Orange ' Orange = Stopping (will turn yellow when mic armed)
-                lblStatus.Text = "Status: Stopping..."
-
-                Logger.Instance.Info("✅ Stop: UI updated immediately (<100ms)", "MainForm")
-
-                ' Re-arm microphone in background (don't block UI)
-                Task.Run(Sub()
-                             Try
-                                 Logger.Instance.Info("Background: Re-arming microphone...", "MainForm")
-                                 recordingManager.ArmMicrophone()
-
-                                 ' Update UI when mic is ready (invoke to UI thread)
-                                 BeginInvoke(Sub()
-                                                 panelLED.BackColor = Color.Yellow
-                                                 lblStatus.Text = "Status: Ready (Mic Armed)"
-                                                 Logger.Instance.Info("✅ Microphone re-armed successfully", "MainForm")
-                                             End Sub)
-
-                             Catch ex As Exception
-                                 Logger.Instance.Error("Failed to re-arm microphone", ex, "MainForm")
-                                 BeginInvoke(Sub()
-                                                 panelLED.BackColor = Color.Gray
-                                                 lblStatus.Text = "Status: Idle (Mic Error)"
-                                             End Sub)
-                             End Try
-                         End Sub)
-
-            Catch ex As Exception
-                Logger.Instance.Error("❌ Stop failed!", ex, "MainForm")
-                MessageBox.Show($"Failed to stop: {ex.Message}", "Stop Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
-            End Try
-
-        ElseIf recordingManager.IsRecording Then
-            Services.LoggingServiceAdapter.Instance.LogInfo("Stopping recording...")
-            recordingManager.StopRecording()
-        End If
+        ' PHASE 5 STEP 22: Trigger state transitions through GlobalStateMachine!
+        ' This is the RIGHT way - state machine controls the flow
+        
+        Try
+            Dim currentState = StateCoordinator.Instance.GlobalState
+            
+            Logger.Instance.Info($"⏹️ STOP CLICKED - Current state: {currentState}", "MainForm")
+            
+            Select Case currentState
+                Case GlobalState.Recording
+                    ' User wants to stop recording - request transition to Stopping
+                    Logger.Instance.Info("Requesting GlobalStateMachine transition: Recording → Stopping...", "MainForm")
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Stopping recording via GlobalStateMachine...")
+                    
+                    ' Request state transition through GlobalStateMachine
+                    Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Stopping, "User clicked stop during recording")
+                    
+                    If success Then
+                        Logger.Instance.Info("✅ Stop: GlobalStateMachine transitioned to Stopping", "MainForm")
+                    Else
+                        ' Transition failed - fall back to direct call (TEMPORARY WORKAROUND)
+                        Logger.Instance.Warning("⚠️ GlobalStateMachine transition FAILED! Falling back to direct call...", "MainForm")
+                        recordingManager.StopRecording()
+                    End If
+                    
+                Case GlobalState.Armed, GlobalState.Arming
+                    ' User wants to cancel arming - go back to Idle
+                    Logger.Instance.Info("Requesting transition: Armed/Arming → Idle...", "MainForm")
+                    
+                    Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Idle, "User cancelled arming")
+                    
+                    If Not success Then
+                        Logger.Instance.Warning("⚠️ Transition to Idle failed!", "MainForm")
+                    End If
+                    
+            Case GlobalState.Playing
+                ' Stop playback - just call stop unconditionally (don't check IsPlaying)
+                Logger.Instance.Info("Stopping playback...", "MainForm")
+                
+                If audioRouter IsNot Nothing Then
+                    ' Stop DSP playback synchronously (don't check IsPlaying first!)
+                    audioRouter.StopDSPPlayback()
+                    
+                    ' Stop timer
+                    TimerPlayback.Stop()
+                    progressPlayback.Value = 0
+                    btnStopPlayback.Enabled = False
+                    
+                    Logger.Instance.Info("✅ Stop: Playback stopped", "MainForm")
+                    
+                    ' Request transition to Idle
+                    StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Idle, "Playback stopped by user")
+                    
+                ElseIf playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
+                    ' Legacy playback (fallback)
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Stopping playback (legacy)...")
+                    playbackManager.Stop()
+                    TimerPlayback.Stop()
+                    progressPlayback.Value = 0
+                    btnStopPlayback.Enabled = False
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Playback stopped")
+                End If
+                    
+                Case GlobalState.Stopping
+                    ' Already stopping - ignore
+                    Logger.Instance.Info("Stop clicked but already Stopping - ignoring", "MainForm")
+                    
+                Case GlobalState.Idle
+                    ' Already idle - nothing to stop
+                    Logger.Instance.Info("Stop clicked but already Idle", "MainForm")
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Already idle - nothing to stop")
+                    
+                Case Else
+                    Logger.Instance.Warning($"Stop clicked in unexpected state: {currentState}", "MainForm")
+            End Select
+            
+        Catch ex As Exception
+            Logger.Instance.Error("❌ Stop failed!", ex, "MainForm")
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to stop: {ex.Message}", ex)
+            MessageBox.Show($"Failed to stop: {ex.Message}", "Stop Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
     End Sub
 
     Private Sub OnTransportPlay(sender As Object, e As EventArgs)
