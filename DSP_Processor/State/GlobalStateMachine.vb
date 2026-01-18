@@ -13,6 +13,14 @@ Public Class GlobalStateMachine
 
     ' Lock for state transitions
     Private ReadOnly _stateLock As New Object()
+    
+    ' RE-ENTRY GUARD: Prevent recursive transitions (StackOverflowException fix)
+    Private _isTransitioning As Boolean = False
+    
+    ' PENDING TRANSITION QUEUE: Queue transitions blocked by re-entry (Option C fix)
+    ' When a transition is attempted during an active transition, queue it for later
+    Private _pendingTransition As GlobalState? = Nothing
+    Private _pendingReason As String = Nothing
 
     ' Transition history (for debugging/logging)
     Private ReadOnly _transitionHistory As New List(Of StateChangedEventArgs(Of GlobalState))
@@ -56,36 +64,70 @@ Public Class GlobalStateMachine
     ''' <returns>True if transition succeeded, False if invalid</returns>
     Public Function TransitionTo(newState As GlobalState, reason As String) As Boolean Implements IStateMachine(Of GlobalState).TransitionTo
         SyncLock _stateLock
-            Dim oldState = CurrentState
-
-            ' Check if transition is valid
-            If Not IsValidTransition(oldState, newState) Then
-                Utils.Logger.Instance.Warning($"Invalid transition: {oldState} ? {newState} (Reason: {reason})", "GlobalStateMachine")
-                Return False
+            ' RE-ENTRY GUARD with QUEUEING (Option C: Pending Transition Queue)
+            ' If already transitioning, QUEUE this request instead of rejecting it
+            ' This prevents deadlocks when state changes trigger cascading transitions
+            If _isTransitioning Then
+                ' Already transitioning - queue this transition for execution after completion
+                Console.WriteLine($"[INFO] Re-entrant transition queued: {CurrentState} ? {newState} (Reason: {reason})")
+                _pendingTransition = newState
+                _pendingReason = reason
+                Return True  ' Accept request, will execute after current transition completes
             End If
+            
+            _isTransitioning = True
+            Try
+                Dim oldState = CurrentState
 
-            ' Perform state entry/exit actions
-            OnStateExiting(oldState, newState)
+                ' Check if transition is valid
+                If Not IsValidTransition(oldState, newState) Then
+                    ' Log AFTER releasing transition lock (outside Try/Finally)
+                    ' This prevents logging from triggering recursive transitions
+                    Dim logMessage = $"Invalid transition: {oldState} ? {newState} (Reason: {reason})"
+                    Console.WriteLine($"[WARNING] {logMessage}")
+                    Return False
+                End If
 
-            ' Update state (thread-safe)
-            Interlocked.Exchange(_currentState, newState)
+                ' Perform state entry/exit actions
+                OnStateExiting(oldState, newState)
 
-            OnStateEntering(oldState, newState)
+                ' Update state (thread-safe)
+                Interlocked.Exchange(_currentState, newState)
 
-            ' Create event args
-            Dim args As New StateChangedEventArgs(Of GlobalState)(oldState, newState, reason)
+                OnStateEntering(oldState, newState)
 
-            ' Record in history
-            RecordTransition(args)
+                ' Create event args
+                Dim args As New StateChangedEventArgs(Of GlobalState)(oldState, newState, reason)
 
-            ' Log transition
-            Utils.Logger.Instance.Info($"State transition: {args}", "GlobalStateMachine")
+                ' Record in history
+                RecordTransition(args)
 
-            ' Fire event (outside lock to prevent deadlocks)
-            ' Note: Event subscribers should be quick and non-blocking
-            RaiseEvent StateChanged(Me, args)
-
-            Return True
+                ' Fire event FIRST (while still in lock)
+                ' Event subscribers get notified immediately
+                RaiseEvent StateChanged(Me, args)
+                
+                ' IMPORTANT: Return success BEFORE executing queued transition
+                ' The queued transition will execute in the Finally block
+                Return True
+                
+            Finally
+                _isTransitioning = False
+                
+                ' EXECUTE QUEUED TRANSITION (Option C: Pending Transition Queue)
+                ' If a transition was queued while we were transitioning, execute it now
+                If _pendingTransition.HasValue Then
+                    Dim queuedState = _pendingTransition.Value
+                    Dim queuedReason = _pendingReason
+                    _pendingTransition = Nothing
+                    _pendingReason = Nothing
+                    
+                    Console.WriteLine($"[INFO] Executing queued transition: {CurrentState} ? {queuedState}")
+                    
+                    ' Recursive call - but NOT re-entrant because guard has been released
+                    ' This happens AFTER the current transition completes
+                    TransitionTo(queuedState, queuedReason)
+                End If
+            End Try
         End SyncLock
     End Function
 

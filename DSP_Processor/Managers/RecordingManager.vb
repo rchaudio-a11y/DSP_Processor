@@ -501,7 +501,12 @@ Namespace Managers
             End Try
         End Sub
 
-        ''' <summary>Start recording to file</summary>
+        ''' <summary>Start recording to file (stateless - does not trigger state transitions)</summary>
+        ''' <remarks>
+        ''' STEP 22.5 FIX: This method NO LONGER calls GlobalStateMachine.TransitionTo().
+        ''' State transitions should be triggered by RecordingManagerSSM, not RecordingManager.
+        ''' This prevents circular dependencies and re-entry deadlocks.
+        ''' </remarks>
         Public Sub StartRecording()
             Try
                 ' PHASE 5 STEP 21: Check recorder.IsRecording instead of _isRecording flag
@@ -517,7 +522,7 @@ Namespace Managers
                     System.Threading.Thread.Sleep(500) ' Give time to warm up
                 End If
 
-                Logger.Instance.Info("Starting recording...", "RecordingManager")
+                Logger.Instance.Info("🔴 Starting recording engine...", "RecordingManager")
 
                 ' DON'T clear buffers - we WANT the pre-filled audio from mic arming!
                 ' This is the whole point of arming the mic early - to avoid losing the first second
@@ -553,13 +558,26 @@ Namespace Managers
             End Try
         End Sub
 
-        ''' <summary>Stop recording</summary>
-        Public Sub StopRecording()
+        ''' <summary>Stop recording with optional completion callback (for state machine finalization)</summary>
+        ''' <param name="onComplete">Optional callback executed AFTER recording stops and file is finalized</param>
+        ''' <remarks>
+        ''' STEP 22.5 FIX (Callback Pattern): This method NO LONGER calls GlobalStateMachine.TransitionTo().
+        ''' Instead, caller provides a callback that executes AFTER engine stops and WAV file finalizes.
+        ''' This prevents:
+        ''' - Re-entry deadlocks (callback runs AFTER method returns)
+        ''' - Corrupted WAV files (finalization completes BEFORE transition)
+        ''' - Circular dependencies (no calls back to state machine)
+        ''' </remarks>
+        Public Sub StopRecording(Optional onComplete As Action = Nothing)
             Try
                 ' PHASE 5 STEP 21: Check recorder.IsRecording instead of _isRecording flag
-                If recorder Is Nothing OrElse Not recorder.IsRecording Then Return
+                If recorder Is Nothing OrElse Not recorder.IsRecording Then
+                    ' Not recording - still execute callback if provided
+                    onComplete?.Invoke()
+                    Return
+                End If
 
-                Logger.Instance.Info("Stopping recording...", "RecordingManager")
+                Logger.Instance.Info("⏹️ Stopping recording engine...", "RecordingManager")
 
                 ' Get duration before stopping
                 Dim duration = If(recorder IsNot Nothing, recorder.RecordingDuration, TimeSpan.Zero)
@@ -569,8 +587,10 @@ Namespace Managers
                 If recordingOptions.Mode = RecordingMode.LoopMode Then
                     recorder.CancelLoopRecording()
                 Else
-                    recorder.StopRecording()
+                    recorder.StopRecording()  ' BLOCKS until finalization complete
                 End If
+
+                Logger.Instance.Info("⏹️ Recording engine stopped successfully", "RecordingManager")
 
                 ' PHASE 5 STEP 21: No longer setting _isRecording flag (stateless)
 
@@ -578,6 +598,10 @@ Namespace Managers
                     .Duration = duration,
                     .FilePath = filePath
                 }
+                
+                ' Execute callback AFTER finalization (Step 22.5 Callback Pattern)
+                ' This ensures WAV file is complete BEFORE state transitions
+                onComplete?.Invoke()
 
                 RaiseEvent RecordingStopped(Me, args)
 

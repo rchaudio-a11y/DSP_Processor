@@ -458,7 +458,15 @@ Partial Public Class MainForm
                 ' Reset meter
                 meterRecording.Reset()
                 
+                ' REFRESH FILE LIST when returning to Idle (after recording stops)
+                ' This ensures new recordings appear in the list immediately
+                If e.OldState = UIState.RecordingUI Then
+                    fileManager.RefreshFileList()
+                    Utils.Logger.Instance.Info("File list refreshed after recording stopped", "MainForm")
+                End If
+                
                 Services.LoggingServiceAdapter.Instance.LogInfo("UI State: Idle - Ready")
+                
                 
             Case UIState.RecordingUI
                 ' Recording in progress (includes Arming, Armed, Recording, Stopping states)
@@ -1038,20 +1046,25 @@ Partial Public Class MainForm
     Private Sub OnTransportRecord(sender As Object, e As EventArgs)
         Try
             Services.LoggingServiceAdapter.Instance.LogInfo("Starting recording...")
-            Logger.Instance.Info("🔴 RECORD CLICKED - Starting recording directly (state machine integration pending)", "MainForm")
+            Logger.Instance.Info("🔴 RECORD CLICKED - Requesting GlobalStateMachine transition to Arming...", "MainForm")
             
-            ' PHASE 5 STEP 22: TODO - Full state machine integration for recording flow
-            ' For now, call RecordingManager.StartRecording() directly
-            ' Future: RecordingManager should trigger GlobalStateMachine transitions internally:
-            '   Idle → Arming → Armed → Recording
+            ' PHASE 5 STEP 22.5 FIX: Trigger state machine flow instead of direct call
+            ' Flow: Idle → Arming → Armed → Recording
+            ' RecordingManagerSSM will handle the multi-step flow via state events
             
             lstRecordings.ClearSelected()
             WaveformDisplayControl1.ClearCache()
             GC.Collect()
             GC.WaitForPendingFinalizers()
             
-            ' Call RecordingManager directly (old behavior - works!)
-            recordingManager.StartRecording()
+            ' Request Arming transition - RecordingManagerSSM will handle the rest
+            Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Arming, "User clicked Record")
+            
+            If Not success Then
+                Logger.Instance.Warning("⚠️ GlobalStateMachine transition to Arming FAILED!", "MainForm")
+                MessageBox.Show("Cannot start recording - invalid state", "Recording Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+            End If
+            
             
         Catch ex As Exception
             Services.LoggingServiceAdapter.Instance.LogError($"Failed to start recording: {ex.Message}", ex)
@@ -1075,16 +1088,17 @@ Partial Public Class MainForm
                     Logger.Instance.Info("Requesting GlobalStateMachine transition: Recording → Stopping...", "MainForm")
                     Services.LoggingServiceAdapter.Instance.LogInfo("Stopping recording via GlobalStateMachine...")
                     
-                    ' Request state transition through GlobalStateMachine
+                    ' Request state transition - RecordingManagerSSM will handle cleanup via callback
                     Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Stopping, "User clicked stop during recording")
                     
                     If success Then
                         Logger.Instance.Info("✅ Stop: GlobalStateMachine transitioned to Stopping", "MainForm")
                     Else
-                        ' Transition failed - fall back to direct call (TEMPORARY WORKAROUND)
-                        Logger.Instance.Warning("⚠️ GlobalStateMachine transition FAILED! Falling back to direct call...", "MainForm")
-                        recordingManager.StopRecording()
+                        ' Transition failed - should not happen, but log it
+                        Logger.Instance.Warning("⚠️ GlobalStateMachine transition to Stopping FAILED!", "MainForm")
+                        MessageBox.Show("Cannot stop recording - invalid state", "Stop Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)
                     End If
+                    
                     
                 Case GlobalState.Armed, GlobalState.Arming
                     ' User wants to cancel arming - go back to Idle

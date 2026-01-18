@@ -231,10 +231,16 @@ Public Class RecordingManagerSSM
                     ' Start arming process - call RecordingManager.ArmMicrophone()
                     Utils.Logger.Instance.Info("RecordingManagerSSM: Arming microphone...", "RecordingManagerSSM")
                     _recordingManager.ArmMicrophone()
+                    
+                    ' STEP 22.5 FIX: Transition to Armed AFTER arming completes
+                    ' This prevents re-entry: ArmMicrophone() → (blocks) → TransitionTo(Armed)
+                    _globalStateMachine.TransitionTo(GlobalState.Armed, "Microphone armed successfully")
 
                 Case RecordingManagerState.Armed
-                    ' Armed and ready - microphone is armed
+                    ' Armed and ready - automatically transition to Recording
+                    ' This completes the 3-step flow: Arming → Armed → Recording
                     Utils.Logger.Instance.Info("RecordingManager armed and ready", "RecordingManagerSSM")
+                    _globalStateMachine.TransitionTo(GlobalState.Recording, "Armed and ready, starting recording")
 
                 Case RecordingManagerState.Recording
                     ' Start recording - call RecordingManager.StartRecording()
@@ -242,9 +248,15 @@ Public Class RecordingManagerSSM
                     _recordingManager.StartRecording()
 
                 Case RecordingManagerState.Stopping
-                    ' Stop recording - call RecordingManager.StopRecording()
+                    ' Stop recording with callback - STEP 22.5 FIX (Callback Pattern)
+                    ' Callback executes AFTER WAV finalization, preventing corrupted files
                     Utils.Logger.Instance.Info("RecordingManagerSSM: Stopping recording...", "RecordingManagerSSM")
-                    _recordingManager.StopRecording()
+                    _recordingManager.StopRecording(
+                        Sub()
+                            ' Transition to Idle AFTER finalization complete
+                            ' This prevents re-entry deadlock and ensures file integrity
+                            _globalStateMachine.TransitionTo(GlobalState.Idle, "Recording stopped and finalized")
+                        End Sub)
 
                 Case RecordingManagerState.Error
                     ' Error state - log and prepare for recovery

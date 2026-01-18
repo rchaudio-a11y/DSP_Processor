@@ -31,12 +31,15 @@ Namespace Utils
         Private ReadOnly lockObj As New Object()
         Private currentLogFile As String
         Private logWriter As StreamWriter
-        
+
         ' Async logging infrastructure
         Private ReadOnly logQueue As New ConcurrentQueue(Of String)()
         Private ReadOnly logSignal As New AutoResetEvent(False)
         Private loggerThread As Thread
         Private isRunning As Boolean = True
+
+        ' RECURSION GUARD: Prevent infinite recursion (Step 22.5 fix)
+        Private Shared ReadOnly isLogging As New ThreadLocal(Of Boolean)(Function() False)
 
 #Region "Properties"
 
@@ -63,12 +66,12 @@ Namespace Utils
         ''' Enable/disable logging to console
         ''' </summary>
         Public Property LogToConsole As Boolean = True
-        
+
         ''' <summary>
         ''' PERFORMANCE: Enable/disable ALL logging
         ''' </summary>
         Public Property Enabled As Boolean = True
-        
+
         ''' <summary>
         ''' Use asynchronous buffered logging (recommended for audio applications)
         ''' When True: Log calls return immediately, background thread writes to disk
@@ -99,7 +102,7 @@ Namespace Utils
             ' Private constructor for singleton
             EnsureLogDirectoryExists()
             OpenLogFile()
-            
+
             ' Start background logging thread
             loggerThread = New Thread(AddressOf LoggerThreadProc) With {
                 .IsBackground = True,
@@ -170,29 +173,38 @@ Namespace Utils
         Private Sub Log(level As LogLevel, message As String, ex As Exception, context As String)
             ' PERFORMANCE: Quick exit if logging disabled
             If Not Enabled Then Return
-            
-            ' Check minimum level
-            If level < MinimumLevel Then Return
 
-            ' Format log entry
-            Dim logEntry = FormatLogEntry(level, message, ex, context)
+            ' RECURSION GUARD: Prevent infinite recursion (Step 22.5 fix for StackOverflowException)
+            ' This happens when logging triggers state transitions which trigger more logging
+            If isLogging.Value Then Return
+            isLogging.Value = True
 
-            ' Output to console (immediate)
-            If LogToConsole Then
-                Console.WriteLine(logEntry)
-            End If
+            Try
+                ' Check minimum level
+                If level < MinimumLevel Then Return
 
-            ' Output to file
-            If LogToFile Then
-                If AsyncLogging Then
-                    ' ASYNC: Enqueue message and signal background thread (non-blocking!)
-                    logQueue.Enqueue(logEntry)
-                    logSignal.Set()
-                Else
-                    ' SYNC: Write immediately (blocks on disk I/O)
-                    WriteToFile(logEntry)
+                ' Format log entry
+                Dim logEntry = FormatLogEntry(level, message, ex, context)
+
+                ' Output to console (immediate)
+                If LogToConsole Then
+                    Console.WriteLine(logEntry)
                 End If
-            End If
+
+                ' Output to file
+                If LogToFile Then
+                    If AsyncLogging Then
+                        ' ASYNC: Enqueue message and signal background thread (non-blocking!)
+                        logQueue.Enqueue(logEntry)
+                        logSignal.Set()
+                    Else
+                        ' SYNC: Write immediately (blocks on disk I/O)
+                        WriteToFile(logEntry)
+                    End If
+                End If
+            Finally
+                isLogging.Value = False
+            End Try
         End Sub
 
         Private Function FormatLogEntry(level As LogLevel, message As String, ex As Exception, context As String) As String
