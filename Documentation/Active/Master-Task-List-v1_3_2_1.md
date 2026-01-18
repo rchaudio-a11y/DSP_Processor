@@ -520,38 +520,67 @@ This is the **master implementation roadmap** for DSP Processor v1.3.2.1 State M
 
 ---
 
-### **Step 24: Add State Validation and Logging** ??
+### **Step 24: Add State Validation, Logging, and Registry** ?
 
-**Design Reference:** `State-Coordinator-Design.md` (Part 3)
+**Design Reference:** 
+- `State-Coordinator-Design.md` (Part 3)
+- `Registry.md` (State Registry Pattern - NEW!)
 
 **Locations:**
 - `State\StateCoordinator.vb` (modify)
 - `State\GlobalStateMachine.vb` (modify)
+- `State\StateRegistry.yaml` (create - documentation)
+- All state enums (add Description attributes)
+- `State\IStateMachine.vb` (modify StateChangedEventArgs)
 
 **Tasks:**
+
+**Part A: State Validation & Logging (Original):**
 - [ ] Add transition history tracking to StateCoordinator
 - [ ] Implement `RecordTransition(machine, oldState, newState, reason)` method
 - [ ] Log all state transitions to console/file
 - [ ] Add invalid transition logging (rejected transitions)
 - [ ] Create debug method `DumpStateHistory()`
 - [ ] Add state snapshot method for debugging
-- [ ] **NEW:** Add `GetSystemState()` method (returns snapshot of all state machines)
-- [ ] **NEW:** Add `RecoverFromError()` method (transitions from Error ? Idle)
+- [x] Add `GetSystemState()` method ? Already implemented!
+- [x] Add `RecoverFromError()` method ? Already implemented!
+
+**Part B: State Registry Pattern (NEW - Registry.md):**
+- [ ] Add State UIDs to all enums using Description attributes
+  - Example: `<Description("GSM_IDLE")> Idle = 1`
+  - GlobalState, RecordingManagerState, DSPThreadState, UIState, PlaybackState
+- [ ] Add TransitionID to StateChangedEventArgs(Of TState)
+  - Format: "GSM_T01_IDLE_TO_ARMING"
+- [ ] Create `StateRegistry.yaml` (master documentation)
+- [ ] Create `State-Evolution-Log.md` (why states exist)
+- [ ] Update logging format: "[GSM] T01: Idle ? Arming (trigger: ...)"
+- [ ] Make logs searchable by UID/TransitionID
 
 **Acceptance Criteria:**
-- All transitions logged with timestamp
+- All transitions logged with timestamp + UID + TransitionID
 - Invalid transitions logged as warnings
 - State history available for debugging
-- GetSystemState() returns current state of GSM + all SSMs
-- RecoverFromError() successfully transitions to Idle
+- GetSystemState() works ? (already done!)
+- RecoverFromError() works ? (already done!)
+- StateRegistry.yaml documents all states/transitions
+- State-Evolution-Log.md explains why states exist
+- Logs searchable by UID (grep "GSM_T01")
 - Compiles and builds
 
-**Estimated Time:** 1.5 hours (was 1 hour)
+**Estimated Time:** 2.5 hours (was 1.5 hours)
+- Original: 1.5 hours (mostly done!)
+- Registry: 1 hour (UIDs, TransitionIDs, docs)
 
 **Design Sections:**
 - State-Coordinator-Design.md ? Part 3: Transition Tracking
 - Thread-Safety-Patterns.md ? Part 14: State Snapshot Pattern
-- **NEW:** StateMachineUI.md (for GetSystemState API)
+- **Registry.md ? State Registry Pattern (NEW!)** ?
+- StateMachineUI.md (for GetSystemState API)
+
+**Future (v1.4.0+):**
+- Code generation from Registry.yaml
+- State validator (build-time)
+- State dashboard (visualization)
 
 ---
 

@@ -1,4 +1,4 @@
-Imports System.Threading
+﻿Imports System.Threading
 Imports System.Windows.Forms
 
 ''' <summary>
@@ -9,24 +9,24 @@ Imports System.Windows.Forms
 ''' </summary>
 Public Class UIStateMachine
     Implements IStateMachine(Of UIState)
-    
+
     ' Thread-safe state storage
     Private _currentState As Integer = UIState.Uninitialized
-    
+
     ' Lock for state transitions
     Private ReadOnly _stateLock As New Object()
-    
+
     ' Reference to GlobalStateMachine (subscribe to its transitions)
     Private ReadOnly _globalStateMachine As GlobalStateMachine
-    
+
     ' Reference to UI Control (for InvokeRequired/BeginInvoke)
     Private ReadOnly _uiControl As Control
-    
+
     ' StateChanged event (ALWAYS fires on UI thread)
     Public Event StateChanged As EventHandler(Of StateChangedEventArgs(Of UIState)) Implements IStateMachine(Of UIState).StateChanged
-    
+
 #Region "Properties"
-    
+
     ''' <summary>
     ''' Gets the current state (thread-safe read)
     ''' </summary>
@@ -35,11 +35,11 @@ Public Class UIStateMachine
             Return CType(Interlocked.CompareExchange(_currentState, 0, 0), UIState)
         End Get
     End Property
-    
+
 #End Region
-    
+
 #Region "Constructor"
-    
+
     ''' <summary>
     ''' Creates a new UIStateMachine
     ''' </summary>
@@ -48,23 +48,23 @@ Public Class UIStateMachine
     Public Sub New(globalStateMachine As GlobalStateMachine, uiControl As Control)
         If globalStateMachine Is Nothing Then Throw New ArgumentNullException(NameOf(globalStateMachine))
         If uiControl Is Nothing Then Throw New ArgumentNullException(NameOf(uiControl))
-        
+
         _globalStateMachine = globalStateMachine
         _uiControl = uiControl
-        
+
         ' Initialize in Uninitialized state
         Interlocked.Exchange(_currentState, UIState.Uninitialized)
-        
+
         ' Subscribe to GlobalStateMachine transitions
         AddHandler _globalStateMachine.StateChanged, AddressOf OnGlobalStateChanged
-        
+
         Utils.Logger.Instance.Info("UIStateMachine created and subscribed to GlobalStateMachine", "UIStateMachine")
     End Sub
-    
+
 #End Region
-    
+
 #Region "Public Methods"
-    
+
     ''' <summary>
     ''' Attempts to transition to a new state
     ''' </summary>
@@ -74,76 +74,76 @@ Public Class UIStateMachine
     Public Function TransitionTo(newState As UIState, reason As String) As Boolean Implements IStateMachine(Of UIState).TransitionTo
         SyncLock _stateLock
             Dim oldState = CurrentState
-            
+
             ' Check if transition is valid
             If Not IsValidTransition(oldState, newState) Then
-                Utils.Logger.Instance.Warning($"UIStateMachine: Invalid transition {oldState} ? {newState} (Reason: {reason})", "UIStateMachine")
+                Utils.Logger.Instance.Warning($"UIStateMachine: Invalid transition {oldState} → {newState} (Reason: {reason})", "UIStateMachine")
                 Return False
             End If
-            
+
             ' Perform state entry/exit actions
             OnStateExiting(oldState, newState)
-            
+
             ' Update state (thread-safe)
             Interlocked.Exchange(_currentState, newState)
-            
+
             OnStateEntering(oldState, newState)
-            
+
             ' Create event args
             Dim args As New StateChangedEventArgs(Of UIState)(oldState, newState, reason)
-            
+
             ' Log transition
             Utils.Logger.Instance.Info($"UIStateMachine: {args}", "UIStateMachine")
-            
+
             ' Fire event on UI thread (CRITICAL for thread safety!)
             FireEventOnUIThread(args)
-            
+
             Return True
         End SyncLock
     End Function
-    
+
     ''' <summary>
     ''' Checks if a state transition is valid
     ''' </summary>
     Public Function IsValidTransition(fromState As UIState, toState As UIState) As Boolean Implements IStateMachine(Of UIState).IsValidTransition
         ' Same state is always valid
         If fromState = toState Then Return True
-        
+
         ' UI state machine is fairly permissive (follows global state)
         Select Case fromState
             Case UIState.Uninitialized
                 ' Can transition to any state (initialization)
                 Return True
-                
+
             Case UIState.IdleUI
                 ' Can transition to any active state
                 Return toState = UIState.RecordingUI OrElse
                        toState = UIState.PlayingUI OrElse
                        toState = UIState.ErrorUI
-                
+
             Case UIState.RecordingUI
                 ' Can go to Idle or Error
                 Return toState = UIState.IdleUI OrElse
                        toState = UIState.ErrorUI
-                
+
             Case UIState.PlayingUI
                 ' Can go to Idle or Error
                 Return toState = UIState.IdleUI OrElse
                        toState = UIState.ErrorUI
-                
+
             Case UIState.ErrorUI
                 ' Can recover to Idle
                 Return toState = UIState.IdleUI
-                
+
             Case Else
                 Return False
         End Select
     End Function
-    
+
 #End Region
-    
+
 #Region "Private Methods - GlobalStateMachine Integration"
-    
+
     ''' <summary>
     ''' Responds to GlobalStateMachine state changes
     ''' Maps global states to UI states
@@ -153,32 +153,32 @@ Public Class UIStateMachine
         ' Map global state to UI state
         ' This mapping is simple: we collapse some global states for UI purposes
         Dim targetUIState As UIState
-        
+
         Select Case e.NewState
             Case GlobalState.Uninitialized
                 targetUIState = UIState.Uninitialized
-                
+
             Case GlobalState.Idle
                 targetUIState = UIState.IdleUI
-                
+
             Case GlobalState.Arming, GlobalState.Armed, GlobalState.Recording, GlobalState.Stopping
                 ' All recording-related states map to RecordingUI
                 targetUIState = UIState.RecordingUI
-                
+
             Case GlobalState.Playing
                 targetUIState = UIState.PlayingUI
-                
+
             Case GlobalState.Error
                 targetUIState = UIState.ErrorUI
-                
+
             Case Else
                 targetUIState = UIState.IdleUI
         End Select
-        
+
         ' Transition to target UI state
         TransitionTo(targetUIState, $"Global: {e.NewState}")
     End Sub
-    
+
     ''' <summary>
     ''' Fires StateChanged event on UI thread (thread-safe marshaling)
     ''' </summary>
@@ -195,7 +195,7 @@ Public Class UIStateMachine
             RaiseEvent StateChanged(Me, args)
         End If
     End Sub
-    
+
     ''' <summary>
     ''' Called when exiting a state
     ''' </summary>
@@ -203,32 +203,32 @@ Public Class UIStateMachine
         ' UI state machine has minimal entry/exit actions
         ' MainForm will handle actual UI updates by subscribing to StateChanged
     End Sub
-    
+
     ''' <summary>
     ''' Called when entering a state
     ''' </summary>
     Private Sub OnStateEntering(oldState As UIState, newState As UIState)
         ' UI state machine has minimal entry/exit actions
         ' MainForm will handle actual UI updates by subscribing to StateChanged
-        
+
         Select Case newState
             Case UIState.IdleUI
                 ' Entered idle UI state
-                
+
             Case UIState.RecordingUI
                 ' Entered recording UI state
-                
+
             Case UIState.PlayingUI
                 ' Entered playback UI state
-                
+
             Case UIState.ErrorUI
                 ' Entered error UI state
-                
+
         End Select
     End Sub
-    
+
 #End Region
-    
+
 End Class
 
 ''' <summary>
@@ -239,16 +239,16 @@ End Class
 Public Enum UIState
     ''' <summary>UI not yet initialized</summary>
     Uninitialized = 0
-    
+
     ''' <summary>UI in idle state (buttons enabled for recording/playback)</summary>
     IdleUI = 1
-    
+
     ''' <summary>UI in recording state (stop button enabled, recording indicator shown)</summary>
     RecordingUI = 2
-    
+
     ''' <summary>UI in playback state (stop button enabled, playback indicator shown)</summary>
     PlayingUI = 3
-    
+
     ''' <summary>UI in error state (error message shown, recovery options available)</summary>
     ErrorUI = 4
 End Enum

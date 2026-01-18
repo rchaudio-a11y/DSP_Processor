@@ -270,7 +270,7 @@
 
 **Status:** ? **PENDING**  
 **Tasks:** 4 (Steps 21-24)  
-**Estimated Time:** ~5.5 hours  
+**Estimated Time:** ~6.5 hours (was ~5.5 hours)  
 **Start Date:** TBD  
 **End Date:** TBD
 
@@ -291,9 +291,13 @@ This phase modifies existing code. Test after EACH step.
 - [ ] **Step 23:** Wire MonitoringController to StateCoordinator (1 hour)
   - [ ] Issue #14: Auto-enable/disable based on state
   
-- [ ] **Step 24:** Add State Validation and Logging (1.5 hours, was 1 hour)
-  - [ ] Add GetSystemState() for State Debugger
-  - [ ] Add RecoverFromError() for State Debugger
+- [ ] **Step 24:** Add State Validation, Logging, and Registry (2.5 hours, was 1.5 hours)
+- [ ] Add GetSystemState() for State Debugger ? Already implemented!
+- [ ] Add RecoverFromError() for State Debugger ? Already implemented!
+- [ ] Add State UIDs to all enums (Registry.md Pattern #15)
+- [ ] Add TransitionIDs to logging
+- [ ] Create StateRegistry.yaml (documentation)
+- [ ] Create State-Evolution-Log.md
 
 ### **Files to Modify:**
 - [ ] `Managers\RecordingManager.vb` (remove internal state)
