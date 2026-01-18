@@ -41,6 +41,7 @@ Namespace AudioIO
         Private _selectedInputFile As String
         Private feederThread As System.Threading.Thread
         Private feederCancellation As Boolean = False ' Cancellation flag for feeder thread
+        Private _isPlaying As Boolean = False ' CRITICAL: Explicit playback state flag (Issue #1 Fix - Phase 6)
         Private _inputGainProcessor As DSP.GainProcessor ' Input gain stage (Phase 2.5)
         Private _outputGainProcessor As DSP.GainProcessor ' Output gain stage (Phase 2.5)
 
@@ -101,7 +102,9 @@ Namespace AudioIO
         ''' <summary>Is audio currently playing through DSP?</summary>
         Public ReadOnly Property IsPlaying As Boolean
             Get
-                Return waveOut IsNot Nothing AndAlso waveOut.PlaybackState = PlaybackState.Playing
+                ' PHASE 6 FIX: Use explicit flag instead of waveOut.PlaybackState
+                ' waveOut.PlaybackState is async/event-driven and may not reflect actual state immediately
+                Return _isPlaying
             End Get
         End Property
 
@@ -590,10 +593,14 @@ Namespace AudioIO
                 _playbackDuration = fileReader.TotalTime
                 _playbackStartTime = DateTime.Now
 
+                ' PHASE 6 FIX: Set IsPlaying flag BEFORE starting playback
+                _isPlaying = True
+
                 ' Start playback
                 waveOut.Play()
 
                 Utils.Logger.Instance.Info("DSP playback started successfully", "AudioRouter")
+                Utils.Logger.Instance.Info($"IsPlaying flag set: {_isPlaying}", "AudioRouter")
 
                 ' Raise PlaybackStarted event (for TransportControl integration)
                 RaiseEvent PlaybackStarted(Me, IO.Path.GetFileName(_selectedInputFile))
@@ -768,6 +775,9 @@ Namespace AudioIO
             Try
                 Utils.Logger.Instance.Info("Stopping DSP playback", "AudioRouter")
 
+                ' PHASE 6 FIX: Clear IsPlaying flag FIRST
+                _isPlaying = False
+
                 ' Signal feeder thread to stop FIRST
                 feederCancellation = True
 
@@ -832,6 +842,9 @@ Namespace AudioIO
             Try
                 Utils.Logger.Instance.Info("🎬 WaveOut playback stopped (file ended naturally)", "AudioRouter")
                 Utils.Logger.Instance.Info($"   Exception in event: {If(e.Exception IsNot Nothing, e.Exception.Message, "None")}", "AudioRouter")
+                
+                ' PHASE 6 FIX: Clear IsPlaying flag on EOF
+                _isPlaying = False
                 
                 ' IMPORTANT: Raise PlaybackStopped event BEFORE calling StopDSPPlayback()
                 ' This allows MainForm to stop the timer before we clean up
