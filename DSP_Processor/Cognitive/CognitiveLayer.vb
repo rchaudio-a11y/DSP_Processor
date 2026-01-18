@@ -51,8 +51,14 @@ Namespace Cognitive
 
             _coordinator = coordinator
 
+            ' DIAGNOSTIC: Log where constructor is being called from
+            Dim stackTrace = New System.Diagnostics.StackTrace(1, True)
+            Dim caller = stackTrace.GetFrame(0)
+            Utils.Logger.Instance.Info($"CognitiveLayer constructor called from: {caller?.GetMethod()?.Name} in {caller?.GetFileName()}:Line {caller?.GetFileLineNumber()}", "CognitiveLayer")
+
             ' Generate unique session number (find next available)
             _currentSessionNumber = FindNextSessionNumber()
+            Utils.Logger.Instance.Info($"CognitiveLayer session #{_currentSessionNumber:D3} starting", "CognitiveLayer")
 
             ' Initialize cognitive systems
             InitializeCognitiveSystems()
@@ -680,12 +686,16 @@ Namespace Cognitive
             ' Stop auto-export timer
             StopAutoExportTimer()
 
-            ' Final export before shutdown
-            Try
-                ExportToLog()
-            Catch
-                ' Ignore errors during shutdown
-            End Try
+            ' PHASE 6 FIX (Issue #4): REMOVED duplicate ExportToLog() call
+            ' Auto-export timer already saves every 5s, no need for final export
+            ' This was creating duplicate session files with same data
+            
+            ' Final export removed - timer handles all exports
+            ' Try
+            '     ExportToLog()
+            ' Catch
+            '     ' Ignore errors during shutdown
+            ' End Try
 
             ' Dispose cognitive systems
             If _workingMemory IsNot Nothing Then

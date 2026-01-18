@@ -76,6 +76,20 @@ Namespace Recording
             End Get
         End Property
 
+        ''' <summary>
+        ''' Gets whether loop recording has completed all takes
+        ''' </summary>
+        Public ReadOnly Property IsLoopRecordingComplete As Boolean
+            Get
+                Return Options.Mode = RecordingMode.LoopMode AndAlso _
+                       Not recordingActive AndAlso _
+                       loopCurrentTake = 0 AndAlso _
+                       loopRecordingWasActive
+            End Get
+        End Property
+
+        Private loopRecordingWasActive As Boolean = False
+
         Public Sub StartRecording()
             If Not IO.Directory.Exists(OutputFolder) Then
                 IO.Directory.CreateDirectory(OutputFolder)
@@ -120,6 +134,11 @@ Namespace Recording
         End Sub
 
         Public Sub StopRecording()
+            ' DIAGNOSTIC: Log context of stop
+            Dim stackTrace = New System.Diagnostics.StackTrace(1, False)
+            Dim caller = stackTrace.GetFrame(0)?.GetMethod()?.Name
+            Utils.Logger.Instance.Info($"StopRecording called from: {caller}", "RecordingEngine")
+            
             recordingActive = False
             stopwatch?.Stop()
 
@@ -163,6 +182,7 @@ Namespace Recording
             End If
 
             loopCurrentTake = 1
+            loopRecordingWasActive = True  ' Track that loop recording was started
             isInLoopDelay = False
             Utils.Logger.Instance.Info($"Starting loop recording: {Options.LoopCount} takes × {Options.LoopDurationSeconds}s", "RecordingEngine")
             Services.LoggingServiceAdapter.Instance.LogInfo($"Loop mode: {Options.LoopCount} takes × {Options.LoopDurationSeconds}s")
@@ -222,24 +242,33 @@ Namespace Recording
                     End If
 
                 Case RecordingMode.LoopMode
-                    ' Stop after each take duration, then start delay
+                    ' Stop after each take duration, then immediately start next take
                     If stopwatch.Elapsed.TotalSeconds >= Options.LoopDurationSeconds Then
-                        Utils.Logger.Instance.Info($"Loop take {loopCurrentTake} complete: {stopwatch.Elapsed.TotalSeconds:F1}s", "RecordingEngine")
-                        Services.LoggingServiceAdapter.Instance.LogInfo($"Take {loopCurrentTake} complete ({Options.LoopDurationSeconds}s)")
+                        ' DIAGNOSTIC: Log with different message for loop auto-stop vs manual stop
+                        Utils.Logger.Instance.Info($"Loop take {loopCurrentTake} complete: {stopwatch.Elapsed.TotalSeconds:F1}s (AUTO-STOP)", "RecordingEngine")
+                        Services.LoggingServiceAdapter.Instance.LogInfo($"Take {loopCurrentTake} complete ({Options.LoopDurationSeconds}s) [AUTOMATIC]")
                         StopRecording()
 
                         ' Give file system time to fully close the file
                         System.Threading.Thread.Sleep(100)
 
                         If loopCurrentTake < Options.LoopCount Then
-                            ' Start delay before next take
-                            isInLoopDelay = True
-                            loopDelayTimer = Stopwatch.StartNew()
-                            Services.LoggingServiceAdapter.Instance.LogInfo($"Waiting {Options.LoopDelaySeconds}s before next take...")
+                            ' PHASE 6 FIX (Issue #2): Start next take IMMEDIATELY (no delay)
+                            ' User wants continuous loop recording with minimal gap
+                            loopCurrentTake += 1
+                            Utils.Logger.Instance.Info($"Starting loop take {loopCurrentTake}/{Options.LoopCount} immediately", "RecordingEngine")
+                            Services.LoggingServiceAdapter.Instance.LogInfo($"Starting take {loopCurrentTake}/{Options.LoopCount} (no delay)")
+                            StartRecording()
                         Else
                             ' All takes complete
                             loopCurrentTake = 0
-                            Utils.Logger.Instance.Info("All loop takes complete", "RecordingEngine")
+                            Utils.Logger.Instance.Info("=== ALL LOOP TAKES COMPLETE ===", "RecordingEngine")
+                            Utils.Logger.Instance.Info($"recordingActive={recordingActive}, loopCurrentTake={loopCurrentTake}", "RecordingEngine")
+                            Utils.Logger.Instance.Info("IsLoopRecordingComplete will now return TRUE", "RecordingEngine")
+                            Services.LoggingServiceAdapter.Instance.LogInfo($"Loop recording complete: {Options.LoopCount} takes finished")
+                            
+                            ' NOTE: IsLoopRecordingComplete property will now return TRUE
+                            ' RecordingManager should check this and trigger state transition to Idle
                         End If
                     End If
             End Select

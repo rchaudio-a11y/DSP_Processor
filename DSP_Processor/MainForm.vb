@@ -296,6 +296,12 @@ Partial Public Class MainForm
 
     ''' <summary>Deferred microphone arming - called 500ms after form load completes</summary>
     Private Sub DeferredArmTimer_Tick(sender As Object, e As EventArgs) Handles deferredArmTimer.Tick
+        ' CRITICAL: Prevent duplicate execution if timer fires twice before we can stop it
+        If isFormFullyLoaded Then
+            Utils.Logger.Instance.Warning("DeferredArmTimer_Tick called again after form already loaded - ignoring duplicate", "MainForm")
+            Return
+        End If
+
         ' Stop the timer
         deferredArmTimer.Stop()
         deferredArmTimer.Dispose()
@@ -331,9 +337,13 @@ Partial Public Class MainForm
             Services.LoggingServiceAdapter.Instance.LogInfo("✅ StateCoordinator initialized - System IDLE")
             Utils.Logger.Instance.Info("StateCoordinator initialized successfully", "MainForm")
 
-            ' Initialize Cognitive Layer (v1.x)
-            _cognitiveLayer = New CognitiveLayer(StateCoordinator.Instance)
-            Utils.Logger.Instance.Info("CognitiveLayer initialized (WorkingMemory, HabitAnalyzer, AttentionSpotlight)", "MainForm")
+            ' Initialize Cognitive Layer (v1.x) - Only if not already initialized!
+            If _cognitiveLayer Is Nothing Then
+                _cognitiveLayer = New CognitiveLayer(StateCoordinator.Instance)
+                Utils.Logger.Instance.Info("CognitiveLayer initialized (WorkingMemory, HabitAnalyzer, AttentionSpotlight)", "MainForm")
+            Else
+                Utils.Logger.Instance.Warning("CognitiveLayer already initialized - skipping duplicate creation", "MainForm")
+            End If
 
             ' Initialize Cognitive Dashboard (if exists in tabs)
             InitializeCognitiveDashboard()
@@ -460,8 +470,12 @@ Partial Public Class MainForm
 
             Case UIState.IdleUI
                 ' System idle - ready for user input
+                Utils.Logger.Instance.Info($"=== IDLE STATE ENTERED === OldState={e.OldState}, NewState={e.NewState}", "MainForm")
+                
                 lblStatus.Text = "Status: Ready (Mic Armed)"
                 transportControl.State = UI.TransportControl.TransportState.Stopped
+                Utils.Logger.Instance.Info($"TransportControl.State set to: Stopped", "MainForm")
+                
                 transportControl.RecordingTime = TimeSpan.Zero
                 panelLED.BackColor = Color.Yellow ' Yellow = Armed and ready
                 lblRecordingTime.Text = "00:00"
@@ -472,8 +486,20 @@ Partial Public Class MainForm
                 ' REFRESH FILE LIST when returning to Idle (after recording stops)
                 ' This ensures new recordings appear in the list immediately
                 If e.OldState = UIState.RecordingUI Then
+                    Utils.Logger.Instance.Info("FILE LIST REFRESH: Triggered (OldState=RecordingUI)", "MainForm")
+                    
+                    ' Brief delay to let OS finish flushing files to disk (100ms)
+                    ' This happens AFTER recording completes, so no audio impact
+                    System.Threading.Thread.Sleep(100)
+                    
+                    ' Force synchronous refresh on UI thread
                     fileManager.RefreshFileList()
                     Utils.Logger.Instance.Info("File list refreshed after recording stopped", "MainForm")
+                    
+                    ' Force UI to process pending events (updates ListBox immediately)
+                    Application.DoEvents()
+                Else
+                    Utils.Logger.Instance.Info($"FILE LIST REFRESH: SKIPPED (OldState={e.OldState}, expected RecordingUI)", "MainForm")
                 End If
 
                 Services.LoggingServiceAdapter.Instance.LogInfo("UI State: Idle - Ready")

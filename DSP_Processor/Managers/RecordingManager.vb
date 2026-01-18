@@ -719,6 +719,22 @@ Namespace Managers
                 }
                 RaiseEvent BufferAvailable(Me, args)
                 
+                ' PHASE 6 FIX: Check if loop recording has completed all takes
+                ' CRITICAL: Only trigger transition if we're STILL in Recording state!
+                ' This prevents infinite loop after state has already transitioned.
+                If recorder IsNot Nothing AndAlso recorder.IsLoopRecordingComplete Then
+                    If StateCoordinator.Instance.GlobalStateMachine.CurrentState = GlobalState.Recording Then
+                        Logger.Instance.Info("LOOP RECORDING COMPLETE - Triggering state transition", "RecordingManager")
+                        Services.LoggingServiceAdapter.Instance.LogInfo("Loop recording complete - transitioning to Idle")
+                        
+                        ' Trigger state machine transition to Stopping → Idle
+                        ' This will update UI, refresh file list, etc.
+                        StateCoordinator.Instance.GlobalStateMachine.TransitionTo(
+                            GlobalState.Stopping,
+                            "Loop recording completed all takes")
+                    End If
+                End If
+                
             Catch ex As Exception
                 Logger.Instance.Error("Error in audio callback", ex, "RecordingManager")
                 ' Don't crash the audio thread!
