@@ -40,8 +40,8 @@ Namespace Managers
         Private mic As IInputSource ' Can be MicInputSource or WasapiEngine
         Private recorder As RecordingEngine
         ' REMOVED: processingTimer - replaced with callback-driven recording
-        Private _isArmed As Boolean = False
-        Private _isRecording As Boolean = False
+        ' PHASE 5 STEP 21: Removed _isArmed and _isRecording (stateless manager pattern)
+        ' State is now queried from subsystems (mic IsNot Nothing = armed, recorder.IsRecording = recording)
 
         ' PHASE 2: DSP Pipeline Integration
         Private dspThread As DSP.DSPThread ' Routes mic audio through DSP for meters/effects
@@ -68,16 +68,20 @@ Namespace Managers
 #Region "Properties"
 
         ''' <summary>Is microphone armed and ready?</summary>
+        ''' <remarks>PHASE 5 STEP 21: Stateless query - checks if mic exists and DSP is initialized</remarks>
         Public ReadOnly Property IsArmed As Boolean
             Get
-                Return _isArmed
+                ' Mic is armed if mic exists and DSP thread exists
+                Return mic IsNot Nothing AndAlso dspThread IsNot Nothing
             End Get
         End Property
 
         ''' <summary>Is currently recording?</summary>
+        ''' <remarks>PHASE 5 STEP 21: Stateless query - delegates to RecordingEngine (single source of truth)</remarks>
         Public ReadOnly Property IsRecording As Boolean
             Get
-                Return _isRecording AndAlso recorder IsNot Nothing AndAlso recorder.IsRecording
+                ' Recording state is queried from RecordingEngine (single source of truth)
+                Return recorder IsNot Nothing AndAlso recorder.IsRecording
             End Get
         End Property
 
@@ -292,7 +296,8 @@ Namespace Managers
         ''' <summary>Arm microphone for recording (starts capture but doesn't write to file)</summary>
         Public Sub ArmMicrophone()
             Try
-                If _isArmed Then
+                ' PHASE 5 STEP 21: Check mic existence instead of _isArmed flag
+                If mic IsNot Nothing AndAlso dspThread IsNot Nothing Then
                     Logger.Instance.Warning("Microphone already armed", "RecordingManager")
                     Return
                 End If
@@ -428,7 +433,7 @@ Namespace Managers
                     Logger.Instance.Info($"✅ DSP pipeline active: {pcm16Format.SampleRate}Hz, {pcm16Format.Channels}ch, Input+Output gain stages!", "RecordingManager")
                 End If
 
-                _isArmed = True
+                ' PHASE 5 STEP 21: No longer setting _isArmed flag (stateless)
                 RaiseEvent MicrophoneArmed(Me, True)
 
                 Logger.Instance.Info("Audio input armed successfully", "RecordingManager")
@@ -442,7 +447,8 @@ Namespace Managers
         ''' <summary>Disarm microphone (stop capture)</summary>
         Public Sub DisarmMicrophone()
             Try
-                If Not _isArmed Then Return
+                ' PHASE 5 STEP 21: Check mic existence instead of _isArmed flag
+                If mic Is Nothing Then Return
 
                 Logger.Instance.Info("Disarming microphone...", "RecordingManager")
 
@@ -485,7 +491,7 @@ Namespace Managers
                 ' Another small delay to ensure disposal is complete
                 System.Threading.Thread.Sleep(50)
 
-                _isArmed = False
+                ' PHASE 5 STEP 21: No longer setting _isArmed flag (stateless)
                 RaiseEvent MicrophoneArmed(Me, False)
 
                 Logger.Instance.Info("Microphone disarmed", "RecordingManager")
@@ -498,13 +504,14 @@ Namespace Managers
         ''' <summary>Start recording to file</summary>
         Public Sub StartRecording()
             Try
-                If _isRecording Then
+                ' PHASE 5 STEP 21: Check recorder.IsRecording instead of _isRecording flag
+                If recorder IsNot Nothing AndAlso recorder.IsRecording Then
                     Logger.Instance.Warning("Already recording", "RecordingManager")
                     Return
                 End If
 
-                ' Ensure mic is armed
-                If Not _isArmed OrElse mic Is Nothing Then
+                ' Ensure mic is armed (stateless check)
+                If mic Is Nothing Then
                     Logger.Instance.Info("Microphone not armed, arming now...", "RecordingManager")
                     ArmMicrophone()
                     System.Threading.Thread.Sleep(500) ' Give time to warm up
@@ -535,12 +542,13 @@ Namespace Managers
                         Logger.Instance.Info("Recording started", "RecordingManager")
                 End Select
 
-                _isRecording = True
+                ' PHASE 5 STEP 21: No longer setting _isRecording flag (stateless)
+                ' RecordingEngine.IsRecording is now the single source of truth
                 RaiseEvent RecordingStarted(Me, EventArgs.Empty)
 
             Catch ex As Exception
                 Logger.Instance.Error("Failed to start recording", ex, "RecordingManager")
-                _isRecording = False
+                ' PHASE 5 STEP 21: No longer setting _isRecording flag (stateless)
                 Throw
             End Try
         End Sub
@@ -548,7 +556,8 @@ Namespace Managers
         ''' <summary>Stop recording</summary>
         Public Sub StopRecording()
             Try
-                If Not _isRecording Then Return
+                ' PHASE 5 STEP 21: Check recorder.IsRecording instead of _isRecording flag
+                If recorder Is Nothing OrElse Not recorder.IsRecording Then Return
 
                 Logger.Instance.Info("Stopping recording...", "RecordingManager")
 
@@ -563,7 +572,7 @@ Namespace Managers
                     recorder.StopRecording()
                 End If
 
-                _isRecording = False
+                ' PHASE 5 STEP 21: No longer setting _isRecording flag (stateless)
 
                 Dim args As New RecordingStoppedEventArgs With {
                     .Duration = duration,
@@ -576,7 +585,7 @@ Namespace Managers
 
             Catch ex As Exception
                 Logger.Instance.Error("Failed to stop recording", ex, "RecordingManager")
-                _isRecording = False
+                ' PHASE 5 STEP 21: No longer setting _isRecording flag (stateless)
             End Try
         End Sub
 
@@ -614,7 +623,7 @@ Namespace Managers
                 audioSettings = settings
 
                 ' If mic is armed, re-arm with new settings
-                If _isArmed Then
+                If IsArmed Then
                     Logger.Instance.Info("Microphone is armed, re-arming with new settings...", "RecordingManager")
                     DisarmMicrophone()
                     System.Threading.Thread.Sleep(100) ' Wait for cleanup
@@ -699,7 +708,7 @@ Namespace Managers
 Private Sub ProcessingTimer_Tick(state As Object)
             Try
                 ' Track if we were recording before Process() call
-                Dim wasRecording = _isRecording AndAlso recorder IsNot Nothing AndAlso recorder.IsRecording
+                Dim wasRecording = recorder IsNot Nothing AndAlso recorder.IsRecording
 
                 ' If recording, let recorder handle everything
                 If recorder IsNot Nothing AndAlso recorder.InputSource IsNot Nothing Then
