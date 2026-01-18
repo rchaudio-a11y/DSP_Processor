@@ -132,7 +132,7 @@ Public Class StateCoordinator
     ''' Transitions from Uninitialized → Idle
     ''' </summary>
     ''' <param name="recordingManager">RecordingManager instance</param>
-    ''' <param name="dspThread">DSPThread instance for recording</param>
+    ''' <param name="dspThread">DSPThread instance for recording (can be Nothing - will be wired after mic armed)</param>
     ''' <param name="audioRouter">AudioRouter instance for playback</param>
     ''' <param name="mainForm">MainForm for UI thread marshaling</param>
     Public Sub Initialize(recordingManager As Managers.RecordingManager,
@@ -142,9 +142,8 @@ Public Class StateCoordinator
 
         CheckDisposed()
 
-        ' Validate parameters
+        ' Validate required parameters (dspThread can be Nothing)
         If recordingManager Is Nothing Then Throw New ArgumentNullException(NameOf(recordingManager))
-        If dspThread Is Nothing Then Throw New ArgumentNullException(NameOf(dspThread))
         If audioRouter Is Nothing Then Throw New ArgumentNullException(NameOf(audioRouter))
         If mainForm Is Nothing Then Throw New ArgumentNullException(NameOf(mainForm))
 
@@ -170,8 +169,13 @@ Public Class StateCoordinator
         _recordingManagerSSM = New RecordingManagerSSM(recordingManager, _globalStateMachine)
         Utils.Logger.Instance.Info("RecordingManagerSSM created", "StateCoordinator")
 
-        _dspThreadSSM = New DSPThreadSSM(dspThread, _recordingManagerSSM)
-        Utils.Logger.Instance.Info("DSPThreadSSM created", "StateCoordinator")
+        ' Create DSPThreadSSM only if dspThread is available
+        If dspThread IsNot Nothing Then
+            _dspThreadSSM = New DSPThreadSSM(dspThread, _recordingManagerSSM)
+            Utils.Logger.Instance.Info("DSPThreadSSM created", "StateCoordinator")
+        Else
+            Utils.Logger.Instance.Info("DSPThreadSSM deferred - will be created after microphone arming", "StateCoordinator")
+        End If
 
         _playbackSSM = New PlaybackSSM(audioRouter, _globalStateMachine)
         Utils.Logger.Instance.Info("PlaybackSSM created", "StateCoordinator")
