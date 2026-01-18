@@ -1,4 +1,5 @@
 ﻿Imports System.Threading
+Imports System.ComponentModel ' For Description attribute
 Imports System.Windows.Forms
 
 ''' <summary>
@@ -15,6 +16,9 @@ Public Class UIStateMachine
 
     ' Lock for state transitions
     Private ReadOnly _stateLock As New Object()
+
+    ' Transition counter for generating unique TransitionIDs (State Registry Pattern)
+    Private _transitionCounter As Integer = 0
 
     ' Reference to GlobalStateMachine (subscribe to its transitions)
     Private ReadOnly _globalStateMachine As GlobalStateMachine
@@ -89,11 +93,19 @@ Public Class UIStateMachine
 
             OnStateEntering(oldState, newState)
 
-            ' Create event args
-            Dim args As New StateChangedEventArgs(Of UIState)(oldState, newState, reason)
 
-            ' Log transition
-            Utils.Logger.Instance.Info($"UIStateMachine: {args}", "UIStateMachine")
+            ' Generate TransitionID for State Registry Pattern
+            Dim transitionNum = System.Threading.Interlocked.Increment(_transitionCounter)
+            Dim oldStateUID = GetStateUID(oldState)
+            Dim newStateUID = GetStateUID(newState)
+            Dim transitionID = $"UI_T{transitionNum:D2}_{oldStateUID}_TO_{newStateUID}"
+
+            ' Create event args with State Registry Pattern support
+            Dim args As New StateChangedEventArgs(Of UIState)(
+                oldState, newState, reason, transitionID, oldStateUID, newStateUID)
+
+            ' ✅ LOG TRANSITION (State Registry Pattern - grep-friendly format)
+            Utils.Logger.Instance.Info(args.ToString(), "UIStateMachine")
 
             ' Fire event on UI thread (CRITICAL for thread safety!)
             FireEventOnUIThread(args)
@@ -227,6 +239,18 @@ Public Class UIStateMachine
         End Select
     End Sub
 
+    ''' <summary>
+    ''' Gets the UID for a state from its Description attribute (State Registry Pattern)
+    ''' </summary>
+    Private Shared Function GetStateUID(state As UIState) As String
+        Dim field = GetType(UIState).GetField(state.ToString())
+        If field Is Nothing Then Return state.ToString()
+        
+        Dim attr = CType(Attribute.GetCustomAttribute(field, GetType(System.ComponentModel.DescriptionAttribute)), 
+                        System.ComponentModel.DescriptionAttribute)
+        Return If(attr?.Description, state.ToString())
+    End Function
+
 #End Region
 
 End Class
@@ -235,20 +259,26 @@ End Class
 ''' UI-specific states
 ''' These states represent the UI's view of the system
 ''' Simplified from GlobalState for UI purposes
+''' UIDs follow format: UI_{STATE} for State Registry Pattern
 ''' </summary>
 Public Enum UIState
     ''' <summary>UI not yet initialized</summary>
+    <Description("UI_UNINITIALIZED")>
     Uninitialized = 0
 
     ''' <summary>UI in idle state (buttons enabled for recording/playback)</summary>
+    <Description("UI_IDLE")>
     IdleUI = 1
 
     ''' <summary>UI in recording state (stop button enabled, recording indicator shown)</summary>
+    <Description("UI_RECORDING")>
     RecordingUI = 2
 
     ''' <summary>UI in playback state (stop button enabled, playback indicator shown)</summary>
+    <Description("UI_PLAYING")>
     PlayingUI = 3
 
     ''' <summary>UI in error state (error message shown, recovery options available)</summary>
+    <Description("UI_ERROR")>
     ErrorUI = 4
 End Enum

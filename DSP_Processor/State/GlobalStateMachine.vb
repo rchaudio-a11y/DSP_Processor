@@ -1,4 +1,5 @@
 Imports System.Threading
+Imports System.ComponentModel ' For Description attribute
 
 ''' <summary>
 ''' Global State Machine - Controls application-wide state transitions
@@ -25,6 +26,9 @@ Public Class GlobalStateMachine
     ' Transition history (for debugging/logging)
     Private ReadOnly _transitionHistory As New List(Of StateChangedEventArgs(Of GlobalState))
     Private Const MaxHistorySize As Integer = 100
+
+    ' Transition counter for generating unique TransitionIDs (State Registry Pattern)
+    Private _transitionCounter As Integer = 0
 
     ' StateChanged event
     Public Event StateChanged As EventHandler(Of StateChangedEventArgs(Of GlobalState)) Implements IStateMachine(Of GlobalState).StateChanged
@@ -81,10 +85,10 @@ Public Class GlobalStateMachine
 
                 ' Check if transition is valid
                 If Not IsValidTransition(oldState, newState) Then
-                    ' Log AFTER releasing transition lock (outside Try/Finally)
-                    ' This prevents logging from triggering recursive transitions
-                    Dim logMessage = $"Invalid transition: {oldState} ? {newState} (Reason: {reason})"
-                    Console.WriteLine($"[WARNING] {logMessage}")
+                    ' Log invalid transition (State Registry Pattern - rejection tracking)
+                    Dim logMessage = $"Invalid transition rejected: {oldState} ? {newState} (Reason: {reason})"
+                    Console.WriteLine($"[WARNING] [GlobalStateMachine] {logMessage}")
+                    Utils.Logger.Instance.Warning(logMessage, "GlobalStateMachine")
                     Return False
                 End If
 
@@ -96,11 +100,21 @@ Public Class GlobalStateMachine
 
                 OnStateEntering(oldState, newState)
 
-                ' Create event args
-                Dim args As New StateChangedEventArgs(Of GlobalState)(oldState, newState, reason)
+                ' Generate TransitionID for State Registry Pattern
+                Dim transitionNum = Interlocked.Increment(_transitionCounter)
+                Dim oldStateUID = GetStateUID(oldState)
+                Dim newStateUID = GetStateUID(newState)
+                Dim transitionID = $"GSM_T{transitionNum:D2}_{oldStateUID}_TO_{newStateUID}"
+
+                ' Create event args with State Registry Pattern support
+                Dim args As New StateChangedEventArgs(Of GlobalState)(
+                    oldState, newState, reason, transitionID, oldStateUID, newStateUID)
 
                 ' Record in history
                 RecordTransition(args)
+
+                ' ? LOG TRANSITION (State Registry Pattern - grep-friendly format)
+                Utils.Logger.Instance.Info(args.ToString(), "GlobalStateMachine")
 
                 ' Fire event FIRST (while still in lock)
                 ' Event subscribers get notified immediately
@@ -266,6 +280,20 @@ Public Class GlobalStateMachine
     End Sub
 
     ''' <summary>
+    ''' Gets the UID for a state from its Description attribute (State Registry Pattern)
+    ''' </summary>
+    ''' <param name="state">State to get UID for</param>
+    ''' <returns>UID string (e.g., "GSM_IDLE") or state name if no Description attribute</returns>
+    Private Shared Function GetStateUID(state As GlobalState) As String
+        Dim field = GetType(GlobalState).GetField(state.ToString())
+        If field Is Nothing Then Return state.ToString()
+        
+        Dim attr = CType(Attribute.GetCustomAttribute(field, GetType(ComponentModel.DescriptionAttribute)), 
+                        ComponentModel.DescriptionAttribute)
+        Return If(attr?.Description, state.ToString())
+    End Function
+
+    ''' <summary>
     ''' Records transition in history
     ''' </summary>
     Private Sub RecordTransition(args As StateChangedEventArgs(Of GlobalState))
@@ -284,29 +312,38 @@ End Class
 ''' <summary>
 ''' Global application states
 ''' These states represent the overall system state
+''' UIDs follow format: GSM_{STATE} for State Registry Pattern
 ''' </summary>
 Public Enum GlobalState
     ''' <summary>System not yet initialized</summary>
+    <Description("GSM_UNINITIALIZED")>
     Uninitialized = 0
 
     ''' <summary>System idle, ready for user input</summary>
+    <Description("GSM_IDLE")>
     Idle = 1
 
     ''' <summary>Arming microphone for recording</summary>
+    <Description("GSM_ARMING")>
     Arming = 2
 
     ''' <summary>Armed and ready to record</summary>
+    <Description("GSM_ARMED")>
     Armed = 3
 
     ''' <summary>Currently recording</summary>
+    <Description("GSM_RECORDING")>
     Recording = 4
 
     ''' <summary>Stopping recording or playback</summary>
+    <Description("GSM_STOPPING")>
     Stopping = 5
 
     ''' <summary>Playing back audio</summary>
+    <Description("GSM_PLAYING")>
     Playing = 6
 
     ''' <summary>Error state (recovery needed)</summary>
+    <Description("GSM_ERROR")>
     [Error] = 7
 End Enum

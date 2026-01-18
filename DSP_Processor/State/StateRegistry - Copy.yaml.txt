@@ -1,0 +1,629 @@
+# State Registry - Single Source of Truth
+# Version: 1.3.2.1
+# Generated: 2026-01-17
+# Purpose: Master registry of all state machines, states, and transitions
+# Future: Code generation will use this as input (v1.4.0+)
+
+version: "1.3.2.1"
+generated: "2026-01-17T23:45:00"
+description: "Complete registry of all state machines in DSP Processor"
+
+# ==============================================================================
+# GLOBAL STATE MACHINE (GSM)
+# ==============================================================================
+GlobalStateMachine:
+  prefix: GSM
+  file: State/GlobalStateMachine.vb
+  enum: GlobalState
+  description: Master state machine controlling application-wide state
+  
+  states:
+    - name: Uninitialized
+      uid: GSM_UNINITIALIZED
+      value: 0
+      description: System not yet initialized
+      purpose: Initial state before StateCoordinator.Initialize()
+      
+    - name: Idle
+      uid: GSM_IDLE
+      value: 1
+      description: System ready, no active operations
+      purpose: Default operational state, ready for recording or playback
+      
+    - name: Arming
+      uid: GSM_ARMING
+      value: 2
+      description: Microphone is being armed
+      purpose: Transitional state during microphone initialization
+      
+    - name: Armed
+      uid: GSM_ARMED
+      value: 3
+      description: Microphone armed, ready to record
+      purpose: Microphone active, DSP running, ready to start recording engine
+      
+    - name: Recording
+      uid: GSM_RECORDING
+      value: 4
+      description: Active recording to file
+      purpose: Recording engine writing audio to disk
+      
+    - name: Stopping
+      uid: GSM_STOPPING
+      value: 5
+      description: Recording/playback is stopping
+      purpose: Transitional state during shutdown
+      
+    - name: Playing
+      uid: GSM_PLAYING
+      value: 6
+      description: File playback active
+      purpose: AudioRouter playing file through DSP
+      
+    - name: Error
+      uid: GSM_ERROR
+      value: 7
+      description: Error state
+      purpose: System encountered error, requires recovery
+  
+  transitions:
+    - id: GSM_T01
+      from: Idle
+      to: Arming
+      trigger: User clicked Record
+      description: Start recording flow
+      implemented: true
+      implementation: Step 22.5
+      
+    - id: GSM_T02
+      from: Arming
+      to: Armed
+      trigger: Microphone armed
+      description: Microphone initialization complete
+      implemented: true
+      implementation: Step 22.5
+      
+    - id: GSM_T03
+      from: Armed
+      to: Recording
+      trigger: Recording engine started
+      description: Start recording to file
+      implemented: true
+      implementation: Step 22.5
+      
+    - id: GSM_T04
+      from: Recording
+      to: Stopping
+      trigger: User clicked Stop / Recording complete
+      description: Stop recording and finalize file
+      implemented: true
+      implementation: Step 22.5
+      
+    - id: GSM_T05
+      from: Stopping
+      to: Idle
+      trigger: Cleanup complete
+      description: Return to ready state
+      implemented: true
+      implementation: Step 22.5
+      
+    - id: GSM_T06
+      from: Idle
+      to: Playing
+      trigger: User clicked Play
+      description: Start playback
+      implemented: true
+      implementation: Step 22
+      
+    - id: GSM_T07
+      from: Playing
+      to: Stopping
+      trigger: User clicked Stop
+      description: Stop playback (user-requested)
+      implemented: true
+      implementation: Step 22
+      
+    - id: GSM_T08
+      from: Playing
+      to: Idle
+      trigger: Playback ended naturally (EOF)
+      description: File finished playing
+      implemented: true
+      implementation: PlaybackSSM
+      
+    - id: GSM_T09
+      from: Stopping
+      to: Idle
+      trigger: Playback stopped
+      description: Cleanup complete after playback stop
+      implemented: true
+      implementation: Step 22
+      
+    - id: GSM_T10
+      from: "*"
+      to: Error
+      trigger: Exception/error occurred
+      description: Error handling (future)
+      implemented: false
+      
+    - id: GSM_T11
+      from: Error
+      to: Idle
+      trigger: Recovery successful
+      description: Error recovery (future)
+      implemented: false
+
+# ==============================================================================
+# RECORDING MANAGER STATE MACHINE (REC)
+# ==============================================================================
+RecordingManagerSSM:
+  prefix: REC
+  file: State/RecordingManagerSSM.vb
+  enum: RecordingManagerState
+  description: Controls RecordingManager lifecycle
+  
+  states:
+    - name: Uninitialized
+      uid: REC_UNINITIALIZED
+      value: 0
+      description: Not yet initialized
+      purpose: Initial state before GSM transitions to Idle
+      
+    - name: Idle
+      uid: REC_IDLE
+      value: 1
+      description: RecordingManager idle
+      purpose: Microphone disarmed, no recording
+      
+    - name: Arming
+      uid: REC_ARMING
+      value: 2
+      description: Arming microphone
+      purpose: Initializing audio capture
+      
+    - name: Armed
+      uid: REC_ARMED
+      value: 3
+      description: Microphone armed
+      purpose: Ready to record
+      
+    - name: Recording
+      uid: REC_RECORDING
+      value: 4
+      description: Recording active
+      purpose: Writing audio to file
+      
+    - name: Stopping
+      uid: REC_STOPPING
+      value: 5
+      description: Stopping recording
+      purpose: Cleaning up
+      
+    - name: Error
+      uid: REC_ERROR
+      value: 6
+      description: Error state
+      purpose: RecordingManager error occurred
+  
+  transitions:
+    - id: REC_T01
+      from: Uninitialized
+      to: Idle
+      trigger: GSM transitioned to Idle
+      description: Follow GlobalStateMachine initialization
+      implemented: true
+      
+    - id: REC_T02
+      from: Idle
+      to: Arming
+      trigger: GSM transitioned to Arming
+      description: Call RecordingManager.ArmMicrophone()
+      implemented: true
+      
+    - id: REC_T03
+      from: Arming
+      to: Armed
+      trigger: GSM transitioned to Armed
+      description: Microphone ready
+      implemented: true
+      
+    - id: REC_T04
+      from: Armed
+      to: Recording
+      trigger: GSM transitioned to Recording
+      description: Recording engine starts
+      implemented: true
+      
+    - id: REC_T05
+      from: Recording
+      to: Stopping
+      trigger: GSM transitioned to Stopping
+      description: Call RecordingManager.StopRecording()
+      implemented: true
+      
+    - id: REC_T06
+      from: Stopping
+      to: Idle
+      trigger: GSM transitioned to Idle
+      description: Recording stopped
+      implemented: true
+      
+    - id: REC_T07
+      from: "Arming/Armed"
+      to: Idle
+      trigger: GSM transitioned to Idle (cancel)
+      description: Cancel recording before start
+      implemented: true
+
+# ==============================================================================
+# DSP THREAD STATE MACHINE (DSP)
+# ==============================================================================
+DSPThreadSSM:
+  prefix: DSP
+  file: State/DSPThreadSSM.vb
+  enum: DSPThreadState
+  description: Controls DSPThread worker thread lifecycle
+  
+  states:
+    - name: Uninitialized
+      uid: DSP_UNINITIALIZED
+      value: 0
+      description: DSPThread not created
+      purpose: Initial state
+      
+    - name: Idle
+      uid: DSP_IDLE
+      value: 1
+      description: DSPThread exists but not running
+      purpose: Worker thread stopped
+      
+    - name: Running
+      uid: DSP_RUNNING
+      value: 2
+      description: DSPThread processing audio
+      purpose: Worker thread active
+      
+    - name: Stopping
+      uid: DSP_STOPPING
+      value: 3
+      description: DSPThread stopping
+      purpose: Shutdown in progress
+      
+    - name: Error
+      uid: DSP_ERROR
+      value: 4
+      description: DSPThread error state
+      purpose: Worker thread crashed
+  
+  transitions:
+    - id: DSP_T01
+      from: Uninitialized
+      to: Idle
+      trigger: DSPThread created
+      description: RecordingManager.ArmMicrophone()
+      implemented: true
+      
+    - id: DSP_T02
+      from: Idle
+      to: Running
+      trigger: RecordingManagerSSM transitioned to Arming
+      description: Start DSPThread worker (during arming, not armed!)
+      implemented: true
+      
+    - id: DSP_T03
+      from: Running
+      to: Stopping
+      trigger: RecordingManagerSSM transitioned to Stopping
+      description: Stop worker thread
+      implemented: true
+      
+    - id: DSP_T04
+      from: Stopping
+      to: Idle
+      trigger: Worker stopped
+      description: Cleanup complete
+      implemented: true
+      
+    - id: DSP_T05
+      from: Running
+      to: Error
+      trigger: Exception in worker
+      description: Log error
+      implemented: true
+      
+    - id: DSP_T06
+      from: Error
+      to: Idle
+      trigger: Recover
+      description: Error recovery (future)
+      implemented: false
+
+# ==============================================================================
+# UI STATE MACHINE (UI)
+# ==============================================================================
+UIStateMachine:
+  prefix: UI
+  file: State/UIStateMachine.vb
+  enum: UIState
+  description: Maps GlobalStateMachine states to UI-specific states
+  
+  states:
+    - name: Uninitialized
+      uid: UI_UNINITIALIZED
+      value: 0
+      description: UI not initialized
+      purpose: Initial state
+      
+    - name: IdleUI
+      uid: UI_IDLE
+      value: 1
+      description: UI showing ready state
+      purpose: Buttons enabled for Record/Play
+      
+    - name: RecordingUI
+      uid: UI_RECORDING
+      value: 2
+      description: UI showing recording state
+      purpose: Stop button enabled, Record/Play disabled
+      
+    - name: PlayingUI
+      uid: UI_PLAYING
+      value: 3
+      description: UI showing playback state
+      purpose: Stop button enabled, Record/Play disabled
+      
+    - name: ErrorUI
+      uid: UI_ERROR
+      value: 4
+      description: UI showing error state
+      purpose: Error message displayed
+  
+  transitions:
+    - id: UI_T01
+      from: Uninitialized
+      to: IdleUI
+      trigger: GSM transitioned to Idle
+      description: UI initialized
+      implemented: true
+      
+    - id: UI_T02
+      from: IdleUI
+      to: RecordingUI
+      trigger: GSM transitioned to Arming
+      description: Show recording UI
+      implemented: true
+      
+    - id: UI_T03
+      from: IdleUI
+      to: PlayingUI
+      trigger: GSM transitioned to Playing
+      description: Show playback UI
+      implemented: true
+      
+    - id: UI_T04
+      from: RecordingUI
+      to: IdleUI
+      trigger: GSM transitioned to Idle
+      description: Return to ready state
+      implemented: true
+      
+    - id: UI_T05
+      from: PlayingUI
+      to: IdleUI
+      trigger: GSM transitioned to Idle
+      description: Return to ready state
+      implemented: true
+      
+    - id: UI_T06
+      from: IdleUI
+      to: ErrorUI
+      trigger: GSM transitioned to Error
+      description: Show error state
+      implemented: true
+      
+    - id: UI_T07
+      from: RecordingUI
+      to: ErrorUI
+      trigger: GSM transitioned to Error
+      description: Show error state
+      implemented: true
+      
+    - id: UI_T08
+      from: PlayingUI
+      to: ErrorUI
+      trigger: GSM transitioned to Error
+      description: Show error state
+      implemented: true
+      
+    - id: UI_T09
+      from: ErrorUI
+      to: IdleUI
+      trigger: GSM transitioned to Idle (recover)
+      description: Recovery successful
+      implemented: true
+
+# ==============================================================================
+# PLAYBACK STATE MACHINE (PLAY)
+# ==============================================================================
+PlaybackSSM:
+  prefix: PLAY
+  file: State/PlaybackSSM.vb
+  enum: PlaybackState
+  description: Controls AudioRouter playback lifecycle
+  
+  states:
+    - name: Uninitialized
+      uid: PLAY_UNINITIALIZED
+      value: 0
+      description: Not initialized
+      purpose: Initial state
+      
+    - name: Idle
+      uid: PLAY_IDLE
+      value: 1
+      description: Playback idle
+      purpose: No file playing
+      
+    - name: Playing
+      uid: PLAY_PLAYING
+      value: 2
+      description: Playing file
+      purpose: Active playback
+      
+    - name: Stopping
+      uid: PLAY_STOPPING
+      value: 3
+      description: Stopping playback
+      purpose: Cleanup
+      
+    - name: Error
+      uid: PLAY_ERROR
+      value: 4
+      description: Playback error
+      purpose: Playback failed
+  
+  transitions:
+    - id: PLAY_T01
+      from: Uninitialized
+      to: Idle
+      trigger: GSM transitioned to Idle
+      description: PlaybackSSM initialized
+      implemented: true
+      
+    - id: PLAY_T02
+      from: Idle
+      to: Playing
+      trigger: GSM transitioned to Playing
+      description: Call AudioRouter.PlayFile()
+      implemented: true
+      
+    - id: PLAY_T03
+      from: Playing
+      to: Stopping
+      trigger: GSM transitioned to Stopping
+      description: Call AudioRouter.StopDSPPlayback()
+      implemented: true
+      
+    - id: PLAY_T04
+      from: Stopping
+      to: Idle
+      trigger: Playback stopped
+      description: Cleanup complete
+      implemented: true
+      
+    - id: PLAY_T05
+      from: Playing
+      to: Idle
+      trigger: EOF reached
+      description: File ended naturally
+      implemented: true
+
+# ==============================================================================
+# CROSS-MACHINE MAPPINGS
+# ==============================================================================
+cross_machine_mappings:
+  - gsm_transition: GSM_T01
+    description: "User Record ? Start Arming"
+    cascades:
+      - machine: RecordingManagerSSM
+        transition: REC_T02
+      - machine: DSPThreadSSM
+        transition: DSP_T02
+      - machine: UIStateMachine
+        transition: UI_T02
+        
+  - gsm_transition: GSM_T02
+    description: "Arming Complete ? Armed"
+    cascades:
+      - machine: RecordingManagerSSM
+        transition: REC_T03
+        
+  - gsm_transition: GSM_T03
+    description: "Armed ? Recording"
+    cascades:
+      - machine: RecordingManagerSSM
+        transition: REC_T04
+        
+  - gsm_transition: GSM_T04
+    description: "Recording ? Stopping"
+    cascades:
+      - machine: RecordingManagerSSM
+        transition: REC_T05
+      - machine: DSPThreadSSM
+        transition: DSP_T03
+        
+  - gsm_transition: GSM_T05
+    description: "Stopping ? Idle (Recording)"
+    cascades:
+      - machine: RecordingManagerSSM
+        transition: REC_T06
+      - machine: DSPThreadSSM
+        transition: DSP_T04
+      - machine: UIStateMachine
+        transition: UI_T04
+        
+  - gsm_transition: GSM_T06
+    description: "Idle ? Playing"
+    cascades:
+      - machine: PlaybackSSM
+        transition: PLAY_T02
+      - machine: UIStateMachine
+        transition: UI_T03
+        
+  - gsm_transition: GSM_T07
+    description: "Playing ? Stopping (User Stop)"
+    cascades:
+      - machine: PlaybackSSM
+        transition: PLAY_T03
+        
+  - gsm_transition: GSM_T08
+    description: "Playing ? Idle (EOF)"
+    cascades:
+      - machine: PlaybackSSM
+        transition: PLAY_T05
+      - machine: UIStateMachine
+        transition: UI_T05
+        
+  - gsm_transition: GSM_T09
+    description: "Stopping ? Idle (Playback)"
+    cascades:
+      - machine: PlaybackSSM
+        transition: PLAY_T04
+      - machine: UIStateMachine
+        transition: UI_T05
+
+# ==============================================================================
+# STATISTICS
+# ==============================================================================
+statistics:
+  total_state_machines: 5
+  total_states: 30
+  total_transitions: 46
+  implemented_transitions: 44
+  future_transitions: 2
+  
+  states_by_machine:
+    GlobalStateMachine: 8
+    RecordingManagerSSM: 7
+    DSPThreadSSM: 5
+    UIStateMachine: 5
+    PlaybackSSM: 5
+    
+  transitions_by_machine:
+    GlobalStateMachine: 11
+    RecordingManagerSSM: 7
+    DSPThreadSSM: 6
+    UIStateMachine: 9
+    PlaybackSSM: 5
+    cross_machine: 8
+
+# ==============================================================================
+# NOTES
+# ==============================================================================
+notes:
+  - "This is Phase 1 (Lightweight Registry) - documentation only"
+  - "Phase 2 will use this file for code generation (v1.4.0+)"
+  - "Keep this file in sync with State-Registry-v1_3_2_1-Master-Reference-UPDATED.md"
+  - "TransitionIDs are now logged in format: [PREFIX] TXX: OLD_STATE ? NEW_STATE"
+  - "All state enums have Description attributes with UIDs"
+  - "StateChangedEventArgs includes TransitionID, OldStateUID, NewStateUID"

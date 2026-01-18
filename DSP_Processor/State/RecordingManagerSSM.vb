@@ -1,4 +1,5 @@
 ﻿Imports System.Threading
+Imports System.ComponentModel ' For Description attribute
 
 ''' <summary>
 ''' Satellite State Machine for RecordingManager
@@ -13,6 +14,9 @@ Public Class RecordingManagerSSM
 
     ' Lock for state transitions
     Private ReadOnly _stateLock As New Object()
+
+    ' Transition counter for generating unique TransitionIDs (State Registry Pattern)
+    Private _transitionCounter As Integer = 0
 
     ' Reference to RecordingManager (does NOT own - only controls)
     Private ReadOnly _recordingManager As Managers.RecordingManager
@@ -75,7 +79,8 @@ Public Class RecordingManagerSSM
 
             ' Check if transition is valid
             If Not IsValidTransition(oldState, newState) Then
-                Utils.Logger.Instance.Warning($"RecordingManagerSSM: Invalid transition {oldState} → {newState} (Reason: {reason})", "RecordingManagerSSM")
+                Dim logMessage = $"Invalid transition rejected: {oldState} → {newState} (Reason: {reason})"
+                Utils.Logger.Instance.Warning($"RecordingManagerSSM: {logMessage}", "RecordingManagerSSM")
                 Return False
             End If
 
@@ -87,11 +92,18 @@ Public Class RecordingManagerSSM
 
             OnStateEntering(oldState, newState)
 
-            ' Create event args
-            Dim args As New StateChangedEventArgs(Of RecordingManagerState)(oldState, newState, reason)
+            ' Generate TransitionID for State Registry Pattern
+            Dim transitionNum = System.Threading.Interlocked.Increment(_transitionCounter)
+            Dim oldStateUID = GetStateUID(oldState)
+            Dim newStateUID = GetStateUID(newState)
+            Dim transitionID = $"REC_T{transitionNum:D2}_{oldStateUID}_TO_{newStateUID}"
 
-            ' Log transition
-            Utils.Logger.Instance.Info($"RecordingManagerSSM: {args}", "RecordingManagerSSM")
+            ' Create event args with State Registry Pattern support
+            Dim args As New StateChangedEventArgs(Of RecordingManagerState)(
+                oldState, newState, reason, transitionID, oldStateUID, newStateUID)
+
+            ' ✅ LOG TRANSITION (State Registry Pattern - grep-friendly format)
+            Utils.Logger.Instance.Info(args.ToString(), "RecordingManagerSSM")
 
             ' Fire event
             RaiseEvent StateChanged(Me, args)
@@ -272,6 +284,18 @@ Public Class RecordingManagerSSM
         End Try
     End Sub
 
+    ''' <summary>
+    ''' Gets the UID for a state from its Description attribute (State Registry Pattern)
+    ''' </summary>
+    Private Shared Function GetStateUID(state As RecordingManagerState) As String
+        Dim field = GetType(RecordingManagerState).GetField(state.ToString())
+        If field Is Nothing Then Return state.ToString()
+        
+        Dim attr = CType(Attribute.GetCustomAttribute(field, GetType(ComponentModel.DescriptionAttribute)), 
+                        ComponentModel.DescriptionAttribute)
+        Return If(attr?.Description, state.ToString())
+    End Function
+
 #End Region
 
 End Class
@@ -279,26 +303,34 @@ End Class
 ''' <summary>
 ''' RecordingManager-specific states
 ''' These states track RecordingManager's lifecycle
+''' UIDs follow format: REC_{STATE} for State Registry Pattern
 ''' </summary>
 Public Enum RecordingManagerState
     ''' <summary>Not yet initialized</summary>
+    <Description("REC_UNINITIALIZED")>
     Uninitialized = 0
 
     ''' <summary>Idle and ready</summary>
+    <Description("REC_IDLE")>
     Idle = 1
 
     ''' <summary>Arming microphone</summary>
+    <Description("REC_ARMING")>
     Arming = 2
 
     ''' <summary>Armed and ready to record</summary>
+    <Description("REC_ARMED")>
     Armed = 3
 
     ''' <summary>Currently recording</summary>
+    <Description("REC_RECORDING")>
     Recording = 4
 
     ''' <summary>Stopping recording</summary>
+    <Description("REC_STOPPING")>
     Stopping = 5
 
     ''' <summary>Error state</summary>
+    <Description("REC_ERROR")>
     [Error] = 6
 End Enum

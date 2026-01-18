@@ -1,4 +1,5 @@
 ﻿Imports System.Threading
+Imports System.ComponentModel ' For Description attribute
 
 ''' <summary>
 ''' Satellite State Machine for Playback (AudioRouter)
@@ -13,6 +14,9 @@ Public Class PlaybackSSM
 
     ' Lock for state transitions
     Private ReadOnly _stateLock As New Object()
+
+    ' Transition counter for generating unique TransitionIDs (State Registry Pattern)
+    Private _transitionCounter As Integer = 0
 
     ' Reference to AudioRouter (does NOT own - only controls)
     Private ReadOnly _audioRouter As AudioIO.AudioRouter
@@ -87,11 +91,18 @@ Public Class PlaybackSSM
 
             OnStateEntering(oldState, newState)
 
-            ' Create event args
-            Dim args As New StateChangedEventArgs(Of PlaybackState)(oldState, newState, reason)
+            ' Generate TransitionID for State Registry Pattern
+            Dim transitionNum = System.Threading.Interlocked.Increment(_transitionCounter)
+            Dim oldStateUID = GetStateUID(oldState)
+            Dim newStateUID = GetStateUID(newState)
+            Dim transitionID = $"PLAY_T{transitionNum:D2}_{oldStateUID}_TO_{newStateUID}"
 
-            ' Log transition
-            Utils.Logger.Instance.Info($"PlaybackSSM: {args}", "PlaybackSSM")
+            ' Create event args with State Registry Pattern support
+            Dim args As New StateChangedEventArgs(Of PlaybackState)(
+                oldState, newState, reason, transitionID, oldStateUID, newStateUID)
+
+            ' ✅ LOG TRANSITION (State Registry Pattern - grep-friendly format)
+            Utils.Logger.Instance.Info(args.ToString(), "PlaybackSSM")
 
             ' Fire event
             RaiseEvent StateChanged(Me, args)
@@ -256,6 +267,18 @@ Public Class PlaybackSSM
         End Try
     End Sub
 
+    ''' <summary>
+    ''' Gets the UID for a state from its Description attribute (State Registry Pattern)
+    ''' </summary>
+    Private Shared Function GetStateUID(state As PlaybackState) As String
+        Dim field = GetType(PlaybackState).GetField(state.ToString())
+        If field Is Nothing Then Return state.ToString()
+        
+        Dim attr = CType(Attribute.GetCustomAttribute(field, GetType(ComponentModel.DescriptionAttribute)), 
+                        ComponentModel.DescriptionAttribute)
+        Return If(attr?.Description, state.ToString())
+    End Function
+
 #End Region
 
 End Class
@@ -263,20 +286,26 @@ End Class
 ''' <summary>
 ''' Playback-specific states
 ''' These states track playback lifecycle
+''' UIDs follow format: PLAY_{STATE} for State Registry Pattern
 ''' </summary>
 Public Enum PlaybackState
     ''' <summary>Not yet initialized</summary>
+    <Description("PLAY_UNINITIALIZED")>
     Uninitialized = 0
 
     ''' <summary>Idle (not playing)</summary>
+    <Description("PLAY_IDLE")>
     Idle = 1
 
     ''' <summary>Currently playing back audio</summary>
+    <Description("PLAY_PLAYING")>
     Playing = 2
 
     ''' <summary>Stopping playback</summary>
+    <Description("PLAY_STOPPING")>
     Stopping = 3
 
     ''' <summary>Error state</summary>
+    <Description("PLAY_ERROR")>
     [Error] = 4
 End Enum

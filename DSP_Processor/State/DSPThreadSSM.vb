@@ -1,4 +1,5 @@
 ﻿Imports System.Threading
+Imports System.ComponentModel ' For Description attribute
 
 ''' <summary>
 ''' Satellite State Machine for DSPThread
@@ -13,6 +14,9 @@ Public Class DSPThreadSSM
 
     ' Lock for state transitions
     Private ReadOnly _stateLock As New Object()
+
+    ' Transition counter for generating unique TransitionIDs (State Registry Pattern)
+    Private _transitionCounter As Integer = 0
 
     ' Reference to DSPThread (does NOT own - only controls)
     Private ReadOnly _dspThread As DSP.DSPThread
@@ -87,11 +91,18 @@ Public Class DSPThreadSSM
 
             OnStateEntering(oldState, newState)
 
-            ' Create event args
-            Dim args As New StateChangedEventArgs(Of DSPThreadState)(oldState, newState, reason)
+            ' Generate TransitionID for State Registry Pattern
+            Dim transitionNum = System.Threading.Interlocked.Increment(_transitionCounter)
+            Dim oldStateUID = GetStateUID(oldState)
+            Dim newStateUID = GetStateUID(newState)
+            Dim transitionID = $"DSP_T{transitionNum:D2}_{oldStateUID}_TO_{newStateUID}"
 
-            ' Log transition
-            Utils.Logger.Instance.Info($"DSPThreadSSM: {args}", "DSPThreadSSM")
+            ' Create event args with State Registry Pattern support
+            Dim args As New StateChangedEventArgs(Of DSPThreadState)(
+                oldState, newState, reason, transitionID, oldStateUID, newStateUID)
+
+            ' ✅ LOG TRANSITION (State Registry Pattern - grep-friendly format)
+            Utils.Logger.Instance.Info(args.ToString(), "DSPThreadSSM")
 
             ' Fire event
             RaiseEvent StateChanged(Me, args)
@@ -251,6 +262,18 @@ Public Class DSPThreadSSM
         End Try
     End Sub
 
+    ''' <summary>
+    ''' Gets the UID for a state from its Description attribute (State Registry Pattern)
+    ''' </summary>
+    Private Shared Function GetStateUID(state As DSPThreadState) As String
+        Dim field = GetType(DSPThreadState).GetField(state.ToString())
+        If field Is Nothing Then Return state.ToString()
+        
+        Dim attr = CType(Attribute.GetCustomAttribute(field, GetType(ComponentModel.DescriptionAttribute)), 
+                        ComponentModel.DescriptionAttribute)
+        Return If(attr?.Description, state.ToString())
+    End Function
+
 #End Region
 
 End Class
@@ -258,20 +281,26 @@ End Class
 ''' <summary>
 ''' DSPThread-specific states
 ''' These states track DSPThread worker thread lifecycle
+''' UIDs follow format: DSP_{STATE} for State Registry Pattern
 ''' </summary>
 Public Enum DSPThreadState
     ''' <summary>Not yet initialized</summary>
+    <Description("DSP_UNINITIALIZED")>
     Uninitialized = 0
 
     ''' <summary>Idle (worker thread not running)</summary>
+    <Description("DSP_IDLE")>
     Idle = 1
 
     ''' <summary>Worker thread running and processing audio</summary>
+    <Description("DSP_RUNNING")>
     Running = 2
 
     ''' <summary>Stopping worker thread</summary>
+    <Description("DSP_STOPPING")>
     Stopping = 3
 
     ''' <summary>Error state</summary>
+    <Description("DSP_ERROR")>
     [Error] = 4
 End Enum

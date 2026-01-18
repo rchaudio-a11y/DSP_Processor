@@ -1332,23 +1332,28 @@ Partial Public Class MainForm
         Try
             Logger.Instance.Info("🛑 AudioRouter playback stopped - NATURAL EOF DETECTED!", "MainForm")
 
-            ' PHASE 1 FIX: Fast-path EOF handling with immediate UI update
+            ' ✅ FIX: Transition GlobalStateMachine to Idle (GSM_T08)
+            ' This is the CORRECT way to handle EOF - let the state machine drive everything!
+            Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(
+                GlobalState.Idle, 
+                "Playback ended naturally (EOF)")
+            
+            If success Then
+                Logger.Instance.Info("✅ GSM_T08: Playing → Idle (EOF)", "MainForm")
+            Else
+                Logger.Instance.Error("❌ Failed to transition GlobalStateMachine to Idle after EOF", 
+                                     Nothing, "MainForm")
+            End If
 
-            ' Update TransportControl immediately
-            transportControl.State = UI.TransportControl.TransportState.Stopped
-            transportControl.TrackPosition = TimeSpan.Zero
-            transportControl.TrackDuration = TimeSpan.Zero
+            ' UI will be updated automatically via UIStateMachine.StateChanged event handler
+            ' TransportControl state is managed by OnUIStateChanged() - no manual update needed!
 
-            ' Stop timer
+            ' Stop timer and reset playback controls
             TimerPlayback.Stop()
             progressPlayback.Value = 0
             btnStopPlayback.Enabled = False
 
-            ' Update UI immediately
-            panelLED.BackColor = Color.Orange ' Orange = Stopping (will turn yellow when mic armed)
-            lblStatus.Text = "Status: Playback Complete, Re-arming..."
-
-            Logger.Instance.Info("✅ EOF: UI updated immediately (<50ms)", "MainForm")
+            Logger.Instance.Info("✅ EOF: State machine transition complete", "MainForm")
 
             ' Re-arm microphone in background (don't block)
             Task.Run(Sub()
@@ -1356,7 +1361,7 @@ Partial Public Class MainForm
                              Logger.Instance.Info("Background: Re-arming microphone after EOF...", "MainForm")
                              recordingManager.ArmMicrophone()
 
-                             ' Update UI when mic is ready
+                             ' Update status when mic is ready
                              BeginInvoke(Sub()
                                              panelLED.BackColor = Color.Yellow
                                              lblStatus.Text = "Status: Ready (Mic Armed)"
