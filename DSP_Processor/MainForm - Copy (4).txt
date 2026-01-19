@@ -1,0 +1,2347 @@
+﻿Imports System.IO
+Imports System.Reactive.Disposables
+Imports System.Reactive.Linq
+Imports System.Reactive.Subjects
+Imports DSP_Processor.AudioIO
+Imports DSP_Processor.Recording
+Imports DSP_Processor.UI
+Imports DSP_Processor.Utils
+Imports DSP_Processor.Visualization
+Imports DSP_Processor.Managers
+Imports DSP_Processor.Audio.Routing
+Imports DSP_Processor.Cognitive
+Imports DSP_Processor.State
+Imports NAudio.Wave
+
+Partial Public Class MainForm
+    ' MANAGERS (New architecture!)
+    Private settingsManager As SettingsManager
+    Private fileManager As FileManager
+    Private recordingManager As RecordingManager
+    Private playbackManager As PlaybackManager
+    Private spectrumManager As SpectrumManager ' Task 2.0.4: FFT processing
+
+    ' Audio Router (Phase 2.0)
+    Private audioRouter As AudioIO.AudioRouter
+
+    ' Audio Pipeline Router (Phase 2 Foundation - SHARED INSTANCE)
+    Private pipelineRouter As AudioPipelineRouter
+
+    ' Cognitive Layer (v1.x)
+    Private _cognitiveLayer As CognitiveLayer
+
+    ' 🆕 REACTIVE: Composite disposable for all reactive subscriptions
+    Private _reactiveSubscriptions As New CompositeDisposable()
+
+    ' 🆕 REACTIVE: Buffer stream for throttled UI updates (Phase 7 Cleanup!)
+    Private ReadOnly _bufferStream As New Subject(Of AudioBufferEventArgs)
+
+    ' PHASE 2.7: Tap Point Reader Tracking
+    Private tapReaders As New List(Of String)() ' Track reader IDs for cleanup
+
+    ' Form load state
+    Private isFormFullyLoaded As Boolean = False
+
+    ' 🔧 VB.NET + .NET 10 FIX: Manual constructor to wire ALL events
+    ' (Handles clause causes delegate binding crash in .NET 10)
+    Public Sub New()
+        ' This call is required by the designer
+        InitializeComponent()
+
+        ' Wire ALL events manually instead of using Handles clause
+        AddHandler Me.Load, AddressOf MainForm_Load
+        AddHandler lstRecordings.DoubleClick, AddressOf lstRecordings_DoubleClick
+        AddHandler lstRecordings.SelectedIndexChanged, AddressOf lstRecordings_SelectedIndexChanged
+        AddHandler btnDelete.Click, AddressOf btnDelete_Click
+        AddHandler btnStopPlayback.Click, AddressOf btnStopPlayback_Click
+        AddHandler TimerPlayback.Tick, AddressOf TimerPlayback_Tick
+        AddHandler btnClearLogs.Click, AddressOf btnClearLogs_Click
+        AddHandler btnSaveLogs.Click, AddressOf btnSaveLogs_Click
+        AddHandler cmbLogLevel.SelectedIndexChanged, AddressOf cmbLogLevel_SelectedIndexChanged
+        AddHandler tabProgram.Click, AddressOf tabProgram_Click
+    End Sub
+
+    ' 🔧 FIX: Removed "Handles MyBase.Load" to avoid VB.NET + .NET 10 delegate binding bug
+    ' Wired manually in constructor instead
+    Private Sub MainForm_Load(sender As Object, e As EventArgs)
+
+        ' APPLY DARK THEME FIRST!
+        DarkTheme.ApplyToForm(Me)
+        DarkTheme.ApplyDangerButton(btnDelete)
+
+        ' DEBUG: List all embedded resources
+        Logger.Instance.Info("=== Embedded Resources ===", "MainForm")
+        Dim resources = Utils.ResourceDeployer.ListEmbeddedResources()
+        For Each resource In resources
+            Logger.Instance.Info($"  - {resource}", "MainForm")
+        Next
+        Logger.Instance.Info($"Total: {resources.Length} embedded resources", "MainForm")
+
+        ' Deploy embedded test audio files (white noise, etc.)
+        Utils.ResourceDeployer.DeployTestAudioFiles()
+
+        ' Create managers
+        InitializeManagers()
+
+        ' Create playback manager BEFORE wiring events
+        playbackManager = New PlaybackManager()
+        playbackManager.Initialize()
+
+        ' Create spectrum manager (Task 2.0.4)
+        spectrumManager = New SpectrumManager()
+        spectrumManager.Initialize(4096, 44100)
+
+        ' NOW wire up events (all objects exist!)
+        WireManagerEvents()
+        WirePlaybackEvents()
+        WireTransportEvents()
+        WireUIEvents()
+        WireAudioSettingsPanel()
+        WireInputTabPanel()
+        WireAudioPipelinePanel()
+        WireRoutingPanel()
+        WireSpectrumSettingsPanel()
+        WireDSPSignalFlowPanel()
+
+        ' Load all settings (this will trigger OnSettingsLoaded event)
+        settingsManager.LoadAll()
+
+        ' Apply settings to AudioSettingsPanel and InputTabPanel
+        AudioSettingsPanel1.LoadSettings(settingsManager.AudioSettings)
+        InputTabPanel1.LoadSettings(settingsManager.MeterSettings)
+
+        ' Initialize AudioPipelinePanel with injected router (prevents duplicate router instances)
+        AudioPipelinePanel1.SetRouter(pipelineRouter)
+        AudioPipelinePanel1.Initialize()
+
+        ' Initialize RoutingPanel
+        InitializeRoutingPanel()
+
+        ' Initialize SpectrumSettingsPanel  
+        SpectrumSettingsPanel1.LoadSettings(settingsManager.SpectrumSettings)
+
+        ' Apply meter settings
+        ApplyMeterSettings(settingsManager.MeterSettings)
+
+        ' Apply spectrum settings
+        ApplySpectrumSettings(settingsManager.SpectrumSettings)
+
+        ' Apply dark theme to visualization tabs
+        DarkTheme.ApplyToControl(visualizationTabs)
+
+        ' NOTE: Volume control removed - use AudioPipelinePanel or DSPSignalFlowPanel for gain control
+
+        ' Start timers for UI updates
+        ' NOTE: TimerMeters removed - DSPSignalFlowPanel now event-driven via OnRecordingBufferAvailable!
+        ' TimerPlayback will be started when playback begins (in OnPlaybackStarted)
+
+        ' NOTE: Microphone will be armed after settings are loaded (in OnSettingsLoaded)
+
+        ' Update UI state (will be updated again after mic arms)
+        lblStatus.Text = "Status: Initializing..."
+        btnStopPlayback.Enabled = False
+
+        ' ===== TEST: AudioPipelineRouter (DORMANT - Tested Successfully!) =====
+        ' Uncomment the following block to test the router:
+        '
+        ' Logger.Instance.Info("=== TESTING AudioPipelineRouter ===", "MainForm")
+        ' testRouter = New AudioPipelineRouter()
+        ' testRouter.Initialize()
+        ' Logger.Instance.Info("Router initialized successfully", "MainForm")
+        ' Logger.Instance.Info($"Available templates: {String.Join(", ", testRouter.AvailableTemplates)}", "MainForm")
+        '
+        ' ' Test applying a template
+        ' If testRouter.ApplyTemplate("Simple Record") Then
+        '     Logger.Instance.Info("Applied 'Simple Record' template", "MainForm")
+        '     Logger.Instance.Info($"Current routing:{Environment.NewLine}{testRouter.GetActiveRoutingMap()}", "MainForm")
+        ' End If
+        '
+        ' ' Test saving current as template
+        ' If testRouter.SaveCurrentAsTemplate("My Test Config") Then
+        '     Logger.Instance.Info("Saved current config as 'My Test Config'", "MainForm")
+        ' End If
+        '
+        ' Logger.Instance.Info("=== AudioPipelineRouter Test Complete ===", "MainForm")
+
+        Logger.Instance.Info("DSP Processor started", "MainForm")
+
+        ' 🆕 TEST: Reactive SSM will run AFTER StateCoordinator initializes (in DeferredArmTimer_Tick)
+
+        ' ✅ REACTIVE: Defer microphone arming using Observable.Timer (Phase 7 Cleanup!)
+        ' This replaces the old Timer pattern with reactive delay
+        Observable.Timer(TimeSpan.FromMilliseconds(500)) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub() DeferredArmTimer_Tick(Nothing, EventArgs.Empty)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Services.LoggingServiceAdapter.Instance.LogInfo("Form load complete - microphone will arm in 500ms")
+    End Sub
+
+#Region "Initialization"
+
+    Private Sub InitializeManagers()
+        ' Create settings manager
+        settingsManager = New SettingsManager()
+        Logger.Instance.Info("SettingsManager created", "MainForm")
+
+        ' Create file manager
+        fileManager = New FileManager()
+        Logger.Instance.Info("FileManager created", "MainForm")
+
+        ' Create recording manager
+        recordingManager = New RecordingManager()
+        Logger.Instance.Info("RecordingManager created", "MainForm")
+
+        ' Create audio router (Phase 2.0)
+        audioRouter = New AudioIO.AudioRouter()
+        audioRouter.Initialize()
+        Logger.Instance.Info("AudioRouter created", "MainForm")
+
+        ' Create pipeline router (Phase 2 Foundation - shared instance)
+        pipelineRouter = New AudioPipelineRouter()
+        pipelineRouter.Initialize()
+        Logger.Instance.Info("AudioPipelineRouter created (shared instance)", "MainForm")
+    End Sub
+
+    Private Sub WireManagerEvents()
+        ' ✅ REACTIVE: Convert SettingsManager events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler settingsManager.SettingsLoaded, h,
+            Sub(h) RemoveHandler settingsManager.SettingsLoaded, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(args) OnSettingsLoaded(Nothing, args)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler settingsManager.SettingsSaved, h,
+            Sub(h) RemoveHandler settingsManager.SettingsSaved, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(args) OnSettingsSaved(Nothing, args)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' ✅ REACTIVE: Convert FileManager events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler fileManager.FileListChanged, h,
+            Sub(h) RemoveHandler fileManager.FileListChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(args) OnFileListChanged(Nothing, args)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler(Of String), String)(
+            Sub(h) AddHandler fileManager.FileDeleted, h,
+            Sub(h) RemoveHandler fileManager.FileDeleted, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(filepath) OnFileDeleted(Nothing, filepath)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler(Of String), String)(
+            Sub(h) AddHandler fileManager.FileValidationFailed, h,
+            Sub(h) RemoveHandler fileManager.FileValidationFailed, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(message) OnFileValidationFailed(Nothing, message)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' ✅ REACTIVE: Convert RecordingManager events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of TimeSpan), TimeSpan)(
+            Sub(h) AddHandler recordingManager.RecordingTimeUpdated, h,
+            Sub(h) RemoveHandler recordingManager.RecordingTimeUpdated, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(duration) OnRecordingTimeUpdated(Nothing, duration)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' Using conversion function to work around VB.NET delegate binding issue in .NET 10
+        Observable.FromEvent(Of EventHandler(Of AudioBufferEventArgs), AudioBufferEventArgs)(
+            Function(handler) New EventHandler(Of AudioBufferEventArgs)(Sub(sender, args) handler(args)),
+            Sub(h) AddHandler recordingManager.BufferAvailable, h,
+            Sub(h) RemoveHandler recordingManager.BufferAvailable, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnRecordingBufferAvailable(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler(Of Boolean), Boolean)(
+            Sub(h) AddHandler recordingManager.MicrophoneArmed, h,
+            Sub(h) RemoveHandler recordingManager.MicrophoneArmed, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(isArmed) OnMicrophoneArmed(Nothing, isArmed)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Logger.Instance.Info("✅ Manager events wired reactively (Settings + File + Recording)", "MainForm")
+    End Sub
+
+    Private Sub WirePlaybackEvents()
+        ' ✅ REACTIVE: Convert PlaybackManager events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of String), String)(
+            Sub(h) AddHandler playbackManager.PlaybackStarted, h,
+            Sub(h) RemoveHandler playbackManager.PlaybackStarted, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(filepath) OnPlaybackStarted(Nothing, filepath)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler(Of NAudio.Wave.StoppedEventArgs), NAudio.Wave.StoppedEventArgs)(
+            Sub(h) AddHandler playbackManager.PlaybackStopped, h,
+            Sub(h) RemoveHandler playbackManager.PlaybackStopped, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnPlaybackStopped(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler(Of TimeSpan), TimeSpan)(
+            Sub(h) AddHandler playbackManager.PositionChanged, h,
+            Sub(h) RemoveHandler playbackManager.PositionChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(position) OnPositionChanged(Nothing, position)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' ✅ REACTIVE: Convert AudioRouter events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of String), String)(
+            Sub(h) AddHandler audioRouter.PlaybackStarted, h,
+            Sub(h) RemoveHandler audioRouter.PlaybackStarted, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(filename) OnAudioRouterPlaybackStarted(Nothing, filename)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler audioRouter.PlaybackStopped, h,
+            Sub(h) RemoveHandler audioRouter.PlaybackStopped, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnAudioRouterPlaybackStopped(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler(Of TimeSpan), TimeSpan)(
+            Sub(h) AddHandler audioRouter.PositionChanged, h,
+            Sub(h) RemoveHandler audioRouter.PositionChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(position) OnAudioRouterPositionChanged(Nothing, position)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Logger.Instance.Info("✅ Playback events wired reactively (PlaybackManager + AudioRouter)", "MainForm")
+    End Sub
+
+    Private Sub WireTransportEvents()
+        ' ✅ REACTIVE: Convert TransportControl events to reactive streams (Phase 7 Cleanup!)
+
+        ' Record button clicked
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler transportControl.RecordClicked, h,
+            Sub(h) RemoveHandler transportControl.RecordClicked, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(args) OnTransportRecord(Nothing, args)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' Stop button clicked
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler transportControl.StopClicked, h,
+            Sub(h) RemoveHandler transportControl.StopClicked, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(args) OnTransportStop(Nothing, args)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' Play button clicked
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler transportControl.PlayClicked, h,
+            Sub(h) RemoveHandler transportControl.PlayClicked, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(args) OnTransportPlay(Nothing, args)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' Pause button clicked
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler transportControl.PauseClicked, h,
+            Sub(h) RemoveHandler transportControl.PauseClicked, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(args) OnTransportPause(Nothing, args)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' Position changed
+        Observable.FromEvent(Of EventHandler(Of TimeSpan), TimeSpan)(
+            Sub(h) AddHandler transportControl.PositionChanged, h,
+            Sub(h) RemoveHandler transportControl.PositionChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(position) OnTransportPositionChanged(Nothing, position)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Logger.Instance.Info("✅ TransportControl events wired reactively", "MainForm")
+    End Sub
+
+    Private Sub WireUIEvents()
+        ' ✅ REACTIVE: Convert Logging events (Phase 7 Cleanup!)
+        ' Using conversion function to work around VB.NET delegate binding issue in .NET 10
+        Observable.FromEvent(Of EventHandler(Of Services.Interfaces.LogMessageEventArgs), Services.Interfaces.LogMessageEventArgs)(
+            Function(handler) New EventHandler(Of Services.Interfaces.LogMessageEventArgs)(Sub(sender, args) handler(args)),
+            Sub(h) AddHandler Services.LoggingServiceAdapter.Instance.LogMessageReceived, h,
+            Sub(h) RemoveHandler Services.LoggingServiceAdapter.Instance.LogMessageReceived, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnLogMessage(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' ✅ REACTIVE: Convert RoutingPanel events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of String), String)(
+            Sub(h) AddHandler RoutingPanel1.InputSourceChanged, h,
+            Sub(h) RemoveHandler RoutingPanel1.InputSourceChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(inputSource) OnRoutingPanelInputSourceChanged(Nothing, inputSource)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler(Of Integer), Integer)(
+            Sub(h) AddHandler RoutingPanel1.OutputDeviceChanged, h,
+            Sub(h) RemoveHandler RoutingPanel1.OutputDeviceChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(deviceIndex) OnRoutingPanelOutputDeviceChanged(Nothing, deviceIndex)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler RoutingPanel1.BrowseFileClicked, h,
+            Sub(h) RemoveHandler RoutingPanel1.BrowseFileClicked, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnRoutingPanelBrowseFileClicked(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' ✅ REACTIVE: Convert AudioRouter FFT events (Phase 7 Cleanup!)
+        ' Using conversion function to work around VB.NET delegate binding issue in .NET 10
+        Observable.FromEvent(Of EventHandler(Of AudioIO.AudioSamplesEventArgs), AudioIO.AudioSamplesEventArgs)(
+            Function(handler) New EventHandler(Of AudioIO.AudioSamplesEventArgs)(Sub(sender, args) handler(args)),
+            Sub(h) AddHandler audioRouter.InputSamplesAvailable, h,
+            Sub(h) RemoveHandler audioRouter.InputSamplesAvailable, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnDSPInputSamples(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler(Of AudioIO.AudioSamplesEventArgs), AudioIO.AudioSamplesEventArgs)(
+            Function(handler) New EventHandler(Of AudioIO.AudioSamplesEventArgs)(Sub(sender, args) handler(args)),
+            Sub(h) AddHandler audioRouter.OutputSamplesAvailable, h,
+            Sub(h) RemoveHandler audioRouter.OutputSamplesAvailable, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnDSPOutputSamples(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler audioRouter.PlaybackCompleted, h,
+            Sub(h) RemoveHandler audioRouter.PlaybackCompleted, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnPlaybackCompleted(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' ✅ REACTIVE: Convert FFTMonitor.SpectrumReady event (Phase 7 Cleanup!)
+        ' Using conversion function to work around VB.NET delegate binding issue in .NET 10
+        Observable.FromEvent(Of EventHandler(Of DSP.FFT.SpectrumReadyEventArgs), DSP.FFT.SpectrumReadyEventArgs)(
+            Function(handler) New EventHandler(Of DSP.FFT.SpectrumReadyEventArgs)(Sub(sender, args) handler(args)),
+            Sub(h) AddHandler pipelineRouter.FFTMonitor.SpectrumReady, h,
+            Sub(h) RemoveHandler pipelineRouter.FFTMonitor.SpectrumReady, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnSpectrumReady(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Logger.Instance.Info("✅ UI events wired reactively (Logging + RoutingPanel + AudioRouter FFT + FFTMonitor)", "MainForm")
+    End Sub
+
+    Private Sub WireAudioSettingsPanel()
+        ' ✅ REACTIVE: Convert AudioSettingsPanel events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of Managers.AudioDeviceSettings), Managers.AudioDeviceSettings)(
+            Sub(h) AddHandler AudioSettingsPanel1.SettingsChanged, h,
+            Sub(h) RemoveHandler AudioSettingsPanel1.SettingsChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(settings) OnAudioSettingsChanged(Nothing, settings)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Logger.Instance.Info("✅ AudioSettingsPanel wired reactively", "MainForm")
+    End Sub
+
+    Private Sub WireInputTabPanel()
+        ' ✅ REACTIVE: Convert InputTabPanel events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of Models.MeterSettings), Models.MeterSettings)(
+            Sub(h) AddHandler InputTabPanel1.SettingsChanged, h,
+            Sub(h) RemoveHandler InputTabPanel1.SettingsChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(settings) OnMeterSettingsChanged(Nothing, settings)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Logger.Instance.Info("✅ InputTabPanel wired reactively", "MainForm")
+    End Sub
+
+    Private Sub WireAudioPipelinePanel()
+        ' ✅ REACTIVE: Convert AudioPipelinePanel events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of PipelineConfiguration), PipelineConfiguration)(
+            Sub(h) AddHandler AudioPipelinePanel1.ConfigurationChanged, h,
+            Sub(h) RemoveHandler AudioPipelinePanel1.ConfigurationChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(config) OnPipelineConfigurationChanged(Nothing, config)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' Inject RecordingManager for real-time gain control
+        If recordingManager IsNot Nothing Then
+            AudioPipelinePanel1.SetRecordingManager(recordingManager)
+            Logger.Instance.Info("RecordingManager injected into AudioPipelinePanel", "MainForm")
+        End If
+
+        Logger.Instance.Info("✅ AudioPipelinePanel wired reactively", "MainForm")
+    End Sub
+
+    Private Sub WireRoutingPanel()
+        ' RoutingPanel events already wired in WireUIEvents
+        Logger.Instance.Info("RoutingPanel wired", "MainForm")
+    End Sub
+
+    Private Sub WireSpectrumSettingsPanel()
+        ' ✅ REACTIVE: Convert SpectrumSettingsPanel events (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of Models.SpectrumSettings), Models.SpectrumSettings)(
+            Sub(h) AddHandler SpectrumSettingsPanel1.SettingsChanged, h,
+            Sub(h) RemoveHandler SpectrumSettingsPanel1.SettingsChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(settings) OnSpectrumSettingsChanged(Nothing, settings)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Observable.FromEvent(Of EventHandler, EventArgs)(
+            Sub(h) AddHandler SpectrumSettingsPanel1.ResetRequested, h,
+            Sub(h) RemoveHandler SpectrumSettingsPanel1.ResetRequested, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(e) OnSpectrumResetRequested(Nothing, e)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        Logger.Instance.Info("✅ SpectrumSettingsPanel wired reactively", "MainForm")
+    End Sub
+
+    Private Sub WireDSPSignalFlowPanel()
+        ' Wire DSP Signal Flow Panel to AudioRouter's GainProcessor
+        ' The AudioRouter now exposes its GainProcessor for UI control
+        If audioRouter IsNot Nothing Then
+            ' Note: GainProcessor won't exist until PlayFile() is called
+            ' We'll wire it when playback starts
+            Logger.Instance.Info("DSPSignalFlowPanel wiring deferred until playback starts", "MainForm")
+        Else
+            Logger.Instance.Warning("Cannot wire DSPSignalFlowPanel - audioRouter is Nothing", "MainForm")
+        End If
+    End Sub
+
+
+
+
+
+    ''' <summary>Deferred microphone arming - called 500ms after form load completes</summary>
+    Private Sub DeferredArmTimer_Tick(sender As Object, e As EventArgs)
+        ' CRITICAL: Prevent duplicate execution if timer fires twice before we can stop it
+        If isFormFullyLoaded Then
+            Utils.Logger.Instance.Warning("DeferredArmTimer_Tick called again after form already loaded - ignoring duplicate", "MainForm")
+            Return
+        End If
+
+        ' Mark form as fully loaded
+        isFormFullyLoaded = True
+
+        ' PHASE 5 STEP 21: Initialize StateCoordinator BEFORE arming microphone
+        ' This creates all state machines and transitions to Idle state
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo("Initializing StateCoordinator...")
+
+            ' Get DSPThread reference from RecordingManager
+            ' Note: DSPThread is created when microphone is armed, so we'll pass Nothing for now
+            ' DSPThreadSSM will be wired after arming
+            Dim dspThreadRef As DSP.DSPThread = Nothing
+            If recordingManager IsNot Nothing AndAlso recordingManager.TapManager IsNot Nothing Then
+                ' Try to get DSPThread from TapManager (may be Nothing if not yet armed)
+                ' This is OK - DSPThreadSSM will handle Nothing gracefully
+            End If
+
+            ' Initialize StateCoordinator with subsystem references
+            StateCoordinator.Instance.Initialize(
+                recordingManager,
+                dspThreadRef,  ' May be Nothing - will be wired after mic armed
+                audioRouter,
+                Me)
+
+            ' ✅ REACTIVE: Subscribe to UIStateMachine.StateChanges for UI updates (Phase 7 Cleanup!)
+            ' This is THE reactive pattern - automatic UI thread marshaling, proper cleanup
+            StateCoordinator.Instance.UIStateMachine.StateChanges _
+                .ObserveOnUI(Me) _
+                .Subscribe(Sub(transition)
+                               ' Adapt StateTransition to old StateChangedEventArgs format
+                               ' TODO: Refactor OnUIStateChanged to use StateTransition directly
+                               Dim args = New StateChangedEventArgs(Of UIState)(
+                                   transition.OldState, transition.NewState, transition.Reason,
+                                   transition.TransitionID, "", "")
+                               OnUIStateChanged(Nothing, args)
+                           End Sub) _
+                .DisposeWith(_reactiveSubscriptions)
+
+            ' 🆕 REACTIVE: Wire all SSMs to reactive subscriptions (Phase 2.1!)
+            WireReactiveSSMs()
+
+            Services.LoggingServiceAdapter.Instance.LogInfo("✅ StateCoordinator initialized - System IDLE")
+            Utils.Logger.Instance.Info("StateCoordinator initialized successfully", "MainForm")
+
+            ' Initialize Cognitive Layer (v1.x) - Only if not already initialized!
+            If _cognitiveLayer Is Nothing Then
+                _cognitiveLayer = New CognitiveLayer(StateCoordinator.Instance)
+                Utils.Logger.Instance.Info("CognitiveLayer initialized (WorkingMemory, HabitAnalyzer, AttentionSpotlight)", "MainForm")
+            Else
+                Utils.Logger.Instance.Warning("CognitiveLayer already initialized - skipping duplicate creation", "MainForm")
+            End If
+
+            ' Initialize Cognitive Dashboard (if exists in tabs)
+            InitializeCognitiveDashboard()
+
+            ' 🧠 Initialize Smart State Debugger Panel (Phase 7 Capstone!)
+            InitializeStateDebuggerPanel()
+
+            ' 🆕 TEST: Reactive SSM (Phase 7.2) - NOW that StateCoordinator is initialized!
+            TestReactiveSSM()
+
+            ' ✅ REACTIVE: Setup throttled buffer processing (Phase 7 Cleanup!)
+            ' This replaces manual DateTime throttling with reactive .Sample()
+            _bufferStream _
+                .Sample(TimeSpan.FromMilliseconds(50)) _
+                .ObserveOnUI(Me) _
+                .Subscribe(Sub(bufferArgs) ProcessBufferThrottled(bufferArgs)) _
+                .DisposeWith(_reactiveSubscriptions)
+
+            Utils.Logger.Instance.Info("✅ Reactive buffer throttling established (20 FPS)", "MainForm")
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to initialize StateCoordinator: {ex.Message}", ex)
+            Utils.Logger.Instance.Error("StateCoordinator initialization failed", ex, "MainForm")
+            MessageBox.Show($"Critical error initializing state system:{vbCrLf}{ex.Message}",
+                           "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            Return ' Don't arm microphone if StateCoordinator failed
+        End Try
+
+        ' Now arm the microphone
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo("Arming microphone (deferred)")
+            recordingManager.ArmMicrophone()
+            Services.LoggingServiceAdapter.Instance.LogInfo("Microphone armed successfully")
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to arm microphone: {ex.Message}", ex)
+            MessageBox.Show($"Warning: Failed to initialize audio input.{Environment.NewLine}{ex.Message}", "Audio Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+        End Try
+
+        ' Update UI
+        lblStatus.Text = "Status: Ready (Mic Armed)"
+    End Sub
+
+#End Region
+
+#Region "🆕 REACTIVE SSM SUBSCRIPTIONS (Phase 2.1)"
+
+    ''' <summary>
+    ''' 🆕 REACTIVE: Wire all State Machine subscriptions (Phase 2.1 - Final Cleanup!)
+    ''' This replaces old event handlers with reactive streams for ALL SSMs
+    ''' </summary>
+    Private Sub WireReactiveSSMs()
+        Utils.Logger.Instance.Info("🔗 Wiring reactive SSM subscriptions...", "MainForm")
+
+        Try
+            ' 1️⃣ AudioDeviceSSM - Audio device state changes
+            Utils.Logger.Instance.Info("  Wiring AudioDeviceSSM...", "MainForm")
+
+            Utils.Logger.Instance.Info("    Getting StateCoordinator.Instance...", "MainForm")
+            Dim coordinator = StateCoordinator.Instance
+
+            Utils.Logger.Instance.Info("    Getting AudioDeviceSSM...", "MainForm")
+            Dim audioDeviceSSM = coordinator.AudioDeviceSSM
+
+            Utils.Logger.Instance.Info("    Getting StateChanges property...", "MainForm")
+            Dim stateChanges = audioDeviceSSM.StateChanges
+
+            Utils.Logger.Instance.Info("    Calling ObserveOnUI...", "MainForm")
+            Dim observableOnUI = stateChanges.ObserveOnUI(Me)
+
+            Utils.Logger.Instance.Info("    Calling Subscribe...", "MainForm")
+            Dim subscription = observableOnUI.Subscribe(Sub(transition)
+                                                            Utils.Logger.Instance.Info(
+                                   $"🎧 AudioDevice: {transition.OldState} → {transition.NewState} ({transition.Reason})",
+                                   "MainForm")
+                                                        End Sub)
+
+            Utils.Logger.Instance.Info("    Calling DisposeWith...", "MainForm")
+            subscription.DisposeWith(_reactiveSubscriptions)
+
+            Utils.Logger.Instance.Info("  ✅ AudioDeviceSSM wired", "MainForm")
+        Catch ex As Exception
+            Utils.Logger.Instance.Error("❌ AudioDeviceSSM wiring FAILED", ex, "MainForm")
+            Throw
+        End Try
+
+        Try
+
+            Utils.Logger.Instance.Info("  ✅ AudioDeviceSSM wired", "MainForm")
+        Catch ex As Exception
+            Utils.Logger.Instance.Error("❌ AudioDeviceSSM wiring FAILED", ex, "MainForm")
+            Throw
+        End Try
+
+        Try
+            ' 2️⃣ AudioInputSSM - Audio input routing changes
+            Utils.Logger.Instance.Info("  Wiring AudioInputSSM...", "MainForm")
+            StateCoordinator.Instance.AudioInputSSM.StateChanges _
+                .ObserveOnUI(Me) _
+                .Subscribe(Sub(transition)
+                               Utils.Logger.Instance.Info(
+                                   $"🎤 AudioInput: {transition.OldState} → {transition.NewState} ({transition.Reason})",
+                                   "MainForm")
+                           End Sub) _
+                .DisposeWith(_reactiveSubscriptions)
+            Utils.Logger.Instance.Info("  ✅ AudioInputSSM wired", "MainForm")
+        Catch ex As Exception
+            Utils.Logger.Instance.Error("❌ AudioInputSSM wiring FAILED", ex, "MainForm")
+            Throw
+        End Try
+
+        Try
+            ' 3️⃣ AudioRoutingSSM - Audio routing configuration changes
+            Utils.Logger.Instance.Info("  Wiring AudioRoutingSSM...", "MainForm")
+            StateCoordinator.Instance.AudioRoutingSSM.StateChanges _
+                .ObserveOnUI(Me) _
+                .Subscribe(Sub(transition)
+                               Utils.Logger.Instance.Info(
+                                   $"🔀 AudioRouting: {transition.OldState} → {transition.NewState} ({transition.Reason})",
+                                   "MainForm")
+                           End Sub) _
+                .DisposeWith(_reactiveSubscriptions)
+            Utils.Logger.Instance.Info("  ✅ AudioRoutingSSM wired", "MainForm")
+        Catch ex As Exception
+            Utils.Logger.Instance.Error("❌ AudioRoutingSSM wiring FAILED", ex, "MainForm")
+            Throw
+        End Try
+
+        Try
+            ' 4️⃣ DSPModeSSM - DSP mode changes
+            Utils.Logger.Instance.Info("  Wiring DSPModeSSM...", "MainForm")
+            StateCoordinator.Instance.DSPModeSSM.StateChanges _
+                .ObserveOnUI(Me) _
+                .Subscribe(Sub(transition)
+                               Utils.Logger.Instance.Info(
+                                   $"⚙️ DSPMode: {transition.OldState} → {transition.NewState} ({transition.Reason})",
+                                   "MainForm")
+                           End Sub) _
+                .DisposeWith(_reactiveSubscriptions)
+            Utils.Logger.Instance.Info("  ✅ DSPModeSSM wired", "MainForm")
+        Catch ex As Exception
+            Utils.Logger.Instance.Error("❌ DSPModeSSM wiring FAILED", ex, "MainForm")
+            Throw
+        End Try
+
+        Try
+            ' 5️⃣ PlaybackSSM - Playback state changes
+            Utils.Logger.Instance.Info("  Wiring PlaybackSSM...", "MainForm")
+            StateCoordinator.Instance.PlaybackSSM.StateChanges _
+                .ObserveOnUI(Me) _
+                .Subscribe(Sub(transition)
+                               Utils.Logger.Instance.Info(
+                                   $"▶️ Playback: {transition.OldState} → {transition.NewState} ({transition.Reason})",
+                                   "MainForm")
+                           End Sub) _
+                .DisposeWith(_reactiveSubscriptions)
+            Utils.Logger.Instance.Info("  ✅ PlaybackSSM wired", "MainForm")
+        Catch ex As Exception
+            Utils.Logger.Instance.Error("❌ PlaybackSSM wiring FAILED", ex, "MainForm")
+            Throw
+        End Try
+
+        Try
+            ' 6️⃣ RecordingManagerSSM - Recording manager state changes
+            Utils.Logger.Instance.Info("  Wiring RecordingManagerSSM...", "MainForm")
+            StateCoordinator.Instance.RecordingManagerSSM.StateChanges _
+                .ObserveOnUI(Me) _
+                .Subscribe(Sub(transition)
+                               Utils.Logger.Instance.Info(
+                                   $"⏺️ RecordingManager: {transition.OldState} → {transition.NewState} ({transition.Reason})",
+                                   "MainForm")
+                           End Sub) _
+                .DisposeWith(_reactiveSubscriptions)
+            Utils.Logger.Instance.Info("  ✅ RecordingManagerSSM wired", "MainForm")
+        Catch ex As Exception
+            Utils.Logger.Instance.Error("❌ RecordingManagerSSM wiring FAILED", ex, "MainForm")
+            Throw
+        End Try
+
+        Try
+            ' 7️⃣ DSPThreadSSM - DSP thread state changes
+            Utils.Logger.Instance.Info("  Wiring DSPThreadSSM...", "MainForm")
+            StateCoordinator.Instance.DSPThreadSSM.StateChanges _
+                .ObserveOnUI(Me) _
+                .Subscribe(Sub(transition)
+                               Utils.Logger.Instance.Info(
+                                   $"🧵 DSPThread: {transition.OldState} → {transition.NewState} ({transition.Reason})",
+                                   "MainForm")
+                           End Sub) _
+                .DisposeWith(_reactiveSubscriptions)
+            Utils.Logger.Instance.Info("  ✅ DSPThreadSSM wired", "MainForm")
+        Catch ex As Exception
+            Utils.Logger.Instance.Error("❌ DSPThreadSSM wiring FAILED", ex, "MainForm")
+            Throw
+        End Try
+
+        ' 8️⃣ UIStateMachine - Already wired in DeferredArmTimer_Tick!
+        ' (Kept separate because it drives UI updates)
+
+        Utils.Logger.Instance.Info("✅ All SSMs wired reactively (7 streams + UIStateMachine)", "MainForm")
+        Services.LoggingServiceAdapter.Instance.LogInfo("🎯 Reactive SSM subscriptions established!")
+    End Sub
+
+#End Region
+
+#Region "Manager Event Handlers"
+
+    Private Sub OnSettingsLoaded(sender As Object, e As EventArgs)
+        Services.LoggingServiceAdapter.Instance.LogInfo("All settings loaded")
+
+        ' Initialize recording manager with settings
+        recordingManager.Initialize(settingsManager.AudioSettings, settingsManager.RecordingOptions)
+
+        ' Load options into RecordingOptionsPanel
+        RecordingOptionsPanel1.LoadOptions(settingsManager.RecordingOptions)
+        recordingManager.Options = settingsManager.RecordingOptions
+
+        ' ✅ REACTIVE: Convert RecordingOptionsPanel event (Phase 7 Cleanup!)
+        Observable.FromEvent(Of EventHandler(Of Models.RecordingOptions), Models.RecordingOptions)(
+            Sub(h) AddHandler RecordingOptionsPanel1.OptionsChanged, h,
+            Sub(h) RemoveHandler RecordingOptionsPanel1.OptionsChanged, h) _
+            .ObserveOnUI(Me) _
+            .Subscribe(Sub(options) OnRecordingOptionsChanged(Nothing, options)) _
+            .DisposeWith(_reactiveSubscriptions)
+
+        ' RoutingPanel already initialized in MainForm_Load
+        ' Output devices populated via InitializeRoutingPanel()
+
+        ' DEFER: Don't arm microphone here - it will be armed after form finishes loading
+        ' This prevents audio thread from firing events while form is still painting
+
+        ' Refresh file list
+        fileManager.RefreshFileList()
+
+        ' Update UI state
+        lblStatus.Text = "Status: Initializing (Please wait...)"
+        btnStopPlayback.Enabled = False
+        TimerMeters.Start()
+    End Sub
+
+    Private Sub OnSettingsSaved(sender As Object, e As EventArgs)
+        Services.LoggingServiceAdapter.Instance.LogInfo("All settings saved")
+    End Sub
+
+    Private Sub OnFileListChanged(sender As Object, e As EventArgs)
+        ' Update list box
+        lstRecordings.Items.Clear()
+        For Each fileInfo In fileManager.Files
+            ' Add indicator for test files
+            Dim displayName = fileInfo.Name
+            If fileInfo.DirectoryName.EndsWith("Test Audio", StringComparison.OrdinalIgnoreCase) Then
+                displayName = "🔊 " & fileInfo.Name ' Speaker icon for test files
+            End If
+            lstRecordings.Items.Add(displayName)
+        Next
+        Services.LoggingServiceAdapter.Instance.LogInfo($"File list updated: {fileManager.FileCount} file(s)")
+    End Sub
+
+    Private Sub OnFileDeleted(sender As Object, filepath As String)
+        Services.LoggingServiceAdapter.Instance.LogInfo($"File deleted: {Path.GetFileName(filepath)}")
+        MessageBox.Show($"'{Path.GetFileName(filepath)}' has been deleted.", "Delete Successful", MessageBoxButtons.OK, MessageBoxIcon.Information)
+    End Sub
+
+    Private Sub OnFileValidationFailed(sender As Object, message As String)
+        MessageBox.Show(message, "File Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+    End Sub
+
+    Private Sub OnRecordingStarted(sender As Object, e As EventArgs)
+        ' PHASE 5 STEP 22: This handler is NO LONGER USED for UI updates
+        ' UI updates now happen in OnUIStateChanged (UIStateMachine.StateChanged event)
+        ' This handler kept for backward compatibility but does nothing
+        ' The actual UI update happens when UIStateMachine transitions to RecordingUI
+    End Sub
+
+    Private Sub OnRecordingStopped(sender As Object, e As RecordingStoppedEventArgs)
+        ' PHASE 5 STEP 22: This handler is NO LONGER USED for UI updates
+        ' UI updates now happen in OnUIStateChanged (UIStateMachine.StateChanged event)
+        ' This handler kept for backward compatibility but does nothing
+        ' The actual UI update happens when UIStateMachine transitions back to IdleUI
+
+        ' Still refresh file list (not UI state, but data update)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() fileManager.RefreshFileList())
+        Else
+            fileManager.RefreshFileList()
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' PHASE 5 STEP 22: NEW! UI State Machine event handler
+    ''' This is the SINGLE point where UI updates happen based on state
+    ''' UIStateMachine guarantees this fires on UI thread - no InvokeRequired needed!
+    ''' </summary>
+    Private Sub OnUIStateChanged(sender As Object, e As StateChangedEventArgs(Of UIState))
+        ' NOTE: UIStateMachine guarantees this is ALWAYS on UI thread!
+        ' No need for InvokeRequired checks
+
+        Utils.Logger.Instance.Info($"UI State Changed: {e.OldState} → {e.NewState} (Reason: {e.Reason})", "MainForm")
+
+        Select Case e.NewState
+            Case UIState.Uninitialized
+                ' System not yet initialized
+                lblStatus.Text = "Status: Initializing..."
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                panelLED.BackColor = Color.Gray
+
+            Case UIState.IdleUI
+                ' System idle - ready for user input
+                Utils.Logger.Instance.Info($"=== IDLE STATE ENTERED === OldState={e.OldState}, NewState={e.NewState}", "MainForm")
+
+                lblStatus.Text = "Status: Ready (Mic Armed)"
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                Utils.Logger.Instance.Info($"TransportControl.State set to: Stopped", "MainForm")
+
+                transportControl.RecordingTime = TimeSpan.Zero
+                panelLED.BackColor = Color.Yellow ' Yellow = Armed and ready
+                lblRecordingTime.Text = "00:00"
+
+                ' Reset meter
+                meterRecording.Reset()
+
+                ' REFRESH FILE LIST when returning to Idle (after recording stops)
+                ' This ensures new recordings appear in the list immediately
+                If e.OldState = UIState.RecordingUI Then
+                    Utils.Logger.Instance.Info("FILE LIST REFRESH: Triggered (OldState=RecordingUI)", "MainForm")
+
+                    ' Brief delay to let OS finish flushing files to disk (100ms)
+                    ' This happens AFTER recording completes, so no audio impact
+                    System.Threading.Thread.Sleep(100)
+
+                    ' Force synchronous refresh on UI thread
+                    fileManager.RefreshFileList()
+                    Utils.Logger.Instance.Info("File list refreshed after recording stopped", "MainForm")
+
+                    ' Force UI to process pending events (updates ListBox immediately)
+                    Application.DoEvents()
+                Else
+                    Utils.Logger.Instance.Info($"FILE LIST REFRESH: SKIPPED (OldState={e.OldState}, expected RecordingUI)", "MainForm")
+                End If
+
+                Services.LoggingServiceAdapter.Instance.LogInfo("UI State: Idle - Ready")
+
+
+            Case UIState.RecordingUI
+                ' Recording in progress (includes Arming, Armed, Recording, Stopping states)
+                lblStatus.Text = "Status: Recording"
+                transportControl.State = UI.TransportControl.TransportState.Recording
+                panelLED.BackColor = Color.Red ' Red = Recording
+
+                ' Clear FFT buffers for fresh spectrum
+                spectrumManager.Clear()
+                SpectrumAnalyzerControl1.InputDisplay.Clear()
+                SpectrumAnalyzerControl1.OutputDisplay.Clear()
+
+                Services.LoggingServiceAdapter.Instance.LogInfo("UI State: Recording")
+
+            Case UIState.PlayingUI
+                ' Playback in progress
+                lblStatus.Text = "Status: Playing"
+                transportControl.State = UI.TransportControl.TransportState.Playing
+                panelLED.BackColor = Color.Green ' Green = Playing
+
+                Services.LoggingServiceAdapter.Instance.LogInfo("UI State: Playing")
+
+            Case UIState.ErrorUI
+                ' Error state
+                lblStatus.Text = "Status: ERROR"
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                panelLED.BackColor = Color.DarkRed ' Dark Red = Error
+
+                Services.LoggingServiceAdapter.Instance.LogError("UI State: ERROR", Nothing)
+
+        End Select
+    End Sub
+
+    ''' <summary>
+    ''' Initialize Cognitive Dashboard Panel (if it exists in tabs)
+    ''' </summary>
+    Private Sub InitializeCognitiveDashboard()
+        Try
+            ' Find CognitiveDashboardPanel in all controls recursively
+            Dim dashboard = FindCognitiveDashboardPanel(Me)
+            If dashboard IsNot Nothing Then
+                dashboard.Initialize(_cognitiveLayer)
+                Utils.Logger.Instance.Info("Cognitive Dashboard initialized", "MainForm")
+            Else
+                Utils.Logger.Instance.Info("Cognitive Dashboard not found (optional feature)", "MainForm")
+            End If
+
+        Catch ex As Exception
+            Utils.Logger.Instance.Warning($"Failed to initialize Cognitive Dashboard: {ex.Message}", "MainForm")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Recursively find CognitiveDashboardPanel in control tree
+    ''' </summary>
+    Private Function FindCognitiveDashboardPanel(parent As Control) As CognitiveDashboardPanel
+        For Each ctrl As Control In parent.Controls
+            If TypeOf ctrl Is CognitiveDashboardPanel Then
+                Return CType(ctrl, CognitiveDashboardPanel)
+            End If
+
+            ' Recursively search children
+            Dim found = FindCognitiveDashboardPanel(ctrl)
+            If found IsNot Nothing Then
+                Return found
+            End If
+        Next
+
+        Return Nothing
+    End Function
+
+
+
+
+
+
+
+
+    Private Sub OnRecordingTimeUpdated(sender As Object, duration As TimeSpan)
+        ' Update UI (on UI thread if needed)
+        If Me.InvokeRequired Then
+            Me.Invoke(Sub() OnRecordingTimeUpdated(sender, duration))
+            Return
+        End If
+
+        lblRecordingTime.Text = $"{duration.Minutes:00}:{duration.Seconds:00}"
+        transportControl.RecordingTime = duration
+    End Sub
+
+    Private Sub OnRecordingBufferAvailable(sender As Object, e As AudioBufferEventArgs)
+        ' Thread-safe UI update (event fires from audio callback thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnRecordingBufferAvailable(sender, e))
+            Return
+        End If
+
+        ' Route through AudioPipelineRouter (Task 2.0.3 - safety checks moved to router)
+        ' Router handles: DSP processing, FFT taps, monitoring, recording destination
+        pipelineRouter?.RouteAudioBuffer(
+            e.Buffer,
+            Audio.Routing.AudioSourceType.Microphone,
+            e.BitsPerSample,
+            e.Channels,
+            e.SampleRate)
+
+        ' ✅ REACTIVE: Publish to throttled stream (Phase 7 Cleanup!)
+        ' Throttling happens automatically via .Sample(50ms) subscription
+        _bufferStream.OnNext(e)
+    End Sub
+
+    ''' <summary>
+    ''' ✅ REACTIVE: Processes throttled buffer updates (20 FPS)
+    ''' Called by reactive subscription, already on UI thread
+    ''' </summary>
+    Private Sub ProcessBufferThrottled(e As AudioBufferEventArgs)
+        ' This shows DSP-processed audio, not raw input
+        Try
+            If recordingManager IsNot Nothing AndAlso recordingManager.TapManager IsNot Nothing Then
+                ' Read from INPUT tap (after InputGainProcessor)
+                Dim inputBuffer(4095) As Byte
+                Dim inputBytes = recordingManager.TapManager.Read("MainForm_InputMeters", inputBuffer, 0, 4096)
+
+                ' Read from OUTPUT tap (after OutputGainProcessor)
+                Dim outputBuffer(4095) As Byte
+                Dim outputBytes = recordingManager.TapManager.Read("MainForm_OutputMeters", outputBuffer, 0, 4096)
+
+                ' Analyze INPUT levels (after InputGainProcessor) - STEREO L/R separation!
+                Dim inputLevels = AudioLevelMeter.AnalyzeSamples(inputBuffer, e.BitsPerSample, e.Channels)
+
+                ' Analyze OUTPUT levels (after OutputGainProcessor) - STEREO L/R separation!
+                Dim outputLevels = AudioLevelMeter.AnalyzeSamples(outputBuffer, e.BitsPerSample, e.Channels)
+
+                ' Update main recording meter (use output tap - final processed audio)
+                meterRecording.SetLevel(outputLevels.PeakDB, outputLevels.RMSDB, outputLevels.IsClipping)
+
+                ' PHASE 2.7: Update DSP Signal Flow Panel meters with SEPARATE L/R channels!
+                ' Pan control is now VISIBLE in the meters! 🎚️
+                DspSignalFlowPanel1.UpdateMeters(
+                    inputLevels.PeakLeftDB,   ' Input Left (separate!)
+                    inputLevels.PeakRightDB,  ' Input Right (separate!)
+                    outputLevels.PeakLeftDB,  ' Output Left (separate!)
+                    outputLevels.PeakRightDB) ' Output Right (separate!)
+
+                ' PHASE 2.7: Send audio to FFT (SpectrumManager) using tap points!
+                ' Input FFT = PostInputGain (after InputGainProcessor)
+                If inputBytes > 0 AndAlso spectrumManager IsNot Nothing Then
+                    Dim inputSpectrum = spectrumManager.ProcessInputSamples(inputBuffer, inputBytes, e.BitsPerSample, e.Channels, e.SampleRate)
+                    If inputSpectrum IsNot Nothing Then
+                        SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(inputSpectrum, e.SampleRate, spectrumManager.FFTSize)
+                    End If
+                End If
+
+                ' Output FFT = PostOutputGain (after OutputGainProcessor)
+                If outputBytes > 0 AndAlso spectrumManager IsNot Nothing Then
+                    Dim outputSpectrum = spectrumManager.ProcessOutputSamples(outputBuffer, outputBytes, e.BitsPerSample, e.Channels, e.SampleRate)
+                    If outputSpectrum IsNot Nothing Then
+                        SpectrumAnalyzerControl1.OutputDisplay.UpdateSpectrum(outputSpectrum, e.SampleRate, spectrumManager.FFTSize)
+                    End If
+                End If
+
+                Logger.Instance.Debug($"UI Update (20 FPS): Input L={inputLevels.PeakLeftDB:F1} R={inputLevels.PeakRightDB:F1}, Output L={outputLevels.PeakLeftDB:F1} R={outputLevels.PeakRightDB:F1}", "MainForm")
+            Else
+                ' Fallback to raw buffer if tap points not available
+                Dim levelData = AudioLevelMeter.AnalyzeSamples(e.Buffer, e.BitsPerSample, e.Channels)
+                meterRecording.SetLevel(levelData.PeakDB, levelData.RMSDB, levelData.IsClipping)
+
+                DspSignalFlowPanel1.UpdateMeters(
+                    levelData.PeakLeftDB, levelData.PeakRightDB,
+                    levelData.PeakLeftDB, levelData.PeakRightDB)
+
+                Logger.Instance.Warning("TapManager not available - using raw buffer fallback", "MainForm")
+            End If
+        Catch ex As Exception
+            Logger.Instance.Error("Meter update failed", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Sub OnMicrophoneArmed(sender As Object, isArmed As Boolean)
+        ' Thread-safe UI update (event may fire from worker thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnMicrophoneArmed(sender, isArmed))
+            Return
+        End If
+
+        If isArmed Then
+            panelLED.BackColor = Color.Yellow
+            lblStatus.Text = "Status: Ready (Mic Armed)"
+            transportControl.IsRecordArmed = True
+
+            ' PHASE 2.7: Wire DSPSignalFlowPanel to BOTH INPUT and OUTPUT gain processors
+            If recordingManager IsNot Nothing Then
+                ' Wire INPUT gain processor (Gain/Pan controls)
+                If recordingManager.InputGainProcessor IsNot Nothing Then
+                    DspSignalFlowPanel1.SetGainProcessor(recordingManager.InputGainProcessor)
+                    Logger.Instance.Info("✅ DSPSignalFlowPanel wired to INPUT GainProcessor (Gain/Pan)", "MainForm")
+                End If
+
+                ' Wire OUTPUT gain processor (Master/Width controls)
+                If recordingManager.OutputGainProcessor IsNot Nothing Then
+                    DspSignalFlowPanel1.SetOutputGainProcessor(recordingManager.OutputGainProcessor)
+                    Logger.Instance.Info("✅ DSPSignalFlowPanel wired to OUTPUT GainProcessor (Master/Width)", "MainForm")
+                End If
+            End If
+
+            ' PHASE 2.7: Initialize tap point readers for metering
+            Logger.Instance.Info("Microphone armed - initializing tap point readers", "MainForm")
+            InitializeTapPointReaders()
+        Else
+            panelLED.BackColor = Color.Gray
+            lblStatus.Text = "Status: Mic Disarmed"
+            transportControl.IsRecordArmed = False
+
+            ' PHASE 2.7: Cleanup tap point readers
+            Logger.Instance.Info("Microphone disarmed - cleaning up tap point readers", "MainForm")
+            CleanupTapPointReaders()
+        End If
+    End Sub
+
+
+    ''' <summary>
+    ''' Phase 2.7: Initialize tap point readers for metering
+    ''' Creates readers for INPUT and OUTPUT tap points
+    ''' </summary>
+    Private Sub InitializeTapPointReaders()
+        If recordingManager Is Nothing OrElse recordingManager.TapManager Is Nothing Then
+            Logger.Instance.Warning("Cannot initialize tap readers - manager not available", "MainForm")
+            Return
+        End If
+
+        Try
+            ' Create readers for meters
+            Dim inputReader = recordingManager.TapManager.CreateReader(
+                DSP.TapPoint.PostInputGain,
+                "MainForm_InputMeters")
+            tapReaders.Add(inputReader)
+
+            Dim outputReader = recordingManager.TapManager.CreateReader(
+                DSP.TapPoint.PostOutputGain,
+                "MainForm_OutputMeters")
+            tapReaders.Add(outputReader)
+
+            Logger.Instance.Info("✅ Tap point readers initialized (INPUT + OUTPUT)", "MainForm")
+        Catch ex As Exception
+            Logger.Instance.Error("Failed to create tap readers", ex, "MainForm")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Phase 2.7: Cleanup tap point readers when microphone disarmed
+    ''' </summary>
+    Private Sub CleanupTapPointReaders()
+        If recordingManager IsNot Nothing AndAlso recordingManager.TapManager IsNot Nothing Then
+            For Each readerId In tapReaders
+                Try
+                    recordingManager.TapManager.DestroyReader(readerId)
+                Catch ex As Exception
+                    Logger.Instance.Warning($"Failed to destroy reader {readerId}", "MainForm")
+                End Try
+            Next
+        End If
+        tapReaders.Clear()
+        Logger.Instance.Info("✅ Tap point readers cleaned up", "MainForm")
+    End Sub
+
+
+#End Region
+
+#Region "UserControl Event Handlers"
+
+    ''' <summary>Handles audio settings changes from AudioSettingsPanel</summary>
+    Private Sub OnAudioSettingsChanged(sender As Object, settings As Managers.AudioDeviceSettings)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Audio settings changed via AudioSettingsPanel")
+
+        ' Update settings manager
+        settingsManager.AudioSettings = settings
+
+        ' Apply to recording manager (will re-arm mic with new settings)
+        If recordingManager IsNot Nothing Then
+            ' CRITICAL: Disarm old device FIRST before switching
+            Try
+                If recordingManager.IsArmed Then
+                    recordingManager.DisarmMicrophone()
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Disarmed old audio input")
+                End If
+            Catch ex As Exception
+                Services.LoggingServiceAdapter.Instance.LogWarning($"Failed to disarm old device: {ex.Message}")
+            End Try
+
+            ' Now initialize with new settings and arm new device
+            recordingManager.Initialize(settings, settingsManager.RecordingOptions)
+            Try
+                recordingManager.ArmMicrophone()
+                Services.LoggingServiceAdapter.Instance.LogInfo("Armed new audio input")
+            Catch ex As Exception
+                Services.LoggingServiceAdapter.Instance.LogError($"Failed to arm new device: {ex.Message}", ex)
+            End Try
+        End If
+
+        ' Save settings
+        settingsManager.SaveAll()
+    End Sub
+
+    Private Sub OnMeterSettingsChanged(sender As Object, settings As Models.MeterSettings)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Meter settings changed")
+
+        ' Update settings manager
+        settingsManager.MeterSettings = settings
+
+        ' Apply to audio system
+        ApplyMeterSettings(settings)
+
+        ' Save settings
+        settingsManager.SaveAll()
+    End Sub
+
+    Private Sub OnPipelineConfigurationChanged(sender As Object, config As PipelineConfiguration)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Pipeline configuration changed")
+
+        ' Configuration is automatically saved by AudioPipelineRouter
+        ' Here we would apply the configuration to the actual audio flow (Phase 3)
+        ' For now, just log it
+        Logger.Instance.Info($"Pipeline config updated: DSP={config.Processing.EnableDSP}, Recording={config.Destination.EnableRecording}", "MainForm")
+    End Sub
+
+    Private Sub InitializeRoutingPanel()
+        ' Populate output devices
+        Try
+            Dim deviceNames = audioRouter.GetOutputDeviceNames().ToList()
+            Dim selectedDevice = audioRouter.GetSelectedOutputDevice()
+            RoutingPanel1.LoadOutputDevices(deviceNames, selectedDevice)
+
+            ' Set initial input source
+            RoutingPanel1.SetMicrophoneInput()
+
+            Logger.Instance.Info("RoutingPanel initialized", "MainForm")
+        Catch ex As Exception
+            Logger.Instance.Error("Failed to initialize RoutingPanel", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Sub OnRoutingPanelInputSourceChanged(sender As Object, inputSource As String)
+        Logger.Instance.Info($"Input source changed: {inputSource}", "MainForm")
+        ' Handle input source change (same logic as before)
+        ' This will be fully implemented in Phase 3
+    End Sub
+
+    Private Sub OnRoutingPanelOutputDeviceChanged(sender As Object, deviceIndex As Integer)
+        Try
+            audioRouter.SelectOutputDevice(deviceIndex)
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Output device changed: index {deviceIndex}")
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to change output device: {ex.Message}", ex)
+        End Try
+    End Sub
+
+    Private Sub OnRoutingPanelBrowseFileClicked(sender As Object, e As EventArgs)
+        ' Same logic as old OnBrowseInputFileClick
+        OnBrowseInputFileClick(sender, e)
+    End Sub
+
+    Private Sub OnSpectrumSettingsChanged(sender As Object, settings As Models.SpectrumSettings)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Spectrum settings changed")
+
+        ' Update settings manager
+        settingsManager.SpectrumSettings = settings
+
+        ' Apply settings (implementation from existing handlers)
+        ApplySpectrumSettings(settings)
+
+        ' Save settings
+        settingsManager.SaveAll()
+    End Sub
+
+    Private Sub OnSpectrumResetRequested(sender As Object, e As EventArgs)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Spectrum reset requested")
+
+        ' Create default settings
+        Dim defaults = New Models.SpectrumSettings()
+
+        ' Load into panel
+        SpectrumSettingsPanel1.LoadSettings(defaults)
+
+        ' Apply
+        OnSpectrumSettingsChanged(sender, defaults)
+    End Sub
+
+    Private Sub ApplyMeterSettings(settings As Models.MeterSettings)
+        Try
+            ' Apply to RecordingManager
+            recordingManager.InputVolume = settings.InputVolumePercent / 100.0F
+
+            ' Apply to AudioLevelMeter (static properties)
+            AudioLevelMeter.PeakHoldMs = settings.PeakHoldMs
+            AudioLevelMeter.PeakDecayDbPerSec = settings.PeakDecayDbPerSec
+            AudioLevelMeter.RmsWindowMs = settings.RmsWindowMs
+            AudioLevelMeter.AttackMs = settings.AttackMs
+            AudioLevelMeter.ReleaseMs = settings.ReleaseMs
+            AudioLevelMeter.ClipThresholdDb = settings.ClipThresholdDb
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Meter settings applied: Peak={settings.PeakHoldMs}ms, Decay={settings.PeakDecayDbPerSec}dB/s")
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to apply meter settings: {ex.Message}", ex)
+            Logger.Instance.Error("Failed to apply meter settings", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Sub ApplySpectrumSettings(settings As Models.SpectrumSettings)
+        Try
+            ' Apply FFT settings to SpectrumManager (Task 2.0.4)
+            spectrumManager.ApplySettings(settings)
+
+            ' Apply to spectrum displays (UI only)
+            Dim smoothingFactor = CSng(settings.Smoothing / 100)
+            SpectrumAnalyzerControl1.InputDisplay.SmoothingFactor = smoothingFactor
+            SpectrumAnalyzerControl1.OutputDisplay.SmoothingFactor = smoothingFactor
+            SpectrumAnalyzerControl1.InputDisplay.PeakHoldEnabled = settings.PeakHoldEnabled
+            SpectrumAnalyzerControl1.OutputDisplay.PeakHoldEnabled = settings.PeakHoldEnabled
+            SpectrumAnalyzerControl1.InputDisplay.MinFrequency = settings.MinFrequency
+            SpectrumAnalyzerControl1.OutputDisplay.MinFrequency = settings.MinFrequency
+            SpectrumAnalyzerControl1.InputDisplay.MaxFrequency = settings.MaxFrequency
+            SpectrumAnalyzerControl1.OutputDisplay.MaxFrequency = settings.MaxFrequency
+            SpectrumAnalyzerControl1.InputDisplay.MinDB = settings.MinDB
+            SpectrumAnalyzerControl1.OutputDisplay.MinDB = settings.MinDB
+            SpectrumAnalyzerControl1.InputDisplay.MaxDB = settings.MaxDB
+            SpectrumAnalyzerControl1.OutputDisplay.MaxDB = settings.MaxDB
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Spectrum settings applied: FFT={settings.FFTSize}, Window={settings.WindowFunction}")
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to apply spectrum settings: {ex.Message}", ex)
+            Logger.Instance.Error("Failed to apply spectrum settings", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Sub OnRecordingOptionsChanged(sender As Object, options As Models.RecordingOptions)
+        Services.LoggingServiceAdapter.Instance.LogInfo($"Recording options changed: {options.Mode} mode")
+
+        ' Update settings manager
+        settingsManager.RecordingOptions = options
+
+        ' Apply to RecordingManager (uses new method from Task 2.0.1)
+        recordingManager.ApplyRecordingOptions(options)
+
+        ' Save settings
+        settingsManager.SaveAll()
+    End Sub
+
+#End Region
+
+#Region "File Operations"
+
+    Private Sub lstRecordings_DoubleClick(sender As Object, e As EventArgs)
+        If lstRecordings.SelectedItem Is Nothing Then Return
+
+        Dim displayName = lstRecordings.SelectedItem.ToString()
+
+        ' Remove test file indicator if present
+        Dim fileName = displayName.Replace("🔊 ", "")
+
+        ' Find actual file path from FileManager
+        Dim fileInfo = fileManager.Files.FirstOrDefault(Function(f) f.Name = fileName)
+        If fileInfo Is Nothing Then
+            Services.LoggingServiceAdapter.Instance.LogWarning($"File not found: {fileName}")
+            Return
+        End If
+
+        Dim fullPath = fileInfo.FullName
+
+        Try
+            ' Log user action (Tier 1 - state-changing action)
+            Logger.Instance.Info($"[UI] Play button clicked (file: {fileName})", "MainForm")
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Loading file for DSP playback: {fileName}")
+
+            ' PHASE 5 STEP 22: Transition GlobalStateMachine to Playing BEFORE starting playback
+            Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Playing, "User started playback")
+
+            If Not success Then
+                Logger.Instance.Warning("⚠️ GlobalStateMachine transition to Playing FAILED!", "MainForm")
+                MessageBox.Show("Cannot start playback - invalid state transition", "Playback Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                Return
+            End If
+
+            Logger.Instance.Info("✅ GlobalStateMachine transitioned to Playing", "MainForm")
+
+            ' DISARM MICROPHONE during playback to prevent feedback/conflicts
+            If recordingManager IsNot Nothing Then
+                recordingManager.DisarmMicrophone()
+                Services.LoggingServiceAdapter.Instance.LogInfo("Microphone disarmed for DSP playback")
+            End If
+
+            ' Play file through AudioRouter (Task 2.0.2 - encapsulated method)
+            audioRouter.PlayFile(fullPath)
+
+            ' Start timer for FFT updates AND transport position
+            TimerPlayback.Start()
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"DSP playback started: {fileName}")
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to play file '{fileName}': {ex.Message}", ex)
+            MessageBox.Show($"Failed to play file: {ex.Message}", "Playback Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+
+            ' Re-arm mic on error
+            If recordingManager IsNot Nothing Then
+                Try
+                    recordingManager.ArmMicrophone()
+                Catch
+                    ' Ignore re-arm errors
+                End Try
+            End If
+        End Try
+    End Sub
+
+    Private Sub lstRecordings_SelectedIndexChanged(sender As Object, e As EventArgs)
+        If lstRecordings.SelectedItem Is Nothing Then Return
+
+        Dim displayName = lstRecordings.SelectedItem.ToString()
+
+        ' Remove test file indicator if present
+        Dim fileName = displayName.Replace("🔊 ", "")
+
+        ' Find actual file path from FileManager
+        Dim fileInfo = fileManager.Files.FirstOrDefault(Function(f) f.Name = fileName)
+        If fileInfo Is Nothing Then
+            Services.LoggingServiceAdapter.Instance.LogWarning($"File not found: {fileName}")
+            Return
+        End If
+
+        ' Log file selection (Tier 1 - user action)
+        Logger.Instance.Info($"[UI] File selected: {fileName}", "MainForm")
+
+        Dim fullPath = fileInfo.FullName
+
+        ' Validate file through FileManager
+        If Not fileManager.ValidateFile(fullPath) Then
+            Services.LoggingServiceAdapter.Instance.LogWarning($"File validation failed: {fileName}")
+            Return
+        End If
+
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Rendering waveform for: {fileName}")
+
+            ' Use WaveformDisplayControl instead of manual rendering
+            WaveformDisplayControl1.LoadFile(fullPath)
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Waveform rendered successfully: {fileName}")
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to render waveform for '{fileName}': {ex.Message}", ex)
+            Logger.Instance.Error("Failed to render waveform", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Sub btnDelete_Click(sender As Object, e As EventArgs)
+        If lstRecordings.SelectedItem Is Nothing Then
+            Services.LoggingServiceAdapter.Instance.LogWarning("Delete attempted with no file selected")
+            MessageBox.Show("Please select a recording to delete.", "No Selection", MessageBoxButtons.OK, MessageBoxIcon.Information)
+            Return
+        End If
+
+        Dim displayName = lstRecordings.SelectedItem.ToString()
+
+        ' Remove test file indicator if present
+        Dim fileName = displayName.Replace("🔊 ", "")
+
+        ' Find actual file path from FileManager
+        Dim fileInfo = fileManager.Files.FirstOrDefault(Function(f) f.Name = fileName)
+        If fileInfo Is Nothing Then
+            Services.LoggingServiceAdapter.Instance.LogWarning($"File not found: {fileName}")
+            Return
+        End If
+
+        Dim fullPath = fileInfo.FullName
+
+        ' Prevent deletion of test files
+        If fileInfo.DirectoryName.EndsWith("Test Audio", StringComparison.OrdinalIgnoreCase) Then
+            MessageBox.Show("Cannot delete test audio files. These are read-only reference files.", "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+            Services.LoggingServiceAdapter.Instance.LogWarning($"Attempted to delete test file: {fileName}")
+            Return
+        End If
+
+        ' Confirm deletion
+        Dim result = MessageBox.Show(
+            $"Are you sure you want to delete '{fileName}'?{Environment.NewLine}{Environment.NewLine}This cannot be undone.",
+            "Confirm Delete",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2)
+
+        If result = DialogResult.Yes Then
+            ' Clear selection and waveform
+            lstRecordings.ClearSelected()
+            WaveformDisplayControl1.Clear()
+            WaveformDisplayControl1.ClearCache()
+
+            ' Stop playback if playing this file
+            If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
+                playbackManager.Stop()
+                System.Threading.Thread.Sleep(100)
+            End If
+
+            ' Force GC
+            GC.Collect()
+            GC.WaitForPendingFinalizers()
+            GC.Collect()
+            System.Threading.Thread.Sleep(50)
+
+            ' Delete through FileManager
+            fileManager.DeleteFile(fullPath)
+        Else
+            Services.LoggingServiceAdapter.Instance.LogInfo($"Delete cancelled by user: {fileName}")
+        End If
+    End Sub
+
+#End Region
+
+#Region "TransportControl Event Handlers"
+
+    Private Sub OnTransportRecord(sender As Object, e As EventArgs)
+        Try
+            ' Log user action (Tier 1 - state-changing action)
+            Logger.Instance.Info("[UI] Record button clicked", "MainForm")
+            Services.LoggingServiceAdapter.Instance.LogInfo("Starting recording...")
+
+            ' PHASE 5 STEP 22.5 FIX: Trigger state machine flow instead of direct call
+            ' Flow: Idle → Arming → Armed → Recording
+            ' RecordingManagerSSM will handle the multi-step flow via state events
+
+            lstRecordings.ClearSelected()
+            WaveformDisplayControl1.ClearCache()
+            GC.Collect()
+            GC.WaitForPendingFinalizers()
+
+            ' Request Arming transition - RecordingManagerSSM will handle the rest
+            Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Arming, "User clicked Record")
+
+            If Not success Then
+                Logger.Instance.Warning("⚠️ GlobalStateMachine transition to Arming FAILED!", "MainForm")
+                MessageBox.Show("Cannot start recording - invalid state", "Recording Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+            End If
+
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to start recording: {ex.Message}", ex)
+            MessageBox.Show($"Failed to start recording: {ex.Message}", "Recording Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            Logger.Instance.Error("Failed to start recording", ex, "MainForm")
+        End Try
+    End Sub
+
+    Private Sub OnTransportStop(sender As Object, e As EventArgs)
+        ' PHASE 5 STEP 22: Trigger state transitions through GlobalStateMachine!
+        ' This is the RIGHT way - state machine controls the flow
+
+        Try
+            Dim currentState = StateCoordinator.Instance.GlobalState
+
+            ' Log user action (Tier 1 - state-changing action)
+            Logger.Instance.Info($"[UI] Stop button clicked (current state: {currentState})", "MainForm")
+
+            Select Case currentState
+                Case GlobalState.Recording
+                    ' User wants to stop recording - request transition to Stopping
+                    Logger.Instance.Info("Requesting GlobalStateMachine transition: Recording → Stopping...", "MainForm")
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Stopping recording via GlobalStateMachine...")
+
+                    ' Request state transition - RecordingManagerSSM will handle cleanup via callback
+                    Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Stopping, "User clicked stop during recording")
+
+                    If success Then
+                        Logger.Instance.Info("✅ Stop: GlobalStateMachine transitioned to Stopping", "MainForm")
+                    Else
+                        ' Transition failed - should not happen, but log it
+                        Logger.Instance.Warning("⚠️ GlobalStateMachine transition to Stopping FAILED!", "MainForm")
+                        MessageBox.Show("Cannot stop recording - invalid state", "Stop Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                    End If
+
+
+                Case GlobalState.Armed, GlobalState.Arming
+                    ' User wants to cancel arming - go back to Idle
+                    Logger.Instance.Info("Requesting transition: Armed/Arming → Idle...", "MainForm")
+
+                    Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Idle, "User cancelled arming")
+
+                    If Not success Then
+                        Logger.Instance.Warning("⚠️ Transition to Idle failed!", "MainForm")
+                    End If
+
+                Case GlobalState.Playing
+                    ' Stop playback - just call stop unconditionally (don't check IsPlaying)
+                    Logger.Instance.Info("Stopping playback...", "MainForm")
+
+                    If audioRouter IsNot Nothing Then
+                        ' Stop DSP playback synchronously (don't check IsPlaying first!)
+                        audioRouter.StopDSPPlayback()
+
+                        ' Stop timer
+                        TimerPlayback.Stop()
+                        progressPlayback.Value = 0
+                        btnStopPlayback.Enabled = False
+
+                        Logger.Instance.Info("✅ Stop: Playback stopped", "MainForm")
+
+                        ' Request transition to Idle
+                        StateCoordinator.Instance.GlobalStateMachine.TransitionTo(GlobalState.Idle, "Playback stopped by user")
+
+                    ElseIf playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
+                        ' Legacy playback (fallback)
+                        Services.LoggingServiceAdapter.Instance.LogInfo("Stopping playback (legacy)...")
+                        playbackManager.Stop()
+                        TimerPlayback.Stop()
+                        progressPlayback.Value = 0
+                        btnStopPlayback.Enabled = False
+                        Services.LoggingServiceAdapter.Instance.LogInfo("Playback stopped")
+                    End If
+
+                Case GlobalState.Stopping
+                    ' Already stopping - ignore
+                    Logger.Instance.Info("Stop clicked but already Stopping - ignoring", "MainForm")
+
+                Case GlobalState.Idle
+                    ' Already idle - nothing to stop
+                    Logger.Instance.Info("Stop clicked but already Idle", "MainForm")
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Already idle - nothing to stop")
+
+                Case Else
+                    Logger.Instance.Warning($"Stop clicked in unexpected state: {currentState}", "MainForm")
+            End Select
+
+        Catch ex As Exception
+            Logger.Instance.Error("❌ Stop failed!", ex, "MainForm")
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to stop: {ex.Message}", ex)
+            MessageBox.Show($"Failed to stop: {ex.Message}", "Stop Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    Private Sub OnTransportPlay(sender As Object, e As EventArgs)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Play button clicked")
+        If lstRecordings.SelectedItem IsNot Nothing Then
+            lstRecordings_DoubleClick(sender, e)
+        Else
+            Services.LoggingServiceAdapter.Instance.LogWarning("Play attempted with no file selected")
+        End If
+    End Sub
+
+    Private Sub OnTransportPause(sender As Object, e As EventArgs)
+        Services.LoggingServiceAdapter.Instance.LogInfo("Pause button clicked (not yet implemented)")
+        MessageBox.Show("Pause functionality coming soon!", "Not Implemented", MessageBoxButtons.OK, MessageBoxIcon.Information)
+    End Sub
+
+    Private Sub OnTransportPositionChanged(sender As Object, position As TimeSpan)
+        If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
+            Logger.Instance.Debug($"Seek requested to: {position}", "MainForm")
+        End If
+    End Sub
+
+#End Region
+
+#Region "Playback Event Handlers"
+
+    Private Sub btnStopPlayback_Click(sender As Object, e As EventArgs)
+        ' Stop DSP playback via AudioRouter
+        If audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
+            audioRouter.StopDSPPlayback()
+
+            ' RE-ARM MICROPHONE after playback stops
+            If recordingManager IsNot Nothing Then
+                Try
+                    recordingManager.ArmMicrophone()
+                    Services.LoggingServiceAdapter.Instance.LogInfo("Microphone re-armed after DSP playback")
+                Catch ex As Exception
+                    Services.LoggingServiceAdapter.Instance.LogError($"Failed to re-arm microphone: {ex.Message}", ex)
+                End Try
+            End If
+        End If
+
+        ' Stop regular playback via PlaybackManager (if any)
+        playbackManager?.Stop()
+
+        ' Update UI
+        panelLED.BackColor = Color.Yellow ' Yellow = Armed
+        lblStatus.Text = "Status: Ready (Mic Armed)"
+        TimerPlayback.Stop()
+        progressPlayback.Value = 0
+        btnStopPlayback.Enabled = False
+    End Sub
+
+    Private Sub OnPlaybackStarted(sender As Object, filepath As String)
+        ' Start the timer to update playback position
+        TimerPlayback.Start()
+
+        ' FIX Issue #2: Set transport state to Playing (lights up indicator!)
+        transportControl.State = UI.TransportControl.TransportState.Playing
+
+        ' FIX Issue #1: Set track duration so time display works
+        If playbackManager IsNot Nothing Then
+            transportControl.TrackDuration = playbackManager.TotalDuration
+            transportControl.TrackPosition = TimeSpan.Zero
+        End If
+
+        ' DIAGNOSTIC: Log playback start with all details
+        Logger.Instance.Info($"🎵 Playback started: {Path.GetFileName(filepath)}", "MainForm")
+        Logger.Instance.Info($"   Duration={playbackManager?.TotalDuration}, IsPlaying={playbackManager?.IsPlaying}", "MainForm")
+        Logger.Instance.Info($"   Timer started, State set to Playing", "MainForm")
+
+        ' Update UI
+        panelLED.BackColor = Color.RoyalBlue
+        lblStatus.Text = $"Status: Playing {Path.GetFileName(filepath)}"
+        btnStopPlayback.Enabled = True
+    End Sub
+
+    Private Sub OnPlaybackStopped(sender As Object, e As NAudio.Wave.StoppedEventArgs)
+        ' FIX Issue #2: Reset transport state (turns off indicator!)
+        transportControl.State = UI.TransportControl.TransportState.Stopped
+
+        panelLED.BackColor = DarkTheme.SuccessGreen
+        lblStatus.Text = "Status: Ready (Mic Armed)"
+
+        TimerPlayback.Stop()
+        progressPlayback.Value = 0
+        btnStopPlayback.Enabled = False
+
+        ' FIX Issue #1: Reset track position/duration
+        transportControl.TrackPosition = TimeSpan.Zero
+        transportControl.TrackDuration = TimeSpan.Zero
+    End Sub
+
+    Private Sub TimerPlayback_Tick(sender As Object, e As EventArgs)
+        ' DIAGNOSTIC: Log timer ticks
+        Static tickCount As Integer = 0
+        tickCount += 1
+
+        ' LOUD LOGGING for debugging!
+        Services.LoggingServiceAdapter.Instance.LogInfo($"⏱️ TIMER TICK #{tickCount}, audioRouter.IsPlaying={audioRouter?.IsPlaying}")
+
+        ' Update playback position (PlaybackManager OR AudioRouter) - EVENT-DRIVEN!
+        If playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
+            ' PlaybackManager playback (direct WAV)
+            playbackManager.UpdatePosition()
+        ElseIf audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
+            ' AudioRouter/DSP playback - call UpdatePosition() which raises PositionChanged event!
+            audioRouter.UpdatePosition()
+        End If
+
+        ' Update DSP BOTH input (PRE) and output (POST) samples for FFT comparison at 60 Hz
+        If audioRouter IsNot Nothing AndAlso audioRouter.IsPlaying Then
+            Services.LoggingServiceAdapter.Instance.LogInfo($"⏱️ Calling audioRouter.UpdateInputSamples...")
+            audioRouter.UpdateInputSamples()  ' PRE-DSP (raw audio)
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"⏱️ Calling audioRouter.UpdateOutputSamples...")
+            audioRouter.UpdateOutputSamples() ' POST-DSP (processed audio)
+
+            ' NOTE: DSP Signal Flow meters removed from timer - now event-driven!
+            ' Meters updated via OnRecordingBufferAvailable (for mic) and future file playback events
+        End If
+
+        ' REMOVED UpdateTransportState() - events handle state now!
+        ' UpdateTransportState was overriding event-driven state changes causing race condition
+    End Sub
+
+    Private Sub OnPositionChanged(sender As Object, position As TimeSpan)
+        Dim total = playbackManager.TotalDuration
+        If total.TotalMilliseconds > 0 Then
+            Dim pct = CInt((position.TotalMilliseconds / total.TotalMilliseconds) * 1000)
+            progressPlayback.Value = Math.Min(1000, Math.Max(0, pct))
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' AudioRouter playback started (DSP playback) - matches RecordingManager pattern
+    ''' </summary>
+    Private Sub OnAudioRouterPlaybackStarted(sender As Object, filename As String)
+        ' Thread-safe UI update (event may fire from worker thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnAudioRouterPlaybackStarted(sender, filename))
+            Return
+        End If
+
+        Logger.Instance.Info($"🎵 AudioRouter playback started: {filename}", "MainForm")
+
+        ' Wire DSP panel to the GainProcessor (now that it exists)
+        If audioRouter.GainProcessor IsNot Nothing Then
+            DspSignalFlowPanel1.SetGainProcessor(audioRouter.GainProcessor)
+            Logger.Instance.Info("✅ DSPSignalFlowPanel wired to AudioRouter.GainProcessor", "MainForm")
+        End If
+
+        ' Update TransportControl (event-driven, like RecordingManager!)
+        transportControl.State = UI.TransportControl.TransportState.Playing
+        transportControl.TrackDuration = audioRouter.TotalDuration
+        transportControl.TrackPosition = TimeSpan.Zero
+
+        ' Update UI
+        panelLED.BackColor = Color.Magenta ' Magenta = DSP Processing
+        lblStatus.Text = $"Status: DSP Playback - {filename}"
+        btnStopPlayback.Enabled = True
+    End Sub
+
+    ''' <summary>
+    ''' AudioRouter playback stopped (DSP playback) - matches RecordingManager pattern
+    ''' </summary>
+    Private Sub OnAudioRouterPlaybackStopped(sender As Object, e As EventArgs)
+        ' Thread-safe UI update (event may fire from worker thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnAudioRouterPlaybackStopped(sender, e))
+            Return
+        End If
+
+        Try
+            Logger.Instance.Info("🛑 AudioRouter playback stopped - NATURAL EOF DETECTED!", "MainForm")
+
+            ' ✅ FIX: Transition GlobalStateMachine to Idle (GSM_T08)
+            ' This is the CORRECT way to handle EOF - let the state machine drive everything!
+            Dim success = StateCoordinator.Instance.GlobalStateMachine.TransitionTo(
+                GlobalState.Idle,
+                "Playback ended naturally (EOF)")
+
+            If success Then
+                Logger.Instance.Info("✅ GSM_T08: Playing → Idle (EOF)", "MainForm")
+            Else
+                Logger.Instance.Error("❌ Failed to transition GlobalStateMachine to Idle after EOF",
+                                     Nothing, "MainForm")
+            End If
+
+            ' UI will be updated automatically via UIStateMachine.StateChanged event handler
+            ' TransportControl state is managed by OnUIStateChanged() - no manual update needed!
+
+            ' Stop timer and reset playback controls
+            TimerPlayback.Stop()
+            progressPlayback.Value = 0
+            btnStopPlayback.Enabled = False
+
+            Logger.Instance.Info("✅ EOF: State machine transition complete", "MainForm")
+
+            ' Re-arm microphone in background (don't block)
+            Task.Run(Sub()
+                         Try
+                             Logger.Instance.Info("Background: Re-arming microphone after EOF...", "MainForm")
+                             recordingManager.ArmMicrophone()
+
+                             ' Update status when mic is ready
+                             BeginInvoke(Sub()
+                                             panelLED.BackColor = Color.Yellow
+                                             lblStatus.Text = "Status: Ready (Mic Armed)"
+                                             Logger.Instance.Info("✅ Microphone re-armed after EOF", "MainForm")
+                                         End Sub)
+
+                         Catch ex As Exception
+                             Logger.Instance.Error("Failed to re-arm microphone after EOF", ex, "MainForm")
+                             BeginInvoke(Sub()
+                                             panelLED.BackColor = Color.Gray
+                                             lblStatus.Text = "Status: Idle (Mic Error)"
+                                         End Sub)
+                         End Try
+                     End Sub)
+
+        Catch ex As Exception
+            Logger.Instance.Error("❌ ERROR in OnAudioRouterPlaybackStopped!", ex, "MainForm")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' AudioRouter position updated (DSP playback) - matches RecordingManager pattern
+    ''' </summary>
+    Private Sub OnAudioRouterPositionChanged(sender As Object, position As TimeSpan)
+        ' Thread-safe UI update (event fires from worker thread)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(Sub() OnAudioRouterPositionChanged(sender, position))
+            Return
+        End If
+
+        ' Update TransportControl (event-driven, like RecordingManager!)
+        transportControl.TrackPosition = position
+
+        ' Update progress bar
+        Dim total = audioRouter.TotalDuration
+        If total.TotalMilliseconds > 0 Then
+            Dim pct = CInt((position.TotalMilliseconds / total.TotalMilliseconds) * 1000)
+            progressPlayback.Value = Math.Min(1000, Math.Max(0, pct))
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' Calculate peak level in dB for a specific channel
+    ''' </summary>
+    Private Function CalculatePeakDb(samples As Single(), channel As Integer) As Single
+        If samples Is Nothing OrElse samples.Length = 0 Then
+            Return -60.0F
+        End If
+
+        Dim peak As Single = 0.0F
+        Dim channels As Integer = 2 ' Stereo
+
+        ' Find peak sample for the specified channel (interleaved stereo)
+        For i As Integer = channel To samples.Length - 1 Step channels
+            Dim absSample = Math.Abs(samples(i))
+            If absSample > peak Then
+                peak = absSample
+            End If
+        Next
+
+        ' Convert to dB (with floor at -60dB)
+        If peak < 0.00001F Then ' -100dB
+            Return -60.0F
+        End If
+
+        Dim db = 20.0F * CSng(Math.Log10(peak))
+        Return Math.Max(-60.0F, Math.Min(0.0F, db))
+    End Function
+
+
+
+
+    Private Sub UpdateTransportState()
+        If recordingManager IsNot Nothing AndAlso recordingManager.IsRecording Then
+            transportControl.State = UI.TransportControl.TransportState.Recording
+            transportControl.RecordingTime = recordingManager.RecordingDuration
+        ElseIf playbackManager IsNot Nothing AndAlso playbackManager.IsPlaying Then
+            transportControl.State = UI.TransportControl.TransportState.Playing
+            transportControl.TrackPosition = playbackManager.CurrentPosition
+            transportControl.TrackDuration = playbackManager.TotalDuration
+        Else
+            transportControl.State = UI.TransportControl.TransportState.Stopped
+        End If
+    End Sub
+
+    ''' <summary>Handle DSP input samples for FFT (PRE-DSP - raw audio)</summary>
+    Private Sub OnDSPInputSamples(sender As Object, e As AudioIO.AudioSamplesEventArgs)
+        Try
+            ' DIAGNOSTIC: Log EVERY call to see if events are firing
+            Static callCount As Integer = 0
+            callCount += 1
+            Services.LoggingServiceAdapter.Instance.LogInfo($"🔊 OnDSPInputSamples CALLED! Count={callCount}, Samples={e.Count} bytes")
+
+            ' Analyze levels for METERS
+            Dim inputLevels = AudioLevelMeter.AnalyzeSamples(e.Samples, e.BitsPerSample, e.Channels)
+
+            ' Process through SpectrumManager for FFT (Task 2.0.4)
+            Dim spectrumInput = spectrumManager.ProcessInputSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels, e.SampleRate)
+
+            If spectrumInput IsNot Nothing AndAlso spectrumInput.Length > 0 Then
+                SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(spectrumInput, e.SampleRate, spectrumManager.FFTSize)
+            Else
+                Services.LoggingServiceAdapter.Instance.LogWarning($"OnDSPInputSamples: Spectrum is NULL or empty!")
+            End If
+
+            ' Update INPUT meters (DSP Signal Flow Panel)
+            DspSignalFlowPanel1.UpdateMeters(
+                inputLevels.PeakLeftDB,   ' Input Left
+                inputLevels.PeakRightDB,  ' Input Right
+                inputLevels.PeakLeftDB,   ' Output Left (same for now)
+                inputLevels.PeakRightDB)  ' Output Right (same for now)
+
+            Services.LoggingServiceAdapter.Instance.LogInfo($"✅ Meters updated: L={inputLevels.PeakLeftDB:F1} R={inputLevels.PeakRightDB:F1}")
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"OnDSPInputSamples error: {ex.Message}", ex)
+        End Try
+    End Sub
+
+    ''' <summary>Handle DSP output samples for FFT (POST-DSP - processed audio)</summary>
+    Private Sub OnDSPOutputSamples(sender As Object, e As AudioIO.AudioSamplesEventArgs)
+        Try
+            ' DIAGNOSTIC: Log that we received the event
+            Static callCount As Integer = 0
+            callCount += 1
+            If callCount Mod 10 = 0 Then
+                Services.LoggingServiceAdapter.Instance.LogInfo($"OnDSPOutputSamples: Event received! Count={callCount}, Samples={e.Count} bytes")
+            End If
+
+            ' Analyze levels for METERS
+            Dim outputLevels = AudioLevelMeter.AnalyzeSamples(e.Samples, e.BitsPerSample, e.Channels)
+
+            ' Update main recording meter with output levels
+            meterRecording.SetLevel(outputLevels.PeakDB, outputLevels.RMSDB, outputLevels.IsClipping)
+
+            ' Process through SpectrumManager for FFT (Task 2.0.4)
+            Dim spectrumOutput = spectrumManager.ProcessOutputSamples(e.Samples, e.Count, e.BitsPerSample, e.Channels, e.SampleRate)
+
+            If spectrumOutput IsNot Nothing AndAlso spectrumOutput.Length > 0 Then
+                SpectrumAnalyzerControl1.OutputDisplay.UpdateSpectrum(spectrumOutput, e.SampleRate, spectrumManager.FFTSize)
+            Else
+                ' Log if spectrum is null/empty
+                If callCount Mod 10 = 0 Then
+                    Services.LoggingServiceAdapter.Instance.LogWarning($"OnDSPOutputSamples: Spectrum is NULL or empty!")
+                End If
+            End If
+
+            ' DIAGNOSTIC: Calculate TRUE peak level from audio samples (every second)
+            Static lastLogTime As DateTime = DateTime.MinValue
+            If (DateTime.Now - lastLogTime).TotalSeconds >= 1.0 Then
+                Dim peakLevel = CalculateTruePeakDB(e.Samples, e.Count, e.BitsPerSample)
+                Services.LoggingServiceAdapter.Instance.LogInfo($"TRUE Audio Peak: {peakLevel:F1} dBFS (not FFT!)")
+                lastLogTime = DateTime.Now
+            End If
+
+        Catch ex As Exception
+            ' Log FFT errors instead of ignoring
+            Services.LoggingServiceAdapter.Instance.LogError($"OnDSPOutputSamples error: {ex.Message}", ex)
+        End Try
+    End Sub
+
+
+    ''' <summary>Handle playback completion (file reached EOF naturally)</summary>
+    Private Sub OnPlaybackCompleted(sender As Object, e As EventArgs)
+        Try
+            Services.LoggingServiceAdapter.Instance.LogInfo("Playback completed naturally (EOF reached)")
+            Logger.Instance.Info("Playback completed naturally", "MainForm")
+
+            ' Update transport control to stopped state
+            If InvokeRequired Then
+                Invoke(New Action(Sub()
+                                      transportControl.State = UI.TransportControl.TransportState.Stopped
+                                      panelLED.BackColor = Color.Yellow
+                                      lblStatus.Text = "Status: Ready (Mic Armed)"
+                                  End Sub))
+            Else
+                transportControl.State = UI.TransportControl.TransportState.Stopped
+                panelLED.BackColor = Color.Yellow
+                lblStatus.Text = "Status: Ready (Mic Armed)"
+            End If
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"OnPlaybackCompleted error: {ex.Message}", ex)
+        End Try
+    End Sub
+
+    ''' <summary>Calculate TRUE peak level in dBFS from audio samples</summary>
+    Private Function CalculateTruePeakDB(samples As Byte(), count As Integer, bitsPerSample As Integer) As Single
+        If samples Is Nothing OrElse count = 0 Then Return -96.0F
+
+        Dim maxSample As Single = 0.0F
+
+        If bitsPerSample = 16 Then
+            ' 16-bit PCM
+            For i = 0 To count - 1 Step 2
+                If i + 1 < count Then
+                    Dim sample = Math.Abs(BitConverter.ToInt16(samples, i))
+                    If sample > maxSample Then maxSample = sample
+                End If
+            Next
+            maxSample /= 32768.0F ' Normalize to 0.0-1.0
+        End If
+
+        ' Convert to dB
+        If maxSample < 0.00001F Then Return -96.0F ' Silence threshold
+        Return 20.0F * Math.Log10(maxSample)
+    End Function
+
+    ''' <summary>
+    ''' Handle spectrum ready event from FFT monitor thread (Phase 3 - NEW!)
+    ''' This replaces the old OnPipelineMonitoring event handler.
+    ''' Already throttled to 20 FPS by FFT thread - no throttling needed here!
+    ''' </summary>
+    Private Sub OnSpectrumReady(sender As Object, e As DSP.FFT.SpectrumReadyEventArgs)
+        ' Simple UI update - already throttled by FFT thread
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(New Action(Sub() UpdateSpectrum(e)))
+        Else
+            UpdateSpectrum(e)
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' Update spectrum display on UI thread (Phase 3 - NEW!)
+    ''' </summary>
+    Private Sub UpdateSpectrum(e As DSP.FFT.SpectrumReadyEventArgs)
+        Try
+            If e.TapPoint = Audio.Routing.TapPoint.PreDSP Then
+                ' Pre-DSP = Input display (raw audio)
+                SpectrumAnalyzerControl1.InputDisplay.UpdateSpectrum(e.Spectrum, e.SampleRate, e.FFTSize)
+            Else
+                ' Post-DSP = Output display (processed audio)
+                SpectrumAnalyzerControl1.OutputDisplay.UpdateSpectrum(e.Spectrum, e.SampleRate, e.FFTSize)
+            End If
+        Catch ex As Exception
+            ' Ignore UI errors (don't crash on spectrum update failure)
+            Logger.Instance.Debug($"UpdateSpectrum error: {ex.Message}", "MainForm")
+        End Try
+    End Sub
+
+#End Region
+
+#Region "Logging"
+
+    Private Sub OnLogMessage(sender As Object, e As Services.Interfaces.LogMessageEventArgs)
+        ' Thread-safe UI update
+        If txtLogViewer.InvokeRequired Then
+            txtLogViewer.Invoke(Sub() AppendLogMessage(e.Message, e.Level))
+        Else
+            AppendLogMessage(e.Message, e.Level)
+        End If
+    End Sub
+
+    Private Sub AppendLogMessage(message As String, level As Services.Interfaces.LogLevel)
+        ' Color-code by level
+        Dim color As Color
+        Select Case level
+            Case Services.Interfaces.LogLevel.Error
+                color = Color.FromArgb(255, 100, 100) ' Light red
+            Case Services.Interfaces.LogLevel.Warning
+                color = Color.FromArgb(255, 200, 100) ' Orange
+            Case Else
+                color = Color.White
+        End Select
+
+        ' Append with color
+        txtLogViewer.SelectionStart = txtLogViewer.TextLength
+        txtLogViewer.SelectionLength = 0
+        txtLogViewer.SelectionColor = color
+        txtLogViewer.AppendText(message & vbCrLf)
+        txtLogViewer.SelectionColor = txtLogViewer.ForeColor
+
+        ' Auto-scroll if enabled
+        If chkAutoScroll.Checked Then
+            txtLogViewer.SelectionStart = txtLogViewer.TextLength
+            txtLogViewer.ScrollToCaret()
+        End If
+    End Sub
+
+    Private Sub btnClearLogs_Click(sender As Object, e As EventArgs)
+        txtLogViewer.Clear()
+        Services.LoggingServiceAdapter.Instance.ClearLog()
+        Services.LoggingServiceAdapter.Instance.LogInfo("Log viewer cleared")
+    End Sub
+
+    Private Sub btnSaveLogs_Click(sender As Object, e As EventArgs)
+        Try
+            ' Get all log entries
+            Dim logs = Services.LoggingServiceAdapter.Instance.GetLogEntries()
+
+            ' Create save dialog
+            Using sfd As New SaveFileDialog()
+                sfd.Filter = "Text Files (*.txt)|*.txt|Log Files (*.log)|*.log|All Files (*.*)|*.*"
+                sfd.DefaultExt = "txt"
+                sfd.FileName = $"DSP_Logs_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
+                sfd.InitialDirectory = Path.Combine(Application.StartupPath, "Logs")
+
+                If sfd.ShowDialog() = DialogResult.OK Then
+                    File.WriteAllLines(sfd.FileName, logs)
+                    Services.LoggingServiceAdapter.Instance.LogInfo($"Logs exported to: {Path.GetFileName(sfd.FileName)}")
+                    MessageBox.Show($"Logs saved to:{vbCrLf}{sfd.FileName}", "Save Successful", MessageBoxButtons.OK, MessageBoxIcon.Information)
+                End If
+            End Using
+
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to save logs: {ex.Message}", ex)
+            MessageBox.Show($"Failed to save logs: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    Private Sub cmbLogLevel_SelectedIndexChanged(sender As Object, e As EventArgs)
+        ' Update filter level
+        Select Case cmbLogLevel.SelectedItem?.ToString()
+            Case "All", "Debug"
+                Services.LoggingServiceAdapter.Instance.FilterLevel = Nothing
+            Case "Info"
+                Services.LoggingServiceAdapter.Instance.FilterLevel = Services.Interfaces.LogLevel.Info
+            Case "Warn", "Warning"
+                Services.LoggingServiceAdapter.Instance.FilterLevel = Services.Interfaces.LogLevel.Warning
+            Case "Error", "Fatal"
+                Services.LoggingServiceAdapter.Instance.FilterLevel = Services.Interfaces.LogLevel.Error
+        End Select
+
+        Services.LoggingServiceAdapter.Instance.LogInfo($"Log filter changed to: {cmbLogLevel.SelectedItem}")
+    End Sub
+
+#End Region
+
+#Region "Audio Routing (Phase 2.0)"
+
+    ''' <summary>Handle browse for input file button - called by RoutingPanel</summary>
+    Private Sub OnBrowseInputFileClick(sender As Object, e As EventArgs)
+        Try
+            Using openFileDialog As New OpenFileDialog()
+                openFileDialog.Title = "Select Audio File for DSP Playback"
+                openFileDialog.Filter = "WAV Files (*.wav)|*.wav|All Audio Files (*.wav;*.mp3)|*.wav;*.mp3|All Files (*.*)|*.*"
+                openFileDialog.InitialDirectory = Path.Combine(Application.StartupPath, "Recordings")
+
+                If openFileDialog.ShowDialog() = DialogResult.OK Then
+                    Dim selectedFile = openFileDialog.FileName
+
+                    ' Update RoutingPanel display
+                    RoutingPanel1.SelectedFilePath = Path.GetFileName(selectedFile)
+
+                    ' Play file through AudioRouter (Task 2.0.2 - encapsulated method)
+                    Try
+                        audioRouter.PlayFile(selectedFile)
+
+                        ' Update UI
+                        panelLED.BackColor = Color.Magenta ' Magenta = DSP Processing
+                        lblStatus.Text = $"Status: DSP Playback - {Path.GetFileName(selectedFile)}"
+
+                        Services.LoggingServiceAdapter.Instance.LogInfo($"DSP playback started: {selectedFile}")
+                        Logger.Instance.Info($"DSP playback started: {selectedFile}", "MainForm")
+
+                        MessageBox.Show($"DSP Playback Started!{Environment.NewLine}{Environment.NewLine}File: {Path.GetFileName(selectedFile)}{Environment.NewLine}Routing: File → DSP Chain → Speakers{Environment.NewLine}{Environment.NewLine}(Pass-through test - no processing yet)", "DSP Routing Active", MessageBoxButtons.OK, MessageBoxIcon.Information)
+
+                    Catch ex As Exception
+                        Services.LoggingServiceAdapter.Instance.LogError($"Failed to start DSP playback: {ex.Message}", ex)
+                        MessageBox.Show($"Failed to start DSP playback:{Environment.NewLine}{ex.Message}", "DSP Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+
+                        ' Reset UI
+                        panelLED.BackColor = Color.Yellow
+                        lblStatus.Text = "Status: Ready (Mic Armed)"
+                    End Try
+                End If
+            End Using
+        Catch ex As Exception
+            Services.LoggingServiceAdapter.Instance.LogError($"Failed to browse for input file: {ex.Message}", ex)
+        End Try
+    End Sub
+
+#End Region
+
+    Protected Overrides Sub OnFormClosing(e As FormClosingEventArgs)
+        ' Log shutdown
+        Services.LoggingServiceAdapter.Instance.LogInfo("DSP Processor shutting down")
+
+        ' Dispose managers
+        recordingManager?.Dispose()
+        audioRouter?.Dispose()
+        spectrumManager?.Dispose() ' Task 2.0.4
+
+        ' 🆕 Dispose reactive subscriptions (Phase 7.2)
+        _bufferStream?.OnCompleted()
+        _bufferStream?.Dispose()
+        _reactiveSubscriptions?.Dispose()
+
+        ' Cleanup modules
+        playbackManager?.Dispose()
+        WaveformDisplayControl1?.Dispose()
+
+        ' Close logger
+        Logger.Instance.Close()
+
+        MyBase.OnFormClosing(e)
+    End Sub
+
+    Private Sub tabProgram_Click(sender As Object, e As EventArgs)
+
+    End Sub
+
+#Region "🆕 REACTIVE SSM TESTING (Phase 7.2)"
+
+    ''' <summary>
+    ''' 🧠 Initialize Smart State Debugger Panel (Phase 7 Capstone!)
+    ''' </summary>
+    Private Sub InitializeStateDebuggerPanel()
+        Try
+            Logger.Instance.Info("🧠 Initializing Smart State Debugger Panel...", "MainForm")
+
+            ' Create new tab for State Debugger
+            Dim debuggerTab = New TabPage With {
+                .Text = "🧠 State Monitor",
+                .Name = "tabStateDebugger"
+            }
+
+            ' Create and add StateDebuggerPanel
+            Dim debuggerPanel = New StateDebuggerPanel With {
+                .Dock = DockStyle.Fill
+            }
+            debuggerTab.Controls.Add(debuggerPanel)
+
+            ' Add to visualization tabs
+            visualizationTabs.TabPages.Add(debuggerTab)
+
+            ' Initialize subscriptions
+            debuggerPanel.InitializeSubscriptions()
+
+            Logger.Instance.Info("✅ Smart State Debugger Panel initialized and ready!", "MainForm")
+            Logger.Instance.Info("   Switch to '🧠 State Monitor' tab to see live state visualization", "MainForm")
+
+        Catch ex As Exception
+            Logger.Instance.Error("Failed to initialize State Debugger Panel", ex, "MainForm")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Tests the reactive AudioDeviceSSM.
+    ''' This demonstrates reactive streams pattern with Rx.NET.
+    ''' NOTE: Actual AudioDeviceSSM is now managed by StateCoordinator!
+    ''' This is just a demonstration of reactive UI bindings.
+    ''' </summary>
+    Private Sub TestReactiveSSM()
+        Logger.Instance.Info("=== TESTING REACTIVE SSM PATTERNS ===", "MainForm")
+
+        Try
+            ' 🎯 DEMONSTRATION: Show how to bind SSM states directly to UI controls
+            ' In this example, we'll bind AudioDeviceSSM state to the status label
+
+            ' StateCoordinator already owns all SSMs - we just subscribe to their streams!
+            ' This is a DEMONSTRATION of direct UI binding (already done in WireReactiveSSMs for logging)
+
+            Logger.Instance.Info("Setting up reactive UI bindings demonstration...", "MainForm")
+
+            ' Example 1: Transform state to friendly message
+            StateCoordinator.Instance.AudioDeviceSSM.StateChanges _
+                .Select(Function(t) $"Audio Device: {t.NewState}") _
+                .BindTo(lblStatus,
+                       Sub(lbl, text) lbl.Text = text,
+                       Sub(ex) Logger.Instance.Error("Device state binding error", ex, "MainForm")) _
+                .DisposeWith(_reactiveSubscriptions)
+
+            Logger.Instance.Info("✅ Reactive UI binding demonstrated (AudioDevice → lblStatus)", "MainForm")
+
+            ' 🎨 FUTURE PATTERNS (when more SSMs need UI bindings):
+            '
+            ' Example: Disable record button during recording
+            ' StateCoordinator.Instance.RecordingManagerSSM.StateChanges _
+            '     .Select(Function(t) t.NewState <> RecordingState.Recording) _
+            '     .BindTo(btnRecord,
+            '            Sub(btn, enabled) btn.Enabled = enabled,
+            '            Sub(ex) Logger.Instance.Error("Button binding error", ex, "MainForm")) _
+            '     .DisposeWith(_reactiveSubscriptions)
+            '
+            ' Benefits of this pattern:
+            ' - No manual InvokeRequired checks
+            ' - Automatic UI updates
+            ' - Easy cleanup (dispose all at once)
+            ' - Composable with .Where, .Throttle, .CombineLatest, etc.
+
+            Logger.Instance.Info("=== REACTIVE SSM PATTERN TEST COMPLETE ===", "MainForm")
+
+        Catch ex As Exception
+            Logger.Instance.Error($"Reactive SSM pattern test failed: {ex.Message}", ex, "MainForm")
+        End Try
+    End Sub
+
+#End Region
+
+End Class

@@ -38,6 +38,16 @@ Public Class RecordingManagerSSM
         End Get
     End Property
 
+    ''' <summary>
+    ''' Is microphone currently armed?
+    ''' Convenience property for common state check
+    ''' </summary>
+    Public ReadOnly Property IsArmed As Boolean
+        Get
+            Return CurrentState = RecordingManagerState.Armed
+        End Get
+    End Property
+
 #End Region
 
 #Region "Constructor"

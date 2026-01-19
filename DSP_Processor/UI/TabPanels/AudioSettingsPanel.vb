@@ -262,8 +262,36 @@ Namespace UI.TabPanels
             If cmbAudioDriver.SelectedIndex >= 0 Then
                 Dim selectedDriver As AudioIO.DriverType
                 If [Enum].TryParse(cmbAudioDriver.SelectedItem.ToString(), selectedDriver) Then
-                    AudioIO.AudioInputManager.Instance.CurrentDriver = selectedDriver
-                    Utils.Logger.Instance.Info($"Audio driver changed to: {selectedDriver}", "AudioSettingsPanel")
+                    ' Phase 7: Request driver change through AudioDeviceSSM (state machine validation)
+                    Dim targetState = ConvertDriverToState(selectedDriver)
+                    Dim coordinator = StateCoordinator.Instance
+
+                    If coordinator IsNot Nothing AndAlso coordinator.AudioDeviceSSM IsNot Nothing Then
+                        Dim success = coordinator.AudioDeviceSSM.TransitionTo(targetState, $"User selected {selectedDriver} driver")
+
+                        If Not success Then
+                            ' Transition failed (validation rejected) - revert dropdown
+                            Utils.Logger.Instance.Warning($"Driver change to {selectedDriver} rejected by state machine", "AudioSettingsPanel")
+                            MessageBox.Show($"Cannot switch audio driver at this time.{vbCrLf}Please stop recording/playback first.",
+                                          "Driver Change Not Allowed", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+
+                            ' Revert dropdown to current driver
+                            suppressEvents = True
+                            Try
+                                Dim currentDriver = AudioIO.AudioInputManager.Instance.CurrentDriver
+                                cmbAudioDriver.SelectedItem = currentDriver.ToString()
+                            Finally
+                                suppressEvents = False
+                            End Try
+                            Return
+                        End If
+
+                        Utils.Logger.Instance.Info($"Audio driver changed to: {selectedDriver} (via SSM)", "AudioSettingsPanel")
+                    Else
+                        ' Fallback: StateCoordinator not available (shouldn't happen in normal operation)
+                        Utils.Logger.Instance.Warning("StateCoordinator not available - setting driver directly", "AudioSettingsPanel")
+                        AudioIO.AudioInputManager.Instance.CurrentDriver = selectedDriver
+                    End If
 
                     suppressEvents = True
                     Try
@@ -292,6 +320,26 @@ Namespace UI.TabPanels
                 End If
             End If
         End Sub
+
+#End Region
+
+#Region "Helper Methods"
+
+        ''' <summary>
+        ''' Converts DriverType to AudioDeviceState for SSM transitions
+        ''' </summary>
+        Private Function ConvertDriverToState(driver As AudioIO.DriverType) As State.AudioDeviceState
+            Select Case driver
+                Case AudioIO.DriverType.WASAPI
+                    Return State.AudioDeviceState.WASAPI
+                Case AudioIO.DriverType.ASIO
+                    Return State.AudioDeviceState.ASIO
+                Case AudioIO.DriverType.DirectSound
+                    Return State.AudioDeviceState.DirectSound
+                Case Else
+                    Return State.AudioDeviceState.WASAPI ' Default fallback
+            End Select
+        End Function
 
 #End Region
 

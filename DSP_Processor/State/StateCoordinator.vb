@@ -22,6 +22,10 @@ Public Class StateCoordinator
     Private _dspThreadSSM As DSPThreadSSM
     Private _uiStateMachine As UIStateMachine
     Private _playbackSSM As PlaybackSSM
+    Private _audioDeviceSSM As State.AudioDeviceSSM
+    Private _audioInputSSM As State.AudioInputSSM
+    Private _dspModeSSM As State.DSPModeSSM
+    Private _audioRoutingSSM As State.AudioRoutingSSM
 
     ' Subsystem references (NOT owned - just references for initialization)
     ' These will be set during Initialize() call
@@ -103,6 +107,46 @@ Public Class StateCoordinator
     End Property
 
     ''' <summary>
+    ''' Gets the AudioDeviceSSM
+    ''' </summary>
+    Public ReadOnly Property AudioDeviceSSM As State.AudioDeviceSSM
+        Get
+            CheckDisposed()
+            Return _audioDeviceSSM
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Gets the AudioInputSSM
+    ''' </summary>
+    Public ReadOnly Property AudioInputSSM As State.AudioInputSSM
+        Get
+            CheckDisposed()
+            Return _audioInputSSM
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Gets the DSPModeSSM
+    ''' </summary>
+    Public ReadOnly Property DSPModeSSM As State.DSPModeSSM
+        Get
+            CheckDisposed()
+            Return _dspModeSSM
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Gets the AudioRoutingSSM
+    ''' </summary>
+    Public ReadOnly Property AudioRoutingSSM As State.AudioRoutingSSM
+        Get
+            CheckDisposed()
+            Return _audioRoutingSSM
+        End Get
+    End Property
+
+    ''' <summary>
     ''' Gets the current global state (convenience property)
     ''' </summary>
     Public ReadOnly Property GlobalState As GlobalState
@@ -180,9 +224,45 @@ Public Class StateCoordinator
         _playbackSSM = New PlaybackSSM(audioRouter, _globalStateMachine)
         Utils.Logger.Instance.Info("PlaybackSSM created", "StateCoordinator")
 
+        ' Create AudioDeviceSSM (manages driver backend)
+        _audioDeviceSSM = New State.AudioDeviceSSM()
+        Utils.Logger.Instance.Info("AudioDeviceSSM created", "StateCoordinator")
+
+        ' Create AudioInputSSM (manages device selection)
+        _audioInputSSM = New State.AudioInputSSM()
+        Utils.Logger.Instance.Info("AudioInputSSM created", "StateCoordinator")
+
+        ' Create DSPModeSSM (manages DSP enable/disable)
+        _dspModeSSM = New State.DSPModeSSM()
+        Utils.Logger.Instance.Info("DSPModeSSM created", "StateCoordinator")
+
+        ' Create AudioRoutingSSM (manages routing topology + TAP POINTS!)
+        _audioRoutingSSM = New State.AudioRoutingSSM(audioRouter, _recordingManagerSSM, _playbackSSM)
+        Utils.Logger.Instance.Info("AudioRoutingSSM created", "StateCoordinator")
+
         ' Create UIStateMachine (subscribes to GSM)
         _uiStateMachine = New UIStateMachine(_globalStateMachine, mainForm)
         Utils.Logger.Instance.Info("UIStateMachine created", "StateCoordinator")
+
+        ' Initialize AudioDeviceSSM to default driver (WASAPI)
+        If Not _audioDeviceSSM.Initialize() Then
+            Utils.Logger.Instance.Warning("AudioDeviceSSM initialization failed - continuing with default", "StateCoordinator")
+        End If
+
+        ' Initialize AudioInputSSM to default device
+        If Not _audioInputSSM.Initialize() Then
+            Utils.Logger.Instance.Warning("AudioInputSSM initialization failed - continuing with default", "StateCoordinator")
+        End If
+
+        ' Initialize DSPModeSSM to default mode (DISABLED)
+        If Not _dspModeSSM.Initialize() Then
+            Utils.Logger.Instance.Warning("DSPModeSSM initialization failed - continuing with default", "StateCoordinator")
+        End If
+
+        ' Initialize AudioRoutingSSM to default state (DISABLED)
+        If Not _audioRoutingSSM.Initialize() Then
+            Utils.Logger.Instance.Warning("AudioRoutingSSM initialization failed - continuing with default", "StateCoordinator")
+        End If
 
         ' Transition from Uninitialized → Idle (system ready)
         Dim success = _globalStateMachine.TransitionTo(GlobalState.Idle, "StateCoordinator initialized")
@@ -218,6 +298,10 @@ Public Class StateCoordinator
             .DSPState = _dspThreadSSM.CurrentState,
             .UIState = _uiStateMachine.CurrentState,
             .PlaybackState = _playbackSSM.CurrentState,
+            .AudioDeviceState = _audioDeviceSSM.CurrentState,
+            .AudioInputState = _audioInputSSM.CurrentState,
+            .DSPModeState = _dspModeSSM.CurrentState,
+            .RoutingState = _audioRoutingSSM.CurrentState,
             .Timestamp = DateTime.Now
         }
     End Function
@@ -383,6 +467,18 @@ Public Class SystemStateSnapshot
     ''' <summary>Playback satellite state machine state</summary>
     Public Property PlaybackState As PlaybackState
 
+    ''' <summary>AudioDevice satellite state machine state</summary>
+    Public Property AudioDeviceState As State.AudioDeviceState
+
+    ''' <summary>AudioInput satellite state machine state</summary>
+    Public Property AudioInputState As State.AudioInputState
+
+    ''' <summary>DSP Mode satellite state machine state</summary>
+    Public Property DSPModeState As State.DSPModeState
+
+    ''' <summary>AudioRouting satellite state machine state</summary>
+    Public Property RoutingState As State.AudioRoutingState
+
     ''' <summary>Timestamp when snapshot was taken</summary>
     Public Property Timestamp As DateTime
 
@@ -390,6 +486,6 @@ Public Class SystemStateSnapshot
     ''' Returns formatted string for display
     ''' </summary>
     Public Overrides Function ToString() As String
-        Return $"[{Timestamp:HH:mm:ss.fff}] Global:{GlobalState} Rec:{RecordingState} DSP:{DSPState} UI:{UIState} Play:{PlaybackState}"
+        Return $"[{Timestamp:HH:mm:ss.fff}] Global:{GlobalState} Rec:{RecordingState} DSP:{DSPState} UI:{UIState} Play:{PlaybackState} Audio:{AudioDeviceState} Input:{AudioInputState} Mode:{DSPModeState} Route:{RoutingState}"
     End Function
 End Class
