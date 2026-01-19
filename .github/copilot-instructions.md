@@ -1,7 +1,7 @@
 # Copilot Instructions - Main Index
 
 **Project:** DSP_Processor  
-**Current Version:** v1.3.2.3 - Loop Recording Fixed
+**Current Version:** v1.3.2.3 - Phase 6 Complete
 
 ## Core Principles
 1. State Machine Architecture
@@ -22,6 +22,13 @@
 ## Quick Reference
 **Methodology:** RDF - Documentation/Reference/RDF.md  
 **Version Format:** v[Major].[Phase].[SubPhase].[Task]  
-**Current Task:** Phase 6 Complete - All Critical Issues Fixed
+**Current Task:** Phase 7 - Complete SSM Architecture (4 Missing SSMs)
+
+## Phase 7 Objectives
+1. **AudioDevice SSM** - Driver backend control (WASAPI/ASIO/DirectSound)
+2. **AudioInput SSM** - Physical input device selection
+3. **AudioRouting SSM** - Routing topology + tap point management
+4. **DSP Mode SSM** - DSP enable/disable control
+5. **MainForm Refactoring** - Remove business logic, pure event routing
 
 **Last Updated:** 2026-01-19
