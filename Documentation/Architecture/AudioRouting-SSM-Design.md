@@ -1,9 +1,9 @@
 # AudioRouting SSM - Design Document
 
-**Version:** v1.4.0-alpha  
+**Version:** v1.4.0-beta  
 **Date:** 2026-01-19  
 **Purpose:** Control entire audio routing topology with proper state machine architecture  
-**Status:** ?? IN DESIGN - MOST COMPLEX SSM
+**Status:** ? DESIGN COMPLETE - Ready for Implementation (MOST COMPLEX SSM)
 
 ---
 
@@ -31,6 +31,49 @@
 - Interacts with: AudioDevice SSM, AudioInput SSM, DSP Mode SSM, RecordingManagerSSM, PlaybackSSM
 - Controls: AudioRouter, TapPointManager, DSPThread tap points
 - Affects: Meters, FFT, monitoring, recording, playback
+
+---
+
+## ??? **SUBSYSTEM OWNERSHIP**
+
+**Clear Ownership Boundaries:**
+- ? **AudioRouting SSM owns routing topology**
+- ? **AudioRouter is the executor** (not the decision-maker)
+- ? **TapPointManager instances are owned by routing states**
+- ? **DSP Mode SSM owns DSP enable/disable** (NOT routing)
+- ? **RecordingManagerSSM owns recording lifecycle** (NOT routing)
+- ? **PlaybackSSM owns playback lifecycle** (NOT routing)
+- ? **AudioInput SSM owns device selection** (NOT routing)
+- ? **AudioDevice SSM owns driver mode** (NOT routing)
+- ? **MainForm is a passive consumer of tap point data**
+
+**Critical Rules:**
+- ? AudioRouting SSM must NOT control subsystem lifecycles directly
+- ? AudioRouting SSM must RESPOND to SSM events, not command them
+- ? AudioRouting SSM is the CONDUCTOR, not the orchestra
+- ? Tap point lifecycle tied to routing state
+- ? All routing changes flow through AudioRouting SSM
+
+**This clarifies that AudioRouting SSM is the CONDUCTOR, coordinating audio flow without controlling individual subsystems.**
+
+---
+
+## ?? **CROSS-SSM INTERACTION MATRIX**
+
+| Subsystem | Interaction | Purpose |
+|-----------|-------------|---------|
+| **RecordingManagerSSM** | Arms/disarms mic, starts/stops recording | Triggers routing transitions |
+| **PlaybackSSM** | Starts/stops playback | Triggers routing transitions |
+| **DSP Mode SSM** | Determines whether routing uses DSP path | Routing configuration |
+| **AudioInput SSM** | Provides active input device | Device availability |
+| **AudioDevice SSM** | Provides active driver mode | Driver configuration |
+| **DSPThreadSSM** | Provides tap point buffers | Tap point source |
+| **UIStateMachine** | Reflects routing mode in UI | User feedback |
+| **MainForm** | Consumes tap point data via events | Monitoring/FFT |
+| **RoutingPanel** | Emits routing change requests | UI integration |
+| **AudioPipelinePanel** | Reflects routing status | Visual feedback |
+
+**Relationship Type:** AudioRouting SSM is the **central coordinator** that responds to events from all subsystems and manages the audio flow topology.
 
 ---
 
@@ -959,6 +1002,508 @@ Playback: File ? AudioRouter ? TapPointManager ? Tap Points ? Meters
 
 ---
 
-**Status:** ?? Design Complete ? Ready for Review  
-**Next Step:** Get Rick's approval on all 4 SSM designs, then begin implementation!
+## ?? **FAILURE MODES & RECOVERY PATTERNS**
+
+### **Failure Modes:**
+
+| Failure Type | Trigger | Impact |
+|--------------|---------|--------|
+| **Tap Point Creation Failure** | TapPointManager init fails, ring buffer allocation fails | No monitoring/FFT |
+| **AudioRouter Init Failure** | Routing engine fails to initialize | No audio routing possible |
+| **Device Routing Config Failure** | Output device unavailable, driver error | Cannot route audio to output |
+| **Resource Allocation Failure** | Out of memory, buffer allocation fails | Routing cannot be established |
+| **DSP Mode Conflict** | DSP Mode SSM in error state | Routing cannot use DSP path |
+| **Microphone Stream Failure** | Input device error, stream crash | Mic routing fails |
+| **Playback Stream Failure** | File read error, decoder failure | Playback routing fails |
+
+### **Recovery Patterns:**
+
+**Pattern 1: Graceful Fallback to Disabled**
+```
+Routing error ? ROUTING_ERROR state ? Automatic transition to ROUTING_DISABLED
+```
+
+**Pattern 2: Tap Point Recreation**
+```
+Tap point creation fails ? Log error ? Routing continues without monitoring
+```
+
+**Pattern 3: Device Fallback**
+```
+Output device fails ? Try default device ? If fails, transition to ERROR
+```
+
+### **User Guidance:**
+
+| Error | Message | Action |
+|-------|---------|--------|
+| Tap point failure | "Monitoring unavailable. Routing continues." | Continue operation |
+| AudioRouter init failure | "Audio routing failed to initialize. Check system resources." | Restart app |
+| Device unavailable | "Output device not available. Select different device." | Show device list |
+| All routing failed | "Audio routing system failure. Restart application." | Exit gracefully |
+
+### **Logging:**
+```
+[ERROR] AudioRouting SSM: Tap point creation failed
+  Reason: Ring buffer allocation failed - Out of memory
+  State: MIC_TO_MONITORING
+  Recovery: Routing continues without monitoring
+[WARN] AudioRouting SSM: Monitoring disabled (tap point failure)
+```
+
+---
+
+## ?? **THREADING MODEL**
+
+### **Threading Rules:**
+
+1. **All transitions occur inside SSM lock**
+   - Prevents race conditions during routing changes
+   - Ensures atomic state changes
+
+2. **Tap point operations must be thread-safe**
+   - TapPointManager uses locks internally
+   - Ring buffer writes are thread-safe
+   - Multiple readers supported
+
+3. **SSM event handlers may arrive on arbitrary threads**
+   - RecordingManagerSSM events from audio thread
+   - PlaybackSSM events from playback thread
+   - DSP Mode SSM events from UI thread
+   - Must marshal to SSM thread
+
+4. **AudioRouter operations must be serialized**
+   - Only ONE routing reconfiguration at a time
+   - Queue multiple requests
+   - Wait for completion before next change
+
+5. **Tap point creation/destruction must not block audio thread**
+   - Use background task for allocation
+   - Audio continues during tap point setup
+   - Timeout protection
+
+### **Thread Safety:**
+
+```visualbasic
+Private ReadOnly _stateLock As New Object()
+
+Private Sub OnRecordingStarted()
+    ' Event arrives from audio thread - marshal to SSM thread
+    SyncLock _stateLock
+        If CurrentState = RoutingState.MicToMonitoring Then
+            ' Add recording tap point reader
+            CreateRecordingTapPoint()
+            TransitionTo(RoutingState.MicToRecording, "Recording started")
+        End If
+    End SyncLock
+End Sub
+
+Private Sub OnPlaybackStarted()
+    ' Event arrives from playback thread - marshal to SSM thread
+    SyncLock _stateLock
+        ' Destroy mic tap points if active
+        If CurrentState = RoutingState.MicToMonitoring Then
+            DestroyMicTapPoints()
+        End If
+        
+        ' Create playback tap points
+        CreatePlaybackTapPoints()
+        TransitionTo(RoutingState.FileToOutput, "Playback started")
+    End SyncLock
+End Sub
+```
+
+### **Deadlock Prevention:**
+
+- ? **Never hold SSM lock while calling other SSMs**
+- ? **Release lock before emitting events**
+- ? **Use timeouts for all blocking operations**
+- ? **Tap point creation timeout: 5 seconds max**
+
+---
+
+## ??? **TRANSITIONID NAMING CONVENTION**
+
+### **Format:**
+```
+ROUTING_T{XX}_{OLDSTATE}_TO_{NEWSTATE}
+```
+
+### **Examples:**
+
+| TransitionID | Description |
+|--------------|-------------|
+| `ROUTING_T01_UNINITIALIZED_TO_DISABLED` | Startup initialization |
+| `ROUTING_T02_DISABLED_TO_MIC_TO_MONITORING` | Microphone armed |
+| `ROUTING_T03_MIC_TO_MONITORING_TO_MIC_TO_RECORDING` | Recording started |
+| `ROUTING_T04_MIC_TO_RECORDING_TO_MIC_TO_MONITORING` | Recording stopped, mic still armed |
+| `ROUTING_T05_MIC_TO_MONITORING_TO_DISABLED` | Microphone disarmed |
+| `ROUTING_T06_DISABLED_TO_FILE_TO_OUTPUT` | Playback started |
+| `ROUTING_T07_FILE_TO_OUTPUT_TO_DISABLED` | Playback stopped, mic not armed |
+| `ROUTING_T08_FILE_TO_OUTPUT_TO_MIC_TO_MONITORING` | Playback stopped, mic armed |
+| `ROUTING_T09_ANY_TO_ERROR` | Routing failure |
+| `ROUTING_T10_ERROR_TO_DISABLED` | Recovery |
+
+### **Benefits:**
+
+- ? **Grep-friendly:** `git log --grep="ROUTING_T03"`
+- ? **Deterministic naming:** No ambiguity
+- ? **Consistent across SSMs:** Same pattern everywhere
+- ? **Easy YAML export:** Maps directly to StateRegistry.yaml
+- ? **Cognitive introspection:** Track routing patterns over time
+
+### **Logging:**
+```
+[INFO] AudioRouting SSM: ROUTING_T03_MIC_TO_MONITORING_TO_MIC_TO_RECORDING
+  Trigger: RecordingManagerSSM.RecordingStarted event
+  DSP Mode: ENABLED (from DSP Mode SSM)
+  Tap Points: Maintained (MicInputMonitor, MicOutputMonitor)
+  New Tap Point: RecordingCapture (PostOutputGain)
+  Timestamp: 2026-01-19T18:15:45.123Z
+```
+
+---
+
+## ?? **MERMAID STATE DIAGRAM**
+
+```mermaid
+stateDiagram-v2
+    [*] --> UNINITIALIZED
+    UNINITIALIZED --> DISABLED : T01 (Initialize)
+    
+    DISABLED --> MIC_TO_MONITORING : T02 (Mic armed)
+    DISABLED --> FILE_TO_OUTPUT : T06 (Playback started)
+    
+    MIC_TO_MONITORING --> MIC_TO_RECORDING : T03 (Recording started)
+    MIC_TO_MONITORING --> DISABLED : T05 (Mic disarmed)
+    MIC_TO_MONITORING --> FILE_TO_OUTPUT : (Playback while monitoring)
+    
+    MIC_TO_RECORDING --> MIC_TO_MONITORING : T04 (Recording stopped, mic armed)
+    MIC_TO_RECORDING --> DISABLED : (Recording stopped, mic disarmed)
+    
+    FILE_TO_OUTPUT --> DISABLED : T07 (Playback stopped)
+    FILE_TO_OUTPUT --> MIC_TO_MONITORING : T08 (Playback stopped, mic armed)
+    
+    DISABLED --> ERROR : T09 (Failure)
+    MIC_TO_MONITORING --> ERROR : T09 (Failure)
+    MIC_TO_RECORDING --> ERROR : T09 (Failure)
+    FILE_TO_OUTPUT --> ERROR : T09 (Failure)
+    
+    ERROR --> DISABLED : T10 (Recovery)
+    ERROR --> UNINITIALIZED : (Full reset)
+```
+
+---
+
+## ?? **UI FEEDBACK CONTRACT**
+
+### **UI Responsibilities:**
+
+**RoutingPanel:**
+```visualbasic
+' Routing panel emits routing change requests
+Private Sub btnEnableMonitoring_Click(sender As Object, e As EventArgs)
+    RaiseEvent RoutingChangeRequested(Me, RoutingMode.MicToMonitoring)
+End Sub
+
+' SSM calls back with result
+Private Sub OnRoutingChangeCompleted(success As Boolean, mode As RoutingMode, message As String)
+    If Not success Then
+        MessageBox.Show(message, "Routing Change Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+    Else
+        UpdateRoutingStatus(mode)
+    End If
+End Sub
+```
+
+**AudioPipelinePanel:**
+```visualbasic
+' AudioPipelinePanel reflects routing status (read-only)
+Public Sub UpdateRoutingMode(mode As RoutingMode)
+    lblRoutingMode.Text = $"Routing: {mode}"
+    UpdateSignalFlowVisualization(mode)
+End Sub
+```
+
+**MainForm:**
+```visualbasic
+' MainForm consumes tap point data via events (NO direct tap point access!)
+Private Sub OnTapPointDataAvailable(source As AudioSource, location As TapPoint, data As Byte())
+    Select Case source
+        Case AudioSource.Microphone
+            UpdateMicMeters(data)
+            UpdateMicFFT(data)
+        Case AudioSource.FilePlayback
+            UpdatePlaybackMeters(data)
+            UpdatePlaybackFFT(data)
+    End Select
+End Sub
+
+' NO MORE FALLBACK CODE! ? Clean architecture
+```
+
+### **UI Must NOT:**
+
+- ? Access AudioRouter.TapManager directly
+- ? Create/destroy tap points
+- ? Configure routing directly
+- ? Check "TapManager not available" (that code is deleted!)
+
+### **UI Must:**
+
+- ? Subscribe to AudioRouting SSM events
+- ? Emit routing change requests
+- ? Wait for callbacks before updating UI
+- ? Handle routing state changes gracefully
+
+---
+
+## ?? **COGNITIVE LAYER HOOKS**
+
+### **What Cognitive Layer Can Infer:**
+
+| Metric | Inference |
+|--------|-----------|
+| **Time in each routing state** | User workflow patterns (mostly recording vs mostly playback) |
+| **Routing state transitions** | Workflow complexity, user behavior |
+| **Correlation: Routing ? Recording** | User records after arming mic (professional vs casual) |
+| **Correlation: Routing ? Playback** | User reviews recordings frequently |
+| **Tap point usage patterns** | Heavy monitoring = mixing/mastering, Light monitoring = quick captures |
+| **Routing failures over time** | System instability, resource issues |
+| **DSP mode during routing** | User uses DSP for recording vs playback |
+
+### **Cognitive Patterns to Detect:**
+
+**Pattern 1: "Professional Workflow"**
+```
+Mic armed ? Monitor (30s) ? Record (3min) ? Monitor (10s) ? Record (3min) (loop)
+Inference: User reviews levels before each take
+Suggestion: "Quick arm/record shortcut available"
+```
+
+**Pattern 2: "Casual User"**
+```
+Mic armed ? Record immediately (no monitoring)
+Inference: User doesn't check levels beforehand
+Suggestion: "Enable monitoring to check levels before recording"
+```
+
+**Pattern 3: "Playback Heavy"**
+```
+90% time in FILE_TO_OUTPUT, 10% in MIC_TO_RECORDING
+Inference: User listens to recordings more than creating them
+Action: Optimize for playback performance
+```
+
+**Pattern 4: "Routing Thrash"**
+```
+DISABLED ? MIC_TO_MONITORING (10 times in 1 minute)
+Inference: User confused about arming/disarming
+Suggestion: "Tip: Keep mic armed while recording multiple takes"
+```
+
+### **Telemetry Data:**
+
+```yaml
+AudioRouting_Telemetry:
+  SessionID: 12345
+  Duration: 3600s
+  States:
+    - State: DISABLED
+      Duration: 500s
+      Transitions: 5
+    - State: MIC_TO_MONITORING
+      Duration: 400s
+      Transitions: 8
+    - State: MIC_TO_RECORDING
+      Duration: 2100s
+      Transitions: 7
+    - State: FILE_TO_OUTPUT
+      Duration: 600s
+      Transitions: 3
+  UserActions:
+    - MicArmed: 8 times
+    - RecordingStarts: 7 times
+    - PlaybackStarts: 3 times
+  Correlation:
+    - DSP_Enabled_During_Recording: 100%
+    - DSP_Enabled_During_Playback: 66%
+    - Avg_Monitor_Before_Record: 50s
+```
+
+---
+
+## ?? **TAP POINT LIFECYCLE TABLE**
+
+| Routing State | TapPointManager | Tap Point Readers | Wired To | Notes |
+|---------------|-----------------|-------------------|----------|-------|
+| **UNINITIALIZED** | None | None | - | Clean slate |
+| **DISABLED** | None | None | - | No routing active |
+| **MIC_TO_MONITORING** | micTapManager | MicInputMonitor (PreDSP), MicOutputMonitor (PostOutputGain) | MainForm (meters, FFT) | Monitoring only |
+| **MIC_TO_RECORDING** | micTapManager | + RecordingCapture (PostOutputGain) | MainForm + RecordingEngine | Monitoring + recording |
+| **FILE_TO_OUTPUT** | AudioRouter.TapManager | PlaybackInputMonitor (PreDSP), PlaybackOutputMonitor (PostOutputGain) | MainForm (meters, FFT) | Playback monitoring |
+| **ERROR** | None (all destroyed) | None | - | Error recovery |
+
+**Key Insight:** Each routing state creates EXACTLY the tap points it needs. No more, no less.
+
+---
+
+## ?? **ROUTING GRAPH**
+
+### **Conceptual Routing Graph:**
+
+```
+Input Sources:
+  ?? Microphone (via AudioInput SSM)
+  ?? File (via PlaybackSSM)
+                ?
+         [TapPoint.PreDSP]
+                ?
+          DSP? (conditional)
+          ?? Yes: DSP pipeline
+          ?   ?? InputGainProcessor
+          ?   ?? [TapPoint.PostInputGain]
+          ?   ?? OutputGainProcessor
+          ?   ?? [TapPoint.PostOutputGain]
+          ?? No: Direct pass-through
+                ?
+         [TapPoint.PreOutput]
+                ?
+           Output Destinations:
+             ?? Speakers/Headphones
+             ?? Recording File
+             ?? Monitoring Display (Meters, FFT)
+```
+
+**This clarifies that routing is a GRAPH, not a linear pipeline.**
+
+---
+
+## ?? **ROUTING ENGINE CONTRACT**
+
+### **What AudioRouter Must Guarantee:**
+
+**1. TapPointManager Support:**
+```visualbasic
+Public Sub CreateTapPointManager()
+    ' Create TapPointManager for playback routing
+    ' Called by AudioRouting SSM when entering FILE_TO_OUTPUT state
+End Sub
+
+Public Sub DisposeTapPointManager()
+    ' Destroy TapPointManager and all readers
+    ' Called by AudioRouting SSM when exiting FILE_TO_OUTPUT state
+End Sub
+
+Public ReadOnly Property TapManager As TapPointManager
+    ' Expose TapPointManager for reader creation
+    ' Returns Nothing if not created yet
+End Property
+```
+
+**2. Routing Configuration:**
+```visualbasic
+Public Sub ConfigureRouting(source As AudioSource, destination As AudioDestination, dspEnabled As Boolean)
+    ' Configure routing path
+    ' Called by AudioRouting SSM during state transitions
+    ' Must be idempotent (can be called multiple times)
+End Sub
+```
+
+**3. AudioRouter Must NOT:**
+- ? Perform routing decisions internally
+- ? Create tap points internally without SSM coordination
+- ? Bypass SSM decisions
+- ? Maintain routing state (that's AudioRouting SSM's job!)
+
+**4. AudioRouter Must:**
+- ? Execute routing decisions from SSM
+- ? Support tap point lifecycle management
+- ? Report routing errors to SSM
+- ? Remain a pure executor (no business logic)
+
+---
+
+## ? **TESTING MATRIX**
+
+| Scenario | Precondition | Action | Expected Result | Notes |
+|----------|--------------|--------|-----------------|-------|
+| **Startup** | Fresh start | App init | DISABLED state | Clean slate |
+| **Arm Mic** | DISABLED | RecordingMgr arms mic | MIC_TO_MONITORING, tap points created | Happy path |
+| **Start Recording** | MIC_TO_MONITORING | RecordingMgr starts | MIC_TO_RECORDING, recording tap added | Happy path |
+| **Stop Recording (Armed)** | MIC_TO_RECORDING | RecordingMgr stops, mic still armed | MIC_TO_MONITORING, recording tap removed | Mic stays armed |
+| **Stop Recording (Disarmed)** | MIC_TO_RECORDING | RecordingMgr stops, mic disarmed | DISABLED, all taps destroyed | Complete teardown |
+| **Start Playback (Idle)** | DISABLED | PlaybackSSM starts | FILE_TO_OUTPUT, playback taps created | **TAP POINT FIX!** |
+| **Start Playback (Mic Armed)** | MIC_TO_MONITORING | PlaybackSSM starts | FILE_TO_OUTPUT, mic taps ? playback taps | Routing switch |
+| **Stop Playback (Mic Armed)** | FILE_TO_OUTPUT | PlaybackSSM stops, mic armed | MIC_TO_MONITORING, playback taps ? mic taps | Back to monitoring |
+| **Stop Playback (Idle)** | FILE_TO_OUTPUT | PlaybackSSM stops, mic not armed | DISABLED, all taps destroyed | Clean teardown |
+| **DSP Mode Change** | MIC_TO_MONITORING | DSP Mode SSM enables DSP | Routing reconfigured for DSP | Coordination works |
+| **Tap Point Failure** | MIC_TO_MONITORING | Tap point creation fails | Warning logged, routing continues | Graceful degradation |
+| **Routing Failure** | Any state | AudioRouter init fails | ERROR state, user notified | Error handling |
+| **Cognitive Introspection** | Any state | Query SSM | Routing history, tap point usage visible | Telemetry works |
+
+### **Test Cases (Detailed):**
+
+**TC-001: Record ? Stop ? Play Back (Complete Workflow)**
+```
+GIVEN: Application starts (DISABLED)
+WHEN: User arms microphone
+THEN: State = MIC_TO_MONITORING
+  AND micTapManager created
+  AND Tap points: MicInputMonitor, MicOutputMonitor
+  AND Meters show mic levels
+  
+WHEN: User clicks Record
+THEN: State = MIC_TO_RECORDING
+  AND Tap point added: RecordingCapture
+  AND Recording engine wired to tap point
+  AND File captures audio
+  
+WHEN: User clicks Stop (mic still armed)
+THEN: State = MIC_TO_MONITORING
+  AND Tap point removed: RecordingCapture
+  AND Mic tap points maintained
+  AND Monitoring continues
+  
+WHEN: User double-clicks recorded file
+THEN: State = FILE_TO_OUTPUT
+  AND micTapManager destroyed
+  AND AudioRouter.TapManager created
+  AND Tap points: PlaybackInputMonitor, PlaybackOutputMonitor
+  AND Meters show playback levels ? NO FALLBACK WARNING! ?
+  AND FFT shows playback spectrum ? PROPER ARCHITECTURE! ?
+  
+WHEN: Playback completes (mic still armed)
+THEN: State = MIC_TO_MONITORING
+  AND AudioRouter.TapManager destroyed
+  AND micTapManager recreated
+  AND Mic monitoring resumes
+```
+
+**TC-002: Tap Point Lifecycle Verification**
+```
+GIVEN: State = DISABLED (no tap points)
+WHEN: Arm mic
+THEN: micTapManager created
+  AND Readers: MicInputMonitor, MicOutputMonitor
+  AND Memory allocated: ~8KB ring buffers
+  
+WHEN: Start recording
+THEN: micTapManager maintained
+  AND Reader added: RecordingCapture
+  AND Memory allocated: +8KB ring buffer
+  
+WHEN: Stop recording (disarm mic)
+THEN: micTapManager destroyed
+  AND All readers destroyed
+  AND Memory released: ~24KB
+  AND No memory leaks
+```
+
+---
+
+**Status:** ? DESIGN COMPLETE - Ready for Implementation  
+**Next Step:** Begin AudioRouting SSM implementation (Step 8) - This is the final and most important SSM!
+
+
 

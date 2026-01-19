@@ -670,6 +670,417 @@ DSPThreadSSM: "Yes sir, starting thread..."
 
 ---
 
-**Status:** ?? Design Complete ? Ready for Review  
-**Next Step:** Get Rick's approval, then move to AudioRouting SSM design (the big one!)
+## ?? **FAILURE MODES & RECOVERY PATTERNS**
+
+### **Failure Modes:**
+
+| Failure Type | Trigger | Impact |
+|--------------|---------|--------|
+| **DSP Thread Start Failure** | Thread fails to initialize, resource allocation fails | DSP cannot be enabled |
+| **DSP Thread Crash** | Thread exception, unhandled error during processing | DSP stops unexpectedly |
+| **GainProcessor Init Failure** | Processor allocation fails, invalid parameters | DSP cannot process audio |
+| **Tap Point Wiring Failure** | TapPointManager unavailable, ring buffer error | No monitoring/FFT |
+| **Routing SSM Rejection** | AudioRouting SSM rejects DSP mode change | Mode change blocked |
+| **Resource Allocation Failure** | Out of memory, buffer allocation fails | DSP init fails |
+
+### **Recovery Patterns:**
+
+**Pattern 1: Automatic Fallback to Disabled**
+```
+DSP thread fails to start ? ERROR state ? Automatic transition to DISABLED
+```
+
+**Pattern 2: User Retry**
+```
+ERROR state ? User clicks "Enable DSP" again ? Retry initialization
+```
+
+**Pattern 3: Safe Mode**
+```
+Multiple failures ? ERROR state persists ? Suggest system restart
+```
+
+### **User Guidance:**
+
+| Error | Message | Action |
+|-------|---------|--------|
+| Thread start failed | "DSP thread failed to start. Check system resources." | Retry button |
+| Thread crashed | "DSP processing stopped unexpectedly. Try disabling and re-enabling DSP." | Disable ? Enable |
+| Resource failure | "Insufficient memory for DSP. Close other applications." | Show system memory |
+| Routing conflict | "DSP mode cannot be changed right now. Try again after recording stops." | Wait |
+
+### **Logging:**
+```
+[ERROR] DSP Mode SSM: DSP thread start failed
+  Reason: Thread allocation failed - Out of memory
+  Recovery: Transitioning to DISABLED state
+[INFO] DSP Mode SSM: State = DISABLED (fallback recovery)
+```
+
+---
+
+## ?? **THREADING MODEL**
+
+### **Threading Rules:**
+
+1. **All transitions occur inside SSM lock**
+   - Prevents race conditions during mode changes
+   - Ensures atomic state changes
+
+2. **DSPThreadSSM operations must be synchronous**
+   - Thread start/stop commands are blocking
+   - Wait for thread initialization to complete
+   - Timeout protection (5 seconds max)
+
+3. **UI events must be marshaled**
+   - AudioPipelinePanel checkbox events come from UI thread
+   - SSM must marshal to state machine thread
+
+4. **DSP thread start/stop must not block UI thread**
+   - Use background task for thread initialization
+   - Report progress to UI
+   - Timeout after 5 seconds
+
+5. **Routing updates must occur after DSP thread state stabilizes**
+   - Wait for DSPThreadSSM to confirm Running state
+   - Then notify AudioRouting SSM
+   - Prevents race conditions
+
+### **Thread Safety:**
+
+```visualbasic
+Private ReadOnly _stateLock As New Object()
+
+Public Function RequestDSPModeChange(enable As Boolean) As Boolean
+    SyncLock _stateLock
+        ' Validate
+        If enable AndAlso Not ValidateDSPEnable() Then Return False
+        
+        ' Execute mode change
+        If enable Then
+            ' Start DSP thread (blocking, with timeout)
+            Dim success = DSPThreadSSM.RequestStart()
+            If success Then
+                TransitionTo(DSPModeState.Enabled, "User enabled")
+                NotifyAudioRoutingSSM(True)
+            Else
+                TransitionTo(DSPModeState.Error, "Thread start failed")
+            End If
+            Return success
+        Else
+            ' Stop DSP thread (always safe)
+            DSPThreadSSM.RequestStop()
+            TransitionTo(DSPModeState.Disabled, "User disabled")
+            NotifyAudioRoutingSSM(False)
+            Return True
+        End If
+    End SyncLock
+End Function
+```
+
+### **Deadlock Prevention:**
+
+- ? **Never hold SSM lock while calling other SSMs**
+- ? **Release lock before signaling AudioRouting SSM**
+- ? **Use timeouts for all blocking operations**
+- ? **Thread start timeout: 5 seconds max**
+
+---
+
+## ??? **TRANSITIONID NAMING CONVENTION**
+
+### **Format:**
+```
+DSPMODE_T{XX}_{OLDSTATE}_TO_{NEWSTATE}
+```
+
+### **Examples:**
+
+| TransitionID | Description |
+|--------------|-------------|
+| `DSPMODE_T01_UNINITIALIZED_TO_DISABLED` | Startup default (safe mode) |
+| `DSPMODE_T02_DISABLED_TO_ENABLED` | User enables DSP |
+| `DSPMODE_T03_ENABLED_TO_DISABLED` | User disables DSP |
+| `DSPMODE_T04_ENABLED_TO_ERROR` | DSP thread crash |
+| `DSPMODE_T05_ERROR_TO_DISABLED` | Recovery to safe mode |
+| `DSPMODE_T06_ERROR_TO_ENABLED` | Retry after error |
+
+### **Benefits:**
+
+- ? **Grep-friendly:** `git log --grep="DSPMODE_T02"`
+- ? **Deterministic naming:** No ambiguity
+- ? **Consistent across SSMs:** Same pattern everywhere
+- ? **Easy YAML export:** Maps directly to StateRegistry.yaml
+- ? **Cognitive introspection:** Track DSP mode changes over time
+
+### **Logging:**
+```
+[INFO] DSP Mode SSM: DSPMODE_T02_DISABLED_TO_ENABLED
+  User: Checked "Enable DSP" in AudioPipelinePanel
+  Validation: Passed (GlobalState=Idle, Not Recording)
+  DSPThreadSSM: Start requested
+  DSPThreadSSM: Running
+  AudioRouting SSM: Notified (DSP enabled)
+  Timestamp: 2026-01-19T18:05:12.789Z
+```
+
+---
+
+## ?? **MERMAID STATE DIAGRAM**
+
+```mermaid
+stateDiagram-v2
+    [*] --> UNINITIALIZED
+    UNINITIALIZED --> DISABLED : T01 (Default safe mode)
+    UNINITIALIZED --> ENABLED : T01 (User preference)
+    
+    DISABLED --> ENABLED : T02 (User enables, validation passes)
+    ENABLED --> DISABLED : T03 (User disables, always allowed)
+    
+    DISABLED --> ERROR : T04 (System error)
+    ENABLED --> ERROR : T04 (Thread crash)
+    
+    ERROR --> DISABLED : T05 (Safe fallback)
+    ERROR --> ENABLED : T06 (Retry)
+    ERROR --> UNINITIALIZED : Reset
+```
+
+---
+
+## ?? **UI FEEDBACK CONTRACT**
+
+### **UI Responsibilities:**
+
+1. **Revert checkbox if transition fails**
+   ```visualbasic
+   Private Sub OnDSPModeChangeCompleted(success As Boolean, enabled As Boolean, message As String)
+       If Not success Then
+           suppressEvents = True
+           chkEnableDSP.Checked = Not enabled
+           suppressEvents = False
+       End If
+   End Sub
+   ```
+
+2. **Display error message from SSM**
+   ```visualbasic
+   If Not success Then
+       MessageBox.Show(message, "DSP Mode Change Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+   End If
+   ```
+
+3. **Must not directly mutate DSP mode**
+   ```visualbasic
+   ' ? BAD
+   DSPThread.Start()  ' Direct control!
+   
+   ' ? GOOD
+   RaiseEvent DSPModeChangeRequested(Me, chkEnableDSP.Checked)
+   ```
+
+4. **Must not assume mode change succeeded**
+   ```visualbasic
+   ' ? BAD
+   lblDSPStatus.Text = "DSP: Enabled"  ' Assumes success!
+   
+   ' ? GOOD
+   ' Wait for callback before updating UI
+   ```
+
+5. **Must subscribe to `DSPModeChangeCompleted` event**
+   ```visualbasic
+   AddHandler DSPModeSSM.DSPModeChangeCompleted, AddressOf OnDSPModeChangeCompleted
+   ```
+
+### **UI Must NOT:**
+
+- ? Start/stop DSP thread directly
+- ? Bypass SSM validation
+- ? Assume synchronous success
+- ? Modify DSP controls before callback
+
+### **UI Must:**
+
+- ? Emit `DSPModeChangeRequested` event
+- ? Wait for `DSPModeChangeCompleted` callback
+- ? Handle failure gracefully
+- ? Enable/disable DSP controls based on SSM state only
+
+---
+
+## ?? **COGNITIVE LAYER HOOKS**
+
+### **What Cognitive Layer Can Infer:**
+
+| Metric | Inference |
+|--------|-----------|
+| **Frequency of DSP mode switching** | User experimenting with DSP effects |
+| **DSP failures over time** | System instability, resource issues |
+| **Correlation: DSP mode ? Routing changes** | DSP mode affects audio pipeline |
+| **User preference patterns** | Always uses DSP ? Power user, Never uses DSP ? Minimalist |
+| **DSP mode changes during playback** | User testing DSP effects in real-time |
+| **DSP mode changes before recording** | User preparing DSP settings for capture |
+
+### **Cognitive Patterns to Detect:**
+
+**Pattern 1: "DSP Experimenter"**
+```
+User enables DSP ? records ? disables DSP ? records (3 times)
+Inference: Comparing DSP vs raw audio
+Suggestion: "Try A/B comparison mode"
+```
+
+**Pattern 2: "DSP Always On"**
+```
+User enables DSP on startup, never disables (entire session)
+Inference: Power user, relies on DSP processing
+Action: Save as user preference
+```
+
+**Pattern 3: "DSP Struggles"**
+```
+User enables DSP ? ERROR ? retry ? ERROR (3 times)
+Inference: System resource issues
+Suggestion: "DSP failed multiple times. Close other apps or check system memory."
+```
+
+### **Telemetry Data:**
+
+```yaml
+DSPMode_Telemetry:
+  SessionID: 12345
+  Duration: 3600s
+  States:
+    - State: DISABLED
+      Duration: 500s
+      Transitions: 1
+    - State: ENABLED
+      Duration: 3090s
+      Transitions: 2
+    - State: ERROR
+      Duration: 10s
+      Transitions: 1
+  UserActions:
+    - ModeChangeRequests: 4
+    - FailedChanges: 1
+    - SuccessRate: 75%
+  Correlation:
+    - DSPEnabled_During_Playback: 80%
+    - DSPEnabled_Before_Recording: 100%
+```
+
+---
+
+## ?? **TAP POINT INTEGRATION**
+
+### **How DSP Mode Affects Tap Points:**
+
+**When DSP is DISABLED:**
+```
+Mic Input ? TapPoint.PreDSP ? Output (no processing)
+             ?
+         Raw audio monitoring
+         
+Tap Points Active:
+  - PreDSP: Raw input
+  - PostOutputGain: Same as PreDSP (no DSP processing occurred)
+```
+
+**When DSP is ENABLED:**
+```
+Mic Input ? TapPoint.PreDSP ? InputGainProcessor ? TapPoint.PostInputGain
+                                                           ?
+                                               OutputGainProcessor
+                                                           ?
+                                         TapPoint.PostOutputGain ? Output
+                                                           
+Tap Points Active:
+  - PreDSP: Raw input
+  - PostInputGain: After input gain applied
+  - PostOutputGain: After output gain applied (final processed audio)
+```
+
+### **Tap Point Behavior:**
+
+| DSP Mode | PreDSP Tap | PostInputGain Tap | PostOutputGain Tap |
+|----------|------------|-------------------|-------------------|
+| **DISABLED** | Raw audio | Unused | Same as PreDSP |
+| **ENABLED** | Raw audio | After input gain | After output gain (processed) |
+
+### **This Clarifies:**
+- Tap points exist regardless of DSP mode
+- DSP mode determines what flows through each tap point
+- Meters and FFT see different audio depending on DSP mode
+
+---
+
+## ? **TESTING MATRIX**
+
+| Scenario | Precondition | Action | Expected Result | Notes |
+|----------|--------------|--------|-----------------|-------|
+| **Startup Default** | Fresh start | App init | DSP DISABLED | Safe default |
+| **Enable DSP (Idle)** | DISABLED, Idle | User checks "Enable DSP" | Success, controls enabled | Happy path |
+| **Enable DSP (Recording)** | DISABLED, Recording | User checks "Enable DSP" | **BLOCKED**, message shown | Validation works |
+| **Disable DSP (Recording)** | ENABLED, Recording | User unchecks "Enable DSP" | **ALLOWED**, DSP stops | Always safe to disable |
+| **Enable DSP (Playback)** | DISABLED, Playing | User checks "Enable DSP" | **ALLOWED**, DSP starts | Real-time experimentation |
+| **DSP Thread Crash** | ENABLED, Running | Thread crashes | ERROR state, user notified | Error handling |
+| **Retry After Error** | ERROR state | User clicks "Enable DSP" | Retry, success or fail | Recovery works |
+| **Routing Conflict** | ENABLED | AudioRouting SSM in error | ERROR state | Coordination |
+| **Checkbox Revert** | Idle | Enable fails | Checkbox reverted | UI contract honored |
+| **Cognitive Introspection** | Any state | Query SSM | DSP mode history visible | Telemetry works |
+
+### **Test Cases (Detailed):**
+
+**TC-001: Startup Default (DISABLED)**
+```
+GIVEN: Application starts fresh
+WHEN: StateCoordinator initializes DSP Mode SSM
+THEN: State = DISABLED
+  AND chkEnableDSP.Checked = False
+  AND DSP controls disabled (gain sliders, etc.)
+  AND Log shows: "DSP Mode: DISABLED (default)"
+```
+
+**TC-002: Enable DSP Blocked During Recording**
+```
+GIVEN: State = DISABLED, GlobalState = Recording
+WHEN: User checks "Enable DSP"
+THEN: Validation fails
+  AND MessageBox shows "Cannot enable DSP while recording"
+  AND State remains DISABLED
+  AND Checkbox reverts to unchecked
+  AND Log shows validation failure
+```
+
+**TC-003: Disable DSP During Recording (ALLOWED)**
+```
+GIVEN: State = ENABLED, GlobalState = Recording
+WHEN: User unchecks "Enable DSP"
+THEN: No validation check (always allowed)
+  AND DSPThreadSSM stops thread
+  AND State transitions to DISABLED
+  AND Recording continues (with raw audio now)
+  AND Log shows: "DSP disabled during recording (user choice)"
+```
+
+**TC-004: DSP Thread Crash ? Error Recovery**
+```
+GIVEN: State = ENABLED, DSPThread = Running
+WHEN: DSPThread crashes (exception)
+THEN: DSPThreadSSM detects crash
+  AND DSPThreadSSM notifies DSP Mode SSM
+  AND DSP Mode SSM transitions to ERROR
+  AND MessageBox shows "DSP stopped unexpectedly. Try disabling and re-enabling."
+  AND Checkbox unchecked
+  AND User clicks "Enable DSP" again
+  AND DSP Mode SSM attempts retry
+  AND (if successful) State = ENABLED
+```
+
+---
+
+**Status:** ? DESIGN COMPLETE - Ready for Implementation  
+**Next Step:** Begin DSP Mode SSM implementation (Step 7)
+
+
 
