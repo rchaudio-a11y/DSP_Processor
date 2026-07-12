@@ -334,6 +334,13 @@ Namespace DSP
         End Function
 
         ''' <summary>
+        ''' Gets the total capacity of the input buffer in bytes
+        ''' </summary>
+        Public Function InputCapacity() As Integer
+            Return inputBuffer.Capacity
+        End Function
+
+        ''' <summary>
         ''' Clears all buffers
         ''' </summary>
         Public Sub ClearBuffers()
@@ -482,6 +489,7 @@ Namespace DSP
         Private Sub WorkerLoop()
             Interlocked.Exchange(_isRunningFlag, 1) ' Set to True
             Dim cycleCount As Long = 0
+            Dim processErrorCount As Long = 0
 
             ' Calculate target delay to match sample rate
             ' 256 samples at 44.1kHz = 5.8ms per block
@@ -510,8 +518,13 @@ Namespace DSP
                                 ' Process through chain
                                 Try
                                     processorChain.Process(workBuffer)
-                                Catch
-                                    ' Silently continue
+                                Catch ex As Exception
+                                    ' Keep the worker alive, but never swallow silently:
+                                    ' log first error and every 100th after (rate-limited for the DSP thread)
+                                    processErrorCount += 1
+                                    If processErrorCount = 1 OrElse processErrorCount Mod 100 = 0 Then
+                                        Utils.Logger.Instance.Error($"ProcessorChain.Process failed ({processErrorCount} errors so far)", ex, "DSPThread")
+                                    End If
                                 End Try
 
                                 ' Write to output buffer
@@ -573,6 +586,8 @@ Namespace DSP
                 outputBuffer?.Dispose()
                 inputMonitorBuffer?.Dispose()
                 outputMonitorBuffer?.Dispose()
+                postGainMonitorBuffer?.Dispose()
+                postOutputGainMonitorBuffer?.Dispose()
                 workBuffer?.Dispose()
                 processorChain?.Dispose()
                 inputLowEvent?.Dispose()

@@ -3,7 +3,36 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.0.0
+**Current Version:** v1.3.2.5
+
+---
+
+## [v1.3.2.5] - 2026-07-12 - Code Review Quick Wins
+
+**RDF Phase:** Phase 4 (Recursive Debugging)  
+**Source:** Full project review 2026-07-12 (`Documentation/Active/Code-Review-2026-07-12-Full-Project-Claude.md`)
+
+### Bug Fixes
+- **B1** - Null-guard deferred DSPThreadSSM in StateCoordinator snapshot/dump (NRE before mic-arm)
+- **B2** - Feeder refill target derived from DSP input buffer capacity via new `DSPThread.InputCapacity()` (was hardcoded 176400 = 44.1kHz stereo only)
+- **B3** - Dispose PostGain/PostOutputGain monitor buffers in `DSPThread.Dispose`
+- **B4** - `feederCancellation`/`_isPlaying` converted to Interlocked Integer flags (Constitution V)
+- **B7** - `GainDB` getter floored at -60 dB (mute returned -Infinity)
+- **B8** - GSM transition-log mojibake fixed (ASCII arrows); root `.editorconfig` added (utf-8-bom for VB)
+- **NEW** - GSM queued-transition path now logs via `Logger.Instance` (was Console-only, invisible in log file)
+- **NEW** - `RecordingEngine.StopWriterThread` no longer calls `Thread.Abort()` (throws PlatformNotSupportedException on .NET 10 - live crash in recording stop path); `_writerRunning` also converted to Interlocked flag
+
+### Performance
+- **P1** - GainProcessor hot loop: `BitConverter.GetBytes` replaced with direct byte writes (~88k allocs/sec eliminated on DSP thread, Constitution IV)
+
+### Design/Cleanup
+- **D7 (partial)** - `ProcessorChain.Process` exceptions now counted and rate-limit logged (was silently swallowed)
+- **D4** - `AudioRouter.Thread` property renamed to `DspEngine` (shadowed `System.Threading.Thread`; `DspThread` collides case-insensitively with the `dspThread` field)
+- **Hygiene** - 30 backup/junk files archived to `Documentation/Archive/Code-Snapshots/`; 5 misspelled doc filenames fixed
+
+### Known Deferred (from same review)
+- Cognitive-layer mojibake sweep (load-bearing: `WorkingMemoryBuffer` formats and `PredictionEngine` splits on the corrupted `" ? "` separator - must be fixed together)
+- B5+P2 state-machine hardening, D2 audio-clock position, D3 tap API consolidation, B6/P4 ring buffer counters, D8 test project, P3 backpressure loop, D1 float32 pipeline (feature 001-float32-pipeline)
 
 ---
 
@@ -43,7 +72,7 @@ Major documentation restructure with template versioning + volume control fixes
   - **Solution:** Lock-free async logging with background writer thread
   - ConcurrentQueue for non-blocking message buffering
   - Background thread ("AsyncLogger") at BelowNormal priority
-  - Log calls now return in < 1µs (was 10-50ms!)
+  - Log calls now return in < 1ï¿½s (was 10-50ms!)
   - Periodic flushing every 100ms
   - Graceful shutdown with queue draining
   - `AsyncLogging` property (default: True) enables async mode

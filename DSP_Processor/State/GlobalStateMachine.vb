@@ -73,7 +73,7 @@ Public Class GlobalStateMachine
             ' This prevents deadlocks when state changes trigger cascading transitions
             If _isTransitioning Then
                 ' Already transitioning - queue this transition for execution after completion
-                Console.WriteLine($"[INFO] Re-entrant transition queued: {CurrentState} ? {newState} (Reason: {reason})")
+                Utils.Logger.Instance.Info($"Re-entrant transition queued: {CurrentState} -> {newState} (Reason: {reason})", "GlobalStateMachine")
                 _pendingTransition = newState
                 _pendingReason = reason
                 Return True  ' Accept request, will execute after current transition completes
@@ -86,8 +86,7 @@ Public Class GlobalStateMachine
                 ' Check if transition is valid
                 If Not IsValidTransition(oldState, newState) Then
                     ' Log invalid transition (State Registry Pattern - rejection tracking)
-                    Dim logMessage = $"Invalid transition rejected: {oldState} ? {newState} (Reason: {reason})"
-                    Console.WriteLine($"[WARNING] [GlobalStateMachine] {logMessage}")
+                    Dim logMessage = $"Invalid transition rejected: {oldState} -> {newState} (Reason: {reason})"
                     Utils.Logger.Instance.Warning(logMessage, "GlobalStateMachine")
                     Return False
                 End If
@@ -113,7 +112,7 @@ Public Class GlobalStateMachine
                 ' Record in history
                 RecordTransition(args)
 
-                ' ? LOG TRANSITION (State Registry Pattern - grep-friendly format)
+                ' LOG TRANSITION (State Registry Pattern - grep-friendly format)
                 Utils.Logger.Instance.Info(args.ToString(), "GlobalStateMachine")
 
                 ' Fire event FIRST (while still in lock)
@@ -135,7 +134,7 @@ Public Class GlobalStateMachine
                     _pendingTransition = Nothing
                     _pendingReason = Nothing
                     
-                    Console.WriteLine($"[INFO] Executing queued transition: {CurrentState} ? {queuedState}")
+                    Utils.Logger.Instance.Info($"Executing queued transition: {CurrentState} -> {queuedState}", "GlobalStateMachine")
                     
                     ' Recursive call - but NOT re-entrant because guard has been released
                     ' This happens AFTER the current transition completes

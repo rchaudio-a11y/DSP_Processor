@@ -39,7 +39,19 @@ Namespace Recording
         ' ASYNC FILE WRITING: Background writer thread + lock-free queue
         Private ReadOnly _writeQueue As New ConcurrentQueue(Of Byte())
         Private _writerThread As Thread
-        Private _writerRunning As Boolean = False
+        ' Cross-thread flag (control thread <-> writer thread): Integer + Interlocked,
+        ' plain Boolean fields have no memory-visibility guarantee (Constitution V)
+        Private _writerRunningFlag As Integer = 0
+
+        ''' <summary>Thread-safe writer-running flag (written by control thread, read in writer loop)</summary>
+        Private Property WriterRunning As Boolean
+            Get
+                Return Interlocked.CompareExchange(_writerRunningFlag, 0, 0) = 1
+            End Get
+            Set(value As Boolean)
+                Interlocked.Exchange(_writerRunningFlag, If(value, 1, 0))
+            End Set
+        End Property
         Private ReadOnly _writerStopwatch As New Stopwatch()
         Private _totalWriteTimeMs As Double = 0
         Private _writeCount As Long = 0
@@ -380,7 +392,7 @@ Namespace Recording
         Private Sub WriterThreadLoop()
             Utils.Logger.Instance.Info("Background writer thread started", "RecordingEngine")
 
-            While _writerRunning
+            While WriterRunning
                 Try
                     Dim writeBuffer As Byte() = Nothing
 
@@ -444,7 +456,7 @@ Namespace Recording
                 Return  ' Already running
             End If
 
-            _writerRunning = True
+            WriterRunning = True
             _writerThread = New Thread(AddressOf WriterThreadLoop) With {
                 .Name = "RecordingEngine Writer Thread",
                 .IsBackground = True,
@@ -464,12 +476,15 @@ Namespace Recording
             End If
 
             Utils.Logger.Instance.Info("Stopping background writer thread...", "RecordingEngine")
-            _writerRunning = False
+            WriterRunning = False
 
             ' Wait for thread to finish (with timeout)
+            ' NO Abort() fallback: Thread.Abort throws PlatformNotSupportedException on
+            ' modern .NET (SYSLIB0006). The writer is IsBackground=True, so if it is
+            ' genuinely stuck in a disk write it dies with the process; abandoning it
+            ' is the only safe option.
             If Not _writerThread.Join(5000) Then
-                Utils.Logger.Instance.Warning("Writer thread did not stop within timeout, aborting", "RecordingEngine")
-                _writerThread.Abort()
+                Utils.Logger.Instance.Warning("Writer thread did not stop within timeout - abandoning (background thread will not block process exit)", "RecordingEngine")
             End If
 
             _writerThread = Nothing

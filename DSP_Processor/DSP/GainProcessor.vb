@@ -44,7 +44,10 @@ Namespace DSP
         ''' </summary>
         Public Property GainDB As Single
             Get
-                Return 20.0F * Math.Log10(_gainLinear)
+                ' Floor at -60 dB: GainLinear allows 0.0 (mute), which would otherwise
+                ' produce -Infinity and poison downstream UI math
+                If _gainLinear <= 0.001F Then Return -60.0F
+                Return Math.Max(-60.0F, 20.0F * CSng(Math.Log10(_gainLinear)))
             End Get
             Set(value As Single)
                 ' Clamp to safe range
@@ -116,7 +119,7 @@ Namespace DSP
             Dim sampleCount = buffer.ByteCount \ Format.BlockAlign
             
             ' Calculate pan gains once (constant-power law)
-            Dim panAngle = (_panPosition + 1.0F) * CSng(Math.PI) / 4.0F ' 0 to ?/2
+            Dim panAngle = (_panPosition + 1.0F) * CSng(Math.PI) / 4.0F ' 0 to pi/2
             Dim leftPanGain = CSng(Math.Cos(panAngle))
             Dim rightPanGain = CSng(Math.Sin(panAngle))
 
@@ -130,10 +133,10 @@ Namespace DSP
                     Dim sample = BitConverter.ToInt16(buffer.Buffer, sampleOffset)
                     Dim gained = CInt(sample * _gainLinear)
                     gained = Math.Max(-32768, Math.Min(32767, gained))
-                    Dim bytes = BitConverter.GetBytes(CShort(gained))
-                    buffer.Buffer(sampleOffset) = bytes(0)
-                    buffer.Buffer(sampleOffset + 1) = bytes(1)
-                    
+                    ' Direct byte writes - no allocation on the DSP thread (Constitution IV)
+                    buffer.Buffer(sampleOffset) = CByte(gained And &HFF)
+                    buffer.Buffer(sampleOffset + 1) = CByte((gained >> 8) And &HFF)
+
                 ElseIf Format.Channels = 2 Then
                     ' Stereo - apply gain, pan, AND stereo width
                     ' Read left and right samples
@@ -163,14 +166,12 @@ Namespace DSP
                     leftGained = Math.Max(-32768, Math.Min(32767, leftGained))
                     rightGained = Math.Max(-32768, Math.Min(32767, rightGained))
 
-                    ' Write back
-                    Dim leftBytes = BitConverter.GetBytes(CShort(leftGained))
-                    buffer.Buffer(leftOffset) = leftBytes(0)
-                    buffer.Buffer(leftOffset + 1) = leftBytes(1)
+                    ' Write back - direct byte writes, no allocation on the DSP thread
+                    buffer.Buffer(leftOffset) = CByte(leftGained And &HFF)
+                    buffer.Buffer(leftOffset + 1) = CByte((leftGained >> 8) And &HFF)
 
-                    Dim rightBytes = BitConverter.GetBytes(CShort(rightGained))
-                    buffer.Buffer(rightOffset) = rightBytes(0)
-                    buffer.Buffer(rightOffset + 1) = rightBytes(1)
+                    buffer.Buffer(rightOffset) = CByte(rightGained And &HFF)
+                    buffer.Buffer(rightOffset + 1) = CByte((rightGained >> 8) And &HFF)
 
                 Else
                     ' Multi-channel - fall back to old per-channel gain only
@@ -179,9 +180,8 @@ Namespace DSP
                         Dim sample = BitConverter.ToInt16(buffer.Buffer, sampleOffset)
                         Dim gained = CInt(sample * _gainLinear)
                         gained = Math.Max(-32768, Math.Min(32767, gained))
-                        Dim bytes = BitConverter.GetBytes(CShort(gained))
-                        buffer.Buffer(sampleOffset) = bytes(0)
-                        buffer.Buffer(sampleOffset + 1) = bytes(1)
+                        buffer.Buffer(sampleOffset) = CByte(gained And &HFF)
+                        buffer.Buffer(sampleOffset + 1) = CByte((gained >> 8) And &HFF)
                     Next
                 End If
             Next

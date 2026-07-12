@@ -1,8 +1,29 @@
 # Active Tasks - DSP_Processor
 
-**Last Updated:** January 15, 2026  
-**Phase:** 3.1 - DSP Signal Flow UI  
-**Progress:** 3/12 tasks (25%)
+**Last Updated:** July 12, 2026  
+**Current Version:** v1.3.2.5 (Architect ruling 2026-07-12: continue v1.3.x lineage; version Phase digit does NOT track project phase)  
+**Current Task:** Code Review Quick Wins - COMPLETE
+
+---
+
+## CURRENT - v1.3.2.5: Review Quick-Win Punch List (2026-07-12) - COMPLETE
+
+**Source:** Full project review (`Documentation/Active/Code-Review-2026-07-12-Full-Project-Claude.md` at repo root)  
+**Scope:** B1, B2, B3, B4, B7, B8, P1, D4, D7 (logging half), RecordingEngine Thread.Abort crash fix, repo hygiene (30 files archived, 5 doc renames)  
+**Details:** See `Changelog/CURRENT.md` entry for v1.3.2.5
+
+**Next candidates (from review, per spec-kit flow):**
+1. 002-state-machine-hardening (B5 + P2 + D5 - raise GSM events outside lock, delete pending queue)
+2. 003-tap-consolidation (D3 + B6/P4 + D8 ring buffer tests)
+3. 001-float32-pipeline (D1 - strategic, already named in constitution)
+
+---
+
+## STALE CONTENT BELOW - RECONCILIATION PENDING
+
+> Everything below this line was last refreshed January 15, 2026 (Phase 3.1) and
+> predates Phases 4-7 (WASAPI, SSM architecture, cognitive layer). It no longer
+> reflects reality. Kept for history until the tracker is reconciled.
 
 ---
 

@@ -295,7 +295,7 @@ Public Class StateCoordinator
         Return New SystemStateSnapshot With {
             .GlobalState = _globalStateMachine.CurrentState,
             .RecordingState = _recordingManagerSSM.CurrentState,
-            .DSPState = _dspThreadSSM.CurrentState,
+            .DSPState = If(_dspThreadSSM?.CurrentState, DSPThreadState.Uninitialized),
             .UIState = _uiStateMachine.CurrentState,
             .PlaybackState = _playbackSSM.CurrentState,
             .AudioDeviceState = _audioDeviceSSM.CurrentState,
@@ -334,7 +334,7 @@ Public Class StateCoordinator
         sb.AppendLine("=== State Machine Status ===")
         sb.AppendLine($"Global State:          {_globalStateMachine.CurrentState}")
         sb.AppendLine($"RecordingManager:      {_recordingManagerSSM.CurrentState}")
-        sb.AppendLine($"DSPThread:             {_dspThreadSSM.CurrentState}")
+        sb.AppendLine($"DSPThread:             {If(_dspThreadSSM?.CurrentState.ToString(), "Uninitialized (deferred)")}")
         sb.AppendLine($"UI State:              {_uiStateMachine.CurrentState}")
         sb.AppendLine($"Playback:              {_playbackSSM.CurrentState}")
         sb.AppendLine($"Timestamp:             {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}")

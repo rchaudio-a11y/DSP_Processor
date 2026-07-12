@@ -1,0 +1,19 @@
+# DSP_Processor - root editorconfig
+# Charset rules prevent the ANSI-save mojibake that destroyed Unicode arrows
+# in transition logs (Code Review 2026-07-12, finding B8)
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# VB source: UTF-8 with BOM so Visual Studio / vbc never fall back to the
+# system ANSI codepage when reading non-ASCII characters
+[*.{vb,Designer.vb}]
+charset = utf-8-bom
+indent_style = space
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false

@@ -40,8 +40,30 @@ Namespace AudioIO
         Private fileReader As AudioFileReader
         Private _selectedInputFile As String
         Private feederThread As System.Threading.Thread
-        Private feederCancellation As Boolean = False ' Cancellation flag for feeder thread
-        Private _isPlaying As Boolean = False ' CRITICAL: Explicit playback state flag (Issue #1 Fix - Phase 6)
+        ' Cross-thread flags (UI thread <-> feeder thread): Integer + Interlocked, matching
+        ' DSPThread's pattern - plain Boolean fields have no memory-visibility guarantee
+        Private _feederCancellationFlag As Integer = 0 ' Cancellation flag for feeder thread (1 = cancel)
+        Private _isPlayingFlag As Integer = 0 ' CRITICAL: Explicit playback state flag (Issue #1 Fix - Phase 6)
+
+        ''' <summary>Thread-safe feeder cancellation flag (written by UI thread, read in feeder loop)</summary>
+        Private Property FeederCancellation As Boolean
+            Get
+                Return System.Threading.Interlocked.CompareExchange(_feederCancellationFlag, 0, 0) = 1
+            End Get
+            Set(value As Boolean)
+                System.Threading.Interlocked.Exchange(_feederCancellationFlag, If(value, 1, 0))
+            End Set
+        End Property
+
+        ''' <summary>Thread-safe playing flag (backs the public IsPlaying property)</summary>
+        Private Property PlayingFlag As Boolean
+            Get
+                Return System.Threading.Interlocked.CompareExchange(_isPlayingFlag, 0, 0) = 1
+            End Get
+            Set(value As Boolean)
+                System.Threading.Interlocked.Exchange(_isPlayingFlag, If(value, 1, 0))
+            End Set
+        End Property
         Private _inputGainProcessor As DSP.GainProcessor ' Input gain stage (Phase 2.5)
         Private _outputGainProcessor As DSP.GainProcessor ' Output gain stage (Phase 2.5)
 
@@ -104,7 +126,7 @@ Namespace AudioIO
             Get
                 ' PHASE 6 FIX: Use explicit flag instead of waveOut.PlaybackState
                 ' waveOut.PlaybackState is async/event-driven and may not reflect actual state immediately
-                Return _isPlaying
+                Return PlayingFlag
             End Get
         End Property
 
@@ -127,8 +149,11 @@ Namespace AudioIO
             End Get
         End Property
 
-        ''' <summary>Gets the DSP thread for monitoring</summary>
-        Public ReadOnly Property Thread As DSP.DSPThread
+        ''' <summary>Gets the DSP engine (DSPThread) for monitoring</summary>
+        ''' <remarks>Named DspEngine, not Thread: a property named Thread shadows
+        ''' System.Threading.Thread inside this class, and DspThread would collide
+        ''' case-insensitively with the dspThread field</remarks>
+        Public ReadOnly Property DspEngine As DSP.DSPThread
             Get
                 Return dspThread
             End Get
@@ -594,13 +619,13 @@ Namespace AudioIO
                 _playbackStartTime = DateTime.Now
 
                 ' PHASE 6 FIX: Set IsPlaying flag BEFORE starting playback
-                _isPlaying = True
+                PlayingFlag = True
 
                 ' Start playback
                 waveOut.Play()
 
                 Utils.Logger.Instance.Info("DSP playback started successfully", "AudioRouter")
-                Utils.Logger.Instance.Info($"IsPlaying flag set: {_isPlaying}", "AudioRouter")
+                Utils.Logger.Instance.Info($"IsPlaying flag set: {IsPlaying}", "AudioRouter")
 
                 ' Raise PlaybackStarted event (for TransportControl integration)
                 RaiseEvent PlaybackStarted(Me, IO.Path.GetFileName(_selectedInputFile))
@@ -660,7 +685,9 @@ Namespace AudioIO
                             ' Feed multiple blocks to fill input buffer back to healthy level
                             ' Target: refill to at least 50% capacity
                             Dim inputCapacity = localDspThread.InputAvailable()
-                            Dim targetFill = 176400 \ 2 ' 50% of 2-second buffer
+                            ' 50% of the actual DSP input buffer - derived from capacity, not
+                            ' hardcoded (176400 assumed 44.1kHz stereo and broke other formats)
+                            Dim targetFill = localDspThread.InputCapacity() \ 2
 
                             While inputCapacity < targetFill AndAlso Not feederCancellation
                                 ' Read from file
@@ -776,7 +803,7 @@ Namespace AudioIO
                 Utils.Logger.Instance.Info("Stopping DSP playback", "AudioRouter")
 
                 ' PHASE 6 FIX: Clear IsPlaying flag FIRST
-                _isPlaying = False
+                PlayingFlag = False
 
                 ' Signal feeder thread to stop FIRST
                 feederCancellation = True
@@ -844,7 +871,7 @@ Namespace AudioIO
                 Utils.Logger.Instance.Info($"   Exception in event: {If(e.Exception IsNot Nothing, e.Exception.Message, "None")}", "AudioRouter")
                 
                 ' PHASE 6 FIX: Clear IsPlaying flag on EOF
-                _isPlaying = False
+                PlayingFlag = False
                 
                 ' IMPORTANT: Raise PlaybackStopped event BEFORE calling StopDSPPlayback()
                 ' This allows MainForm to stop the timer before we clean up
