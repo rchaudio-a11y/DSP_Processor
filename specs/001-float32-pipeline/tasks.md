@@ -73,9 +73,9 @@ balance-law assertion group + supersession record verification (US3).
 
 **Independent Test**: +6 dB through two stages arrives clean; hot signal at the boundary clips-never-wraps
 
-- [ ] T012 [US2] Add the headroom group to `DSP_Processor.Tests/FloatPipelineTests.vb` (SC-003): full-scale signal ×2.0 through stage one, ×0.5 through stage two → output equals input within float tolerance (no inter-stage clipping); the same ×2.0 signal sent directly to `FloatToPcm16` → clamps at full scale, never wraps; processor output above ±1.0 verified unclamped (FR-007) by reading the intermediate buffer
-- [ ] T013 [US2] Add the allocation audit to `DSP_Processor.Tests/FloatPipelineTests.vb` (SC-006, Constitution IV): warm up `ProcessorChain.Process` (non-unity settings so the full path runs), then assert `GC.GetAllocatedBytesForCurrentThread()` delta = 0 across ≥1000 processed blocks. Plus the denormal timing sanity (analysis C3, spec edge case): process N blocks of denormal-range decay-tail input and assert wall time within 5× of normal-range input — generous bound, catches pathology not noise
-- [ ] T014 [US2] Gate + checkpoint: full suite green; surviving diffs EMPTY; record in quickstart.md. **Version v1.3.5.2, commit + tag**
+- [X] T012 [US2] Add the headroom group to `DSP_Processor.Tests/FloatPipelineTests.vb` (SC-003): full-scale signal ×2.0 through stage one, ×0.5 through stage two → output equals input within float tolerance (no inter-stage clipping); the same ×2.0 signal sent directly to `FloatToPcm16` → clamps at full scale, never wraps; processor output above ±1.0 verified unclamped (FR-007) by reading the intermediate buffer
+- [X] T013 [US2] Add the allocation audit to `DSP_Processor.Tests/FloatPipelineTests.vb` (SC-006, Constitution IV): warm up `ProcessorChain.Process` (non-unity settings so the full path runs), then assert `GC.GetAllocatedBytesForCurrentThread()` delta = 0 across ≥1000 processed blocks. Plus the denormal timing sanity (analysis C3, spec edge case): process N blocks of denormal-range decay-tail input and assert wall time within 5× of normal-range input — generous bound, catches pathology not noise
+- [X] T014 [US2] Gate + checkpoint: full suite green; surviving diffs EMPTY; record in quickstart.md. **Version v1.3.5.2, commit + tag**
 
 **Checkpoint**: headroom proven; hot loop proven allocation-free
 

@@ -13,8 +13,8 @@
 | Version | Tracker task (= user story) | Status |
 |---------|------------------------------|--------|
 | v1.3.5.1 | US1 - One Domain, One Conversion Per Boundary (float32 migration) | ✅ COMPLETE 2026-07-13 |
-| v1.3.5.2 | US2 - Inter-Stage Headroom, Exit-Only Clamping (proofs) | ⏳ In progress |
-| v1.3.5.3 | US3 - Balance Pan Law (proofs + supersession record) | Pending |
+| v1.3.5.2 | US2 - Inter-Stage Headroom, Exit-Only Clamping (proofs) | ✅ COMPLETE 2026-07-13 (0-alloc audit green) |
+| v1.3.5.3 | US3 - Balance Pan Law (proofs + supersession record) | ⏳ In progress |
 
 ---
 

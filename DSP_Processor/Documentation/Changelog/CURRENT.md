@@ -3,7 +3,22 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.5.1
+**Current Version:** v1.3.5.2
+
+---
+
+## [v1.3.5.2] - 2026-07-13 - Headroom & Hot-Loop Proofs (Feature 001, User Story 2)
+
+**RDF Phase:** Phase 5 (Validation Loop)  
+**Feature:** `specs/001-float32-pipeline/` — US2 "Inter-Stage Headroom, Exit-Only Clamping" (Blumlein M/S enabler)
+
+### Added (proofs over the v1.3.5.1 mechanism)
+- Headroom: +6 dB through two stages arrives bit-exact; intermediate buffer directly observed holding ±1.8 unclamped (FR-007); the same hot signal clips-never-wraps at the boundary (FR-008)
+- **Zero-allocation audit**: `GC.GetAllocatedBytesForCurrentThread` delta = **0 bytes across 1000 processed blocks** post-warmup (SC-006, Constitution IV — now regression-tested)
+- Denormal decay-tail timing sanity within the 5× bound (analysis C3)
+
+### Verified
+- 79/79 tests, 317 ms; FR-012 surviving suites still empty diffs
 
 ---
 

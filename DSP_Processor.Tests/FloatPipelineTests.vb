@@ -216,4 +216,130 @@ Public Class FloatPipelineTests
 
 #End Region
 
+#Region "US2 - Inter-stage headroom, exit-only clamping (SC-003, FR-007/008)"
+
+    <TestMethod>
+    Public Sub Headroom_PlusSixDbThroughTwoStages_ArrivesClean()
+        ' SC-003: full-scale signal x2.0 (stage one, +6 dB) then x0.5 (stage two)
+        ' arrives identical - inter-stage clipping does not exist in the domain.
+        Dim values = {0.9F, -0.9F, 0.999F, -0.999F, 0.5F, -0.25F}
+        Dim inputBytes = FloatsToBytes(values)
+        Dim buf As New DSP.AudioBuffer(FloatStereo, inputBytes.Length, True)
+        buf.CopyFrom(inputBytes, 0, inputBytes.Length)
+
+        Using chain = BuildChain(FloatStereo, 2.0F, 0.5F)
+            chain.Process(buf)
+        End Using
+
+        For i = 0 To values.Length - 1
+            Assert.AreEqual(values(i), buf.GetSample(i),
+                $"sample {i}: x2.0 then x0.5 must be exact identity (powers of two) - no inter-stage clamp")
+        Next
+    End Sub
+
+    <TestMethod>
+    Public Sub Headroom_IntermediateBufferHoldsExcursions_Unclamped()
+        ' FR-007 direct observation: after ONLY the boost stage, the buffer holds
+        ' values beyond full scale - the processor did not clamp internally.
+        Dim values = {0.9F, -0.9F}
+        Dim inputBytes = FloatsToBytes(values)
+        Dim buf As New DSP.AudioBuffer(FloatStereo, inputBytes.Length, True)
+        buf.CopyFrom(inputBytes, 0, inputBytes.Length)
+
+        Using boost As New DSP.GainProcessor(FloatStereo) With {.GainLinear = 2.0F}
+            boost.Process(buf)
+        End Using
+
+        Assert.AreEqual(1.8F, buf.GetSample(0), 0.0000005F, "excursion must be held unclamped in the buffer")
+        Assert.AreEqual(-1.8F, buf.GetSample(1), 0.0000005F)
+    End Sub
+
+    <TestMethod>
+    Public Sub Headroom_HotSignalAtBoundary_ClampsNeverWraps()
+        ' FR-008: the SAME hot signal sent to the exit boundary clips predictably.
+        Dim hot = FloatsToBytes({1.8F, -1.8F, 0.5F})
+        Dim pcm = Utils.SampleConversion.FloatToPcm16(hot, hot.Length, 1)
+
+        Assert.AreEqual(CShort(32767), BitConverter.ToInt16(pcm, 0), "positive clamp, never wrap")
+        Assert.AreEqual(CShort(-32767), BitConverter.ToInt16(pcm, 2), "negative clamp, never wrap")
+        Assert.IsTrue(Math.Abs(BitConverter.ToInt16(pcm, 4) - 16384) <= 1, "in-range samples unaffected")
+    End Sub
+
+#End Region
+
+#Region "US2 - Allocation audit + denormal sanity (SC-006, Constitution IV; analysis C3)"
+
+    <TestMethod>
+    Public Sub HotLoop_SteadyState_ZeroAllocationsPerBlock()
+        ' SC-006: after warmup, ProcessorChain.Process allocates NOTHING -
+        ' the migration's zero-alloc claim as a regression-tested property.
+        Dim blockBytes = 256 * FloatStereo.BlockAlign ' one production block
+        Dim inputBytes(blockBytes - 1) As Byte
+        For i = 0 To (blockBytes \ 4) - 1
+            System.Buffer.BlockCopy(BitConverter.GetBytes(CSng(Math.Sin(i * 0.05)) * 0.8F), 0, inputBytes, i * 4, 4)
+        Next
+        Dim buf As New DSP.AudioBuffer(FloatStereo, blockBytes, True)
+
+        Using chain = BuildChain(FloatStereo, 1.3F, 0.7F) ' non-unity: full math path
+            ' Warmup (JIT, any lazy init)
+            For w = 1 To 50
+                buf.CopyFrom(inputBytes, 0, inputBytes.Length)
+                chain.Process(buf)
+            Next
+
+            Dim before = GC.GetAllocatedBytesForCurrentThread()
+            For n = 1 To 1000
+                chain.Process(buf) ' steady state: same buffer, no copies
+            Next
+            Dim delta = GC.GetAllocatedBytesForCurrentThread() - before
+
+            Assert.AreEqual(0L, delta, $"hot loop allocated {delta} bytes across 1000 blocks - must be ZERO (Constitution IV)")
+        End Using
+    End Sub
+
+    <TestMethod>
+    Public Sub Denormals_DecayTail_NoPathologicalSlowdown()
+        ' Analysis C3 (spec edge case): denormal-range input must not degrade
+        ' processing pathologically. Generous 5x bound - catches pathology, not noise.
+        Dim blockBytes = 256 * FloatStereo.BlockAlign
+        Dim buf As New DSP.AudioBuffer(FloatStereo, blockBytes, True)
+
+        Dim normalBytes(blockBytes - 1) As Byte
+        Dim denormalBytes(blockBytes - 1) As Byte
+        For i = 0 To (blockBytes \ 4) - 1
+            System.Buffer.BlockCopy(BitConverter.GetBytes(0.5F), 0, normalBytes, i * 4, 4)
+            System.Buffer.BlockCopy(BitConverter.GetBytes(Single.Epsilon * 100.0F), 0, denormalBytes, i * 4, 4)
+        Next
+
+        Using chain = BuildChain(FloatStereo, 0.9F, 0.9F) ' decay-ish gains keep values denormal
+            ' Warmup both paths
+            For w = 1 To 20
+                buf.CopyFrom(normalBytes, 0, blockBytes) : chain.Process(buf)
+                buf.CopyFrom(denormalBytes, 0, blockBytes) : chain.Process(buf)
+            Next
+
+            Const iterations As Integer = 2000
+            Dim sw = Diagnostics.Stopwatch.StartNew()
+            For n = 1 To iterations
+                buf.CopyFrom(normalBytes, 0, blockBytes)
+                chain.Process(buf)
+            Next
+            sw.Stop()
+            Dim normalTicks = Math.Max(sw.ElapsedTicks, 1L)
+
+            sw.Restart()
+            For n = 1 To iterations
+                buf.CopyFrom(denormalBytes, 0, blockBytes)
+                chain.Process(buf)
+            Next
+            sw.Stop()
+            Dim denormalTicks = sw.ElapsedTicks
+
+            Assert.IsTrue(denormalTicks <= normalTicks * 5,
+                $"denormal input took {denormalTicks} ticks vs {normalTicks} normal (> 5x bound) - denormal pathology")
+        End Using
+    End Sub
+
+#End Region
+
 End Class
