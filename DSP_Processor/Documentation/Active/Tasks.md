@@ -13,8 +13,8 @@
 | Version | Tracker task (= user story) | Status |
 |---------|------------------------------|--------|
 | v1.3.3.1 | US1 - Provably Correct Audio Core (test foundation, 39 tests, FR-015 gate) | ✅ COMPLETE 2026-07-12 |
-| v1.3.3.2 | US2 - Detected, Never Silent, Data Loss (monotonic counters, overrun detection) | ⏳ In progress |
-| v1.3.3.3 | US3 - One Way to Monitor (tap API consolidation, legacy removal) | Pending |
+| v1.3.3.2 | US2 - Detected, Never Silent, Data Loss (monotonic counters, overrun detection) | ✅ COMPLETE 2026-07-12 |
+| v1.3.3.3 | US3 - One Way to Monitor (tap API consolidation, legacy removal) | ⏳ In progress |
 
 ---
 

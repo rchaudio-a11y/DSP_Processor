@@ -3,7 +3,29 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.3.1
+**Current Version:** v1.3.3.2
+
+---
+
+## [v1.3.3.2] - 2026-07-12 - Overrun Detection (Feature 003, User Story 2)
+
+**RDF Phase:** Phase 3-5 (Build → Validate)  
+**Feature:** `specs/003-tap-consolidation/` — US2 "Detected, Never Silent, Data Loss"
+
+### Changed
+- **`Utils.MultiReaderRingBuffer`** — Mod-based reader positions replaced with monotonic total-bytes `Long` counters (research R2): lap-aliasing is now arithmetically impossible, and loss amounts fall out of the same subtraction
+  - Overrun detect-and-resync on all reader-side paths (`Read`/`Available`/`GetReaderStats`); reads can never return spliced old/new audio (FR-007)
+  - New `Read` overload with `ByRef bytesLost` (call-site loss reporting, FR-005)
+  - New `Utils.ReaderStats` structure: `OverrunEvents`, `OverrunEpisodeCount`, `TotalBytesLost`, `Pending`, `LastOverrunLogEmitted`
+  - Rate-limited overrun logging: emitted on transition into an overrun episode, ≥ 1 s interval per reader, never from `Write` (FR-008, Constitution IV)
+  - Class comment corrected: single-lock design documented (P4 deferred by scope decision)
+- **`DSP.DSPThread`** — tap-API pass-throughs: `ReadFromTap` ByRef-loss overload + `GetTapReaderStats`; `Write` path untouched
+
+### Added
+- 16 new tests in `MultiReaderRingBufferTests` (FR-011): independence, live-edge creation, exact-1×-lap detection (the old aliasing case), multi-lap totals, no-splice guarantee, partial reads, episode semantics, rate-limit seam
+
+### Verified
+- 55/55 tests green, 88 ms; **zero US1 test modifications** — behavior-lock held through the refactor
 
 ---
 

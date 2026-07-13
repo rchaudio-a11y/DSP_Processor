@@ -437,6 +437,53 @@ Namespace DSP
         End Function
 
         ''' <summary>
+        ''' Read from a tap point, reporting data loss at the call site:
+        ''' bytesLost = bytes skipped by a resync performed during THIS call
+        ''' (0 if the reader had not been lapped). See contracts/monitor-reader-api.md.
+        ''' </summary>
+        Public Function ReadFromTap(tapLocation As TapLocation, readerName As String, buffer As Byte(), offset As Integer, count As Integer, ByRef bytesLost As Long) As Integer
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
+
+            Select Case tapLocation
+                Case TapLocation.PreDSP
+                    Return inputMonitorBuffer.Read(readerName, buffer, offset, count, bytesLost)
+                Case TapLocation.PostGain
+                    Return postGainMonitorBuffer.Read(readerName, buffer, offset, count, bytesLost)
+                Case TapLocation.PostDSP
+                    Return postOutputGainMonitorBuffer.Read(readerName, buffer, offset, count, bytesLost)
+                Case TapLocation.PreOutput
+                    Return outputMonitorBuffer.Read(readerName, buffer, offset, count, bytesLost)
+                Case Else
+                    Throw New ArgumentException($"Invalid tap location: {tapLocation}")
+            End Select
+        End Function
+
+        ''' <summary>
+        ''' Per-reader statistics snapshot for a tap point (overrun events,
+        ''' episodes, bytes lost, pending). Monotonic - never clears counters.
+        ''' </summary>
+        Public Function GetTapReaderStats(tapLocation As TapLocation, readerName As String) As Utils.ReaderStats
+            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
+                Throw New ObjectDisposedException(NameOf(DSPThread))
+            End If
+
+            Select Case tapLocation
+                Case TapLocation.PreDSP
+                    Return inputMonitorBuffer.GetReaderStats(readerName)
+                Case TapLocation.PostGain
+                    Return postGainMonitorBuffer.GetReaderStats(readerName)
+                Case TapLocation.PostDSP
+                    Return postOutputGainMonitorBuffer.GetReaderStats(readerName)
+                Case TapLocation.PreOutput
+                    Return outputMonitorBuffer.GetReaderStats(readerName)
+                Case Else
+                    Throw New ArgumentException($"Invalid tap location: {tapLocation}")
+            End Select
+        End Function
+
+        ''' <summary>
         ''' Get bytes available for a specific reader at a tap point
         ''' </summary>
         Public Function TapAvailable(tapLocation As TapLocation, readerName As String) As Integer

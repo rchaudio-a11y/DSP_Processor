@@ -66,6 +66,7 @@ arithmetic expectation, and post-resync reads are contiguous.
 |------|-----------|--------|
 | 2026-07-12 | US1 gate (T011): 39 tests vs unmodified production code | ✅ 39/39 passed, 81–233 ms wall (target < 30 s), zero log files created |
 | 2026-07-12 | US1 mutation check (T011): off-by-one injected into RingBuffer write-position advance | ✅ 6 named RingBufferTests failures, then reverted → 39/39 green, `git diff` clean |
+| 2026-07-12 | US2 (T015): monotonic-counter refactor + 16 overrun tests | ✅ 55/55 passed, 88 ms; zero US1 test modifications (behavior-lock held) |
 
 ## Sequencing guard (FR-015)
 
