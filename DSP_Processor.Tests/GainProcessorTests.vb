@@ -2,28 +2,39 @@ Imports Microsoft.VisualStudio.TestTools.UnitTesting
 Imports NAudio.Wave
 
 ''' <summary>
-''' FR-013: behavior-locking tests for GainProcessor math.
-''' Locks CURRENT behavior, including the constant-power center attenuation:
-''' the stereo path applies cos(pi/4) ~ 0.7071 per side whenever the processor
-''' is not in its unity bypass (gain=1, pan=0, width=1).
+''' FR-013: GainProcessor math tests, RE-DERIVED in the float32 processing domain.
+'''
+''' ============================ SUPERSESSION RECORD =============================
+''' Feature 001-float32-pipeline, 2026-07-13, per Architect ruling (feature
+''' description item 5) and spec FR-010/FR-011.
+'''
+''' This file previously locked (feature 003, v1.3.3.1) the UNCOMPENSATED
+''' constant-power pan law, including its defect: any non-unity setting applied
+''' ~-3 dB to center-panned audio, a step discontinuity at the bypass boundary.
+''' The following locked assertions are hereby EXPLICITLY SUPERSEDED:
+'''   - Stereo_CenterPan_AppliesConstantPowerAttenuation  (locked the -3 dB defect)
+'''   - HardPan_FullyAttenuatesOppositeChannel            (locked cos/sin extremes)
+'''   - ConstantPowerPan_PowerPreservedAcrossPanRange     (locked L2+R2 preservation)
+''' Replacement law: BALANCE (clarify Q1) - favored channel unity at every pan
+''' position, opposite channel on a cosine taper cos(|pan|*pi/2), center pan
+''' mathematically transparent. Full sweep assertions: FloatPipelineTests (SC-004).
+''' Recorded here and in Documentation/Changelog/CURRENT.md (v1.3.5.x) - never a
+''' silent edit. The int16-domain tests were re-derived with float tolerances.
+''' ==============================================================================
 ''' </summary>
 <TestClass>
 Public Class GainProcessorTests
 
-    Private Shared ReadOnly StereoFormat As New WaveFormat(44100, 16, 2)
-    Private Shared ReadOnly MonoFormat As New WaveFormat(44100, 16, 1)
+    Private Shared ReadOnly StereoFormat As WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(44100, 2)
+    Private Shared ReadOnly MonoFormat As WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(44100, 1)
 
-    ''' <summary>Builds an AudioBuffer from interleaved Int16 samples.</summary>
-    Private Shared Function MakeBuffer(format As WaveFormat, ParamArray samples As Short()) As DSP.AudioBuffer
-        Dim bytes(samples.Length * 2 - 1) As Byte
+    ''' <summary>Builds an AudioBuffer from interleaved float32 samples.</summary>
+    Private Shared Function MakeBuffer(format As WaveFormat, ParamArray samples As Single()) As DSP.AudioBuffer
+        Dim bytes(samples.Length * 4 - 1) As Byte
         System.Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length)
         Dim buf As New DSP.AudioBuffer(format, bytes.Length, True)
         buf.CopyFrom(bytes, 0, bytes.Length)
         Return buf
-    End Function
-
-    Private Shared Function SampleAt(buf As DSP.AudioBuffer, index As Integer) As Short
-        Return BitConverter.ToInt16(buf.Buffer, index * 2)
     End Function
 
 #Region "Unity bypass & enable/bypass plumbing"
@@ -31,7 +42,7 @@ Public Class GainProcessorTests
     <TestMethod>
     Public Sub UnitySettings_OutputBitIdentical()
         Dim gp As New DSP.GainProcessor(StereoFormat) ' defaults: gain 1, pan 0, width 1
-        Dim buf = MakeBuffer(StereoFormat, 1000S, -2000S, 12345S, -12345S, 32767S, Short.MinValue)
+        Dim buf = MakeBuffer(StereoFormat, 0.1F, -0.2F, 0.999F, -1.0F, 1.5F, -1.5F) ' incl. excursions
         Dim before = CType(buf.Buffer.Clone(), Byte())
 
         gp.Process(buf)
@@ -42,7 +53,7 @@ Public Class GainProcessorTests
     <TestMethod>
     Public Sub Bypassed_OutputUnchangedEvenWithGain()
         Dim gp As New DSP.GainProcessor(StereoFormat) With {.GainLinear = 2.0F, .Bypassed = True}
-        Dim buf = MakeBuffer(StereoFormat, 1000S, -1000S)
+        Dim buf = MakeBuffer(StereoFormat, 0.25F, -0.25F)
         Dim before = CType(buf.Buffer.Clone(), Byte())
 
         gp.Process(buf)
@@ -53,7 +64,7 @@ Public Class GainProcessorTests
     <TestMethod>
     Public Sub Disabled_OutputUnchangedEvenWithGain()
         Dim gp As New DSP.GainProcessor(StereoFormat) With {.GainLinear = 2.0F, .Enabled = False}
-        Dim buf = MakeBuffer(StereoFormat, 1000S, -1000S)
+        Dim buf = MakeBuffer(StereoFormat, 0.25F, -0.25F)
         Dim before = CType(buf.Buffer.Clone(), Byte())
 
         gp.Process(buf)
@@ -70,51 +81,37 @@ Public Class GainProcessorTests
     <TestMethod>
     Public Sub Process_IncompatibleFormat_Throws()
         Dim gp As New DSP.GainProcessor(StereoFormat)
-        Dim buf = MakeBuffer(New WaveFormat(48000, 16, 2), 100S, 100S)
+        Dim buf = MakeBuffer(WaveFormat.CreateIeeeFloatWaveFormat(48000, 2), 0.1F, 0.1F)
         Assert.ThrowsException(Of InvalidOperationException)(Sub() gp.Process(buf))
     End Sub
 
 #End Region
 
-#Region "Gain math"
+#Region "Gain math (float domain - no clamping, FR-007)"
 
     <TestMethod>
     Public Sub Mono_GainTimesTwo_ExactDoubling()
-        ' Mono path has no pan factor: pure multiply
+        ' 2.0 is a power of two: float multiplication is exact
         Dim gp As New DSP.GainProcessor(MonoFormat) With {.GainLinear = 2.0F}
-        Dim buf = MakeBuffer(MonoFormat, 1000S, -750S, 0S)
+        Dim buf = MakeBuffer(MonoFormat, 0.25F, -0.1875F, 0.0F)
 
         gp.Process(buf)
 
-        Assert.AreEqual(CShort(2000), SampleAt(buf, 0))
-        Assert.AreEqual(CShort(-1500), SampleAt(buf, 1))
-        Assert.AreEqual(CShort(0), SampleAt(buf, 2))
+        Assert.AreEqual(0.5F, buf.GetSample(0))
+        Assert.AreEqual(-0.375F, buf.GetSample(1))
+        Assert.AreEqual(0.0F, buf.GetSample(2))
     End Sub
 
     <TestMethod>
-    Public Sub Mono_Clamping_NeverWraps()
-        Dim gp As New DSP.GainProcessor(MonoFormat) With {.GainLinear = 10.0F}
-        Dim buf = MakeBuffer(MonoFormat, 32000S, -32000S)
+    Public Sub Gain_ExcursionsAboveFullScale_FlowUnclamped()
+        ' FR-007: the processor never clamps - values beyond +/-1.0 flow undamaged
+        Dim gp As New DSP.GainProcessor(MonoFormat) With {.GainLinear = 4.0F}
+        Dim buf = MakeBuffer(MonoFormat, 0.9F, -0.9F)
 
         gp.Process(buf)
 
-        Assert.AreEqual(CShort(32767), SampleAt(buf, 0), "positive clamp")
-        Assert.AreEqual(CShort(-32768), SampleAt(buf, 1), "negative clamp")
-    End Sub
-
-    <TestMethod>
-    Public Sub Stereo_CenterPan_AppliesConstantPowerAttenuation()
-        ' LOCKED BEHAVIOR: gain 2 at center pan yields x(2 * cos(pi/4)) ~ x1.41421,
-        ' NOT x2 - the constant-power law attenuates center-panned stereo by 3 dB
-        ' on the processing path (unity bypass skips this entirely).
-        Dim gp As New DSP.GainProcessor(StereoFormat) With {.GainLinear = 2.0F}
-        Dim buf = MakeBuffer(StereoFormat, 10000S, 10000S)
-
-        gp.Process(buf)
-
-        Dim expected = CInt(Math.Round(10000.0 * 2.0 * Math.Cos(Math.PI / 4)))
-        Assert.IsTrue(Math.Abs(CInt(SampleAt(buf, 0)) - expected) <= 1, $"L: got {SampleAt(buf, 0)}, expected ~{expected}")
-        Assert.IsTrue(Math.Abs(CInt(SampleAt(buf, 1)) - expected) <= 1, $"R: got {SampleAt(buf, 1)}, expected ~{expected}")
+        Assert.AreEqual(3.6F, buf.GetSample(0), 0.0000005F, "3.6 must flow through, not clamp")
+        Assert.AreEqual(-3.6F, buf.GetSample(1), 0.0000005F)
     End Sub
 
     <TestMethod>
@@ -136,68 +133,61 @@ Public Class GainProcessorTests
 
 #End Region
 
-#Region "Constant-power pan (analysis B2: rel tolerance 1e-3 on linear power)"
+#Region "Balance pan law basics (supersedes constant-power law - see header)"
 
     <TestMethod>
-    Public Sub ConstantPowerPan_PowerPreservedAcrossPanRange()
-        ' Equal L=R input, width=1: mid=S, side=0 -> L'=S*g*cos(a), R'=S*g*sin(a)
-        ' so L'^2 + R'^2 must equal (S*g)^2 at every pan position.
-        Const s As Double = 10000.0
-        For Each pan In New Single() {-1.0F, -0.5F, 0.0F, 0.5F, 1.0F}
-            Dim gp As New DSP.GainProcessor(StereoFormat) With {.GainLinear = 1.5F, .PanPosition = pan}
-            Dim buf = MakeBuffer(StereoFormat, CShort(s), CShort(s))
+    Public Sub Stereo_CenterPan_Transparent_GainExact()
+        ' THE DEFECT FIX: gain 2.0 at center pan yields exactly x2.0 on both
+        ' channels. Under the superseded law this was x(2*cos(pi/4)) ~ x1.414.
+        Dim gp As New DSP.GainProcessor(StereoFormat) With {.GainLinear = 2.0F}
+        Dim buf = MakeBuffer(StereoFormat, 0.25F, -0.25F)
 
-            gp.Process(buf)
+        gp.Process(buf)
 
-            Dim l = CDbl(SampleAt(buf, 0))
-            Dim r = CDbl(SampleAt(buf, 1))
-            Dim expectedPower = (s * 1.5) * (s * 1.5)
-            Dim actualPower = l * l + r * r
-            Dim relError = Math.Abs(actualPower - expectedPower) / expectedPower
-            Assert.IsTrue(relError <= 0.001, $"pan {pan}: relative power error {relError} > 1e-3 (L={l}, R={r})")
-        Next
+        Assert.AreEqual(0.5F, buf.GetSample(0), "center pan must be transparent: L = input x gain, exactly")
+        Assert.AreEqual(-0.5F, buf.GetSample(1), "center pan must be transparent: R = input x gain, exactly")
     End Sub
 
     <TestMethod>
-    Public Sub HardPan_FullyAttenuatesOppositeChannel()
-        ' pan -1: angle 0 -> cos=1, sin=0 -> all left, right silent
+    Public Sub HardPan_FavoredChannelUnity_OppositeSilent()
+        ' Balance law at hard left: L = input x gain (favored, unity pan factor), R = 0
         Dim gp As New DSP.GainProcessor(StereoFormat) With {.PanPosition = -1.0F}
-        Dim buf = MakeBuffer(StereoFormat, 10000S, 10000S)
+        Dim buf = MakeBuffer(StereoFormat, 0.5F, 0.5F)
+
         gp.Process(buf)
-        Assert.AreEqual(CShort(10000), SampleAt(buf, 0))
-        Assert.AreEqual(CShort(0), SampleAt(buf, 1))
+
+        Assert.AreEqual(0.5F, buf.GetSample(0), 0.0000005F, "favored channel stays at unity")
+        Assert.AreEqual(0.0F, buf.GetSample(1), 0.0000005F, "opposite channel fully tapered at hard pan")
     End Sub
 
 #End Region
 
-#Region "Stereo width"
+#Region "Stereo width (float domain)"
 
     <TestMethod>
-    Public Sub WidthZero_CollapsesToMono()
-        ' width 0: side=0 -> both channels become mid, then center-pan factor applies
+    Public Sub WidthZero_CollapsesToMono_NoCenterAttenuation()
+        ' width 0: side = 0, both channels = mid. Balance law: NO pan attenuation
+        ' at center (the superseded law multiplied by cos(pi/4) here).
         Dim gp As New DSP.GainProcessor(StereoFormat) With {.StereoWidth = 0.0F}
-        Dim buf = MakeBuffer(StereoFormat, 20000S, 10000S)
+        Dim buf = MakeBuffer(StereoFormat, 0.5F, 0.25F)
 
         gp.Process(buf)
 
-        Dim mid = 15000.0 * Math.Cos(Math.PI / 4)
-        Assert.IsTrue(Math.Abs(CInt(SampleAt(buf, 0)) - mid) <= 1, $"L: got {SampleAt(buf, 0)}, expected ~{mid:F0}")
-        Assert.AreEqual(SampleAt(buf, 0), SampleAt(buf, 1), "mono collapse: L must equal R")
+        Assert.AreEqual(0.375F, buf.GetSample(0), "L = mid, exactly - no hidden attenuation")
+        Assert.AreEqual(0.375F, buf.GetSample(1), "R = mid, exactly")
     End Sub
 
     <TestMethod>
     Public Sub WidthTwo_DoublesSideSignal()
-        ' L=20000, R=10000 -> mid 15000, side 5000; width 2 -> side 10000
-        ' L' = 25000 * cos(pi/4), R' = 5000 * sin(pi/4) at center pan
+        ' L=0.5, R=0.25 -> mid=0.375, side=0.125; width 2 -> side=0.25
+        ' L' = 0.625, R' = 0.125 (center pan: no further factors)
         Dim gp As New DSP.GainProcessor(StereoFormat) With {.StereoWidth = 2.0F}
-        Dim buf = MakeBuffer(StereoFormat, 20000S, 10000S)
+        Dim buf = MakeBuffer(StereoFormat, 0.5F, 0.25F)
 
         gp.Process(buf)
 
-        Dim expectedL = 25000.0 * Math.Cos(Math.PI / 4)
-        Dim expectedR = 5000.0 * Math.Sin(Math.PI / 4)
-        Assert.IsTrue(Math.Abs(CInt(SampleAt(buf, 0)) - expectedL) <= 1, $"L: got {SampleAt(buf, 0)}, expected ~{expectedL:F0}")
-        Assert.IsTrue(Math.Abs(CInt(SampleAt(buf, 1)) - expectedR) <= 1, $"R: got {SampleAt(buf, 1)}, expected ~{expectedR:F0}")
+        Assert.AreEqual(0.625F, buf.GetSample(0))
+        Assert.AreEqual(0.125F, buf.GetSample(1))
     End Sub
 
 #End Region

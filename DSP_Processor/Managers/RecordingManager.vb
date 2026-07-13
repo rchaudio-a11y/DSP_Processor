@@ -184,13 +184,11 @@ Namespace Managers
 
             If bytesRead <= 0 Then Return Nothing
 
-            ' Convert Int16 PCM to Float32 samples
-            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+            ' FEATURE 001: taps carry the float32 processing domain - reinterpret
+            ' the bytes directly; the per-read int16 conversion loop is DELETED (FR-005)
+            Dim sampleCount = bytesRead \ 4 ' 32-bit float samples
             Dim samples(sampleCount - 1) As Single
-            For i = 0 To sampleCount - 1
-                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
-                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
-            Next
+            System.Buffer.BlockCopy(buffer, 0, samples, 0, sampleCount * 4)
             Return samples
         End Function
 
@@ -376,15 +374,18 @@ Namespace Managers
                 If useDSP Then
                     Logger.Instance.Info("🎵 Phase 2.5: Initializing DSP pipeline for microphone...", "RecordingManager")
 
-                    ' Create PCM16 format for DSP
-                    Dim pcm16Format As New NAudio.Wave.WaveFormat(mic.SampleRate, 16, mic.Channels)
+                    ' FEATURE 001: the processing domain is float32 - capture engines
+                    ' emit it directly (mic.BitsPerSample now reports 32)
+                    Dim dspFloatFormat = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(mic.SampleRate, mic.Channels)
 
-                    ' Create DSP thread with 2-second buffers (same as file playback)
-                    Dim bufferSize = pcm16Format.AverageBytesPerSecond * 2 ' 2 seconds
-                    dspThread = New DSP.DSPThread(pcm16Format, bufferSize, bufferSize)
+                    ' Create DSP thread with 2-second buffers (same as file playback);
+                    ' sizes derive from AverageBytesPerSecond so time semantics are
+                    ' preserved at the wider sample size (clarify Q3 / AR-5)
+                    Dim bufferSize = dspFloatFormat.AverageBytesPerSecond * 2 ' 2 seconds
+                    dspThread = New DSP.DSPThread(dspFloatFormat, bufferSize, bufferSize)
 
                     ' PHASE 2.5: Add INPUT gain processor (first in chain)
-                    _inputGainProcessor = New DSP.GainProcessor(pcm16Format) With {
+                    _inputGainProcessor = New DSP.GainProcessor(dspFloatFormat) With {
                         .GainDB = 0.0F ' Unity gain
                     }
                     dspThread.Chain.AddProcessor(_inputGainProcessor)
@@ -401,7 +402,7 @@ Namespace Managers
                     Logger.Instance.Info("✅ INPUT GainProcessor tap point wired to PostGainMonitor buffer", "RecordingManager")
 
                     ' PHASE 2.5: Add OUTPUT gain processor (last in chain)
-                    _outputGainProcessor = New DSP.GainProcessor(pcm16Format) With {
+                    _outputGainProcessor = New DSP.GainProcessor(dspFloatFormat) With {
                         .GainDB = 0.0F ' Unity gain
                     }
                     dspThread.Chain.AddProcessor(_outputGainProcessor)
@@ -424,7 +425,7 @@ Namespace Managers
                     tapPointManager = New DSP.TapPointManager(dspThread)
                     Logger.Instance.Info("✅ TapPointManager created (centralized tap point access)", "RecordingManager")
 
-                    Logger.Instance.Info($"✅ DSP pipeline active: {pcm16Format.SampleRate}Hz, {pcm16Format.Channels}ch, Input+Output gain stages!", "RecordingManager")
+                    Logger.Instance.Info($"✅ DSP pipeline active: {dspFloatFormat.SampleRate}Hz, {dspFloatFormat.Channels}ch, float32 domain, Input+Output gain stages!", "RecordingManager")
                 End If
 
                 ' PHASE 5 STEP 21: No longer setting _isArmed flag (stateless)

@@ -3,7 +3,28 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.4.3
+**Current Version:** v1.3.5.1
+
+---
+
+## [v1.3.5.1] - 2026-07-13 - Float32 Domain Migration (Feature 001, User Story 1)
+
+**RDF Phase:** Phase 2-5 (Insight → Validate)  
+**Feature:** `specs/001-float32-pipeline/` — US1 "One Domain, One Conversion Per Boundary" — **on branch `001-float32-pipeline` (SubPhase 3.5)**
+
+### Changed
+- **Processing domain is now IEEE float32 end-to-end** (discharges the constitution v1.1.0 Audio Constraints migration clause):
+  - Playback: file reader's native float flows to the device with **ZERO conversions** (feeder quantization DELETED; `WaveOutEvent` takes IeeeFloat); buffer time semantics preserved automatically (sizes derive from `AverageBytesPerSecond`)
+  - Capture: WASAPI native float passes through un-quantized (private duplicate conversion DELETED, FR-003); int16 WaveIn devices enter the domain once via canonical `Pcm16ToFloat`; engines report `BitsPerSample = 32`
+  - Record: writer thread converts once at the write exit (canonical, scratch buffer); WAV target stays 16-bit
+  - `GainProcessor` re-derived on zero-alloc float accessors — no internal clamps (FR-007), **balance pan law** (favored unity / cosine taper; full proofs in US3)
+  - Monitoring: taps carry float; meter/FFT/MainForm consumers reinterpret directly (per-read conversion loops DELETED); FFT float path gains stereo mono-mixdown parity
+  - `Utils.SampleConversion` is the canonical pair (`Pcm16ToFloat` ÷32768 / `FloatToPcm16` ×32767, non-finite guard + `NonFiniteCount` seam); orphan `_default_*` readers deleted (003 leftover)
+- **R4 deviation recorded**: `AudioBuffer.GetSample/SetSample` inlined accessors instead of `Span(Of Single)` (VB ref-struct risk); AR-3 intent preserved
+
+### Verified
+- 74/74 tests; three-variant null test (unity, full-math ×2→×0.5 immune to bypass, float-source byte-identity) all ≤ 1 LSB; SC-002 conversion audit clean (5 residual hits = inert 16-bit display branches, classified in quickstart); FR-012 surviving suites: **empty diffs**
+- `GainProcessorTests` superseded with recorded supersession header (FR-011; full changelog paragraph rides v1.3.5.3)
 
 ---
 

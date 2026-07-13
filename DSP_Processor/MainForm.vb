@@ -1648,6 +1648,12 @@ Partial Public Class MainForm
                 End If
             Next
             maxSample /= 32768.0F ' Normalize to 0.0-1.0
+        ElseIf bitsPerSample = 32 Then
+            ' IEEE float32 processing domain (feature 001) - already normalized
+            For i = 0 To count - 4 Step 4
+                Dim sample = Math.Abs(BitConverter.ToSingle(samples, i))
+                If sample > maxSample Then maxSample = sample
+            Next
         End If
 
         ' Convert to dB

@@ -81,8 +81,9 @@ Namespace Audio.Routing
         Public Function GetEstimatedLatencyMs(bufferSize As Integer, sampleRate As Integer) As Double
             If sampleRate = 0 Then Return 0
             ' Latency = (bufferSize / bytesPerSample / channels) / sampleRate * 1000
-            ' Assume 16-bit stereo
-            Dim samplesPerBuffer = bufferSize / 4  ' 2 bytes per sample * 2 channels
+            ' Assume float32 stereo (feature 001 processing domain; this class is
+            ' Phase-3 scaffolding, not on the active path)
+            Dim samplesPerBuffer = bufferSize / 8  ' 4 bytes per sample * 2 channels
             Return (samplesPerBuffer / sampleRate) * 1000
         End Function
 

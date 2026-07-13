@@ -1,3 +1,4 @@
+Imports System.Runtime.CompilerServices
 Imports NAudio.Wave
 
 Namespace DSP
@@ -146,6 +147,40 @@ Namespace DSP
             Array.Copy(source, sourceOffset, _buffer, 0, count)
             ByteCount = count
             UpdateSampleCount()
+        End Sub
+
+        ''' <summary>
+        ''' Total float32 samples in the valid region (interleaved, across channels).
+        ''' Processing-domain accessor family (feature 001): processors use
+        ''' GetSample/SetSample and never touch bytes (AR-3).
+        ''' </summary>
+        Public ReadOnly Property FloatSampleCount As Integer
+            Get
+                Return ByteCount \ 4
+            End Get
+        End Property
+
+        ''' <summary>
+        ''' Reads processing-domain sample at interleaved index (float32).
+        ''' Zero-allocation; index is a sample index, not a byte offset.
+        ''' </summary>
+        <MethodImpl(MethodImplOptions.AggressiveInlining)>
+        Public Function GetSample(index As Integer) As Single
+            Return BitConverter.ToSingle(_buffer, index * 4)
+        End Function
+
+        ''' <summary>
+        ''' Writes processing-domain sample at interleaved index (float32).
+        ''' Zero-allocation (bit conversion + direct byte writes).
+        ''' </summary>
+        <MethodImpl(MethodImplOptions.AggressiveInlining)>
+        Public Sub SetSample(index As Integer, value As Single)
+            Dim bits = BitConverter.SingleToInt32Bits(value)
+            Dim o = index * 4
+            _buffer(o) = CByte(bits And &HFF)
+            _buffer(o + 1) = CByte((bits >> 8) And &HFF)
+            _buffer(o + 2) = CByte((bits >> 16) And &HFF)
+            _buffer(o + 3) = CByte((bits >> 24) And &HFF)
         End Sub
 
         ''' <summary>

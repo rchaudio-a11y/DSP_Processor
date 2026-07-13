@@ -84,6 +84,15 @@ The six Architect rulings from the planning directive are numbered AR-1..6.
   DSPThread's read/write paths); per-sample `BitConverter` accessors
   (rejected: bounds-check + call overhead per sample, and byte-poking is
   what AR-3 forbids).
+- **IMPLEMENTATION DEVIATION (2026-07-13, recorded)**: shipped as inlined
+  `GetSample(index)`/`SetSample(index, value)` accessors +
+  `FloatSampleCount` instead of `SampleSpan()` — VB's ref-struct (`Span`)
+  support is unreliable across compiler versions, and a failed gamble there
+  would block the whole feature. The accessors are zero-allocation
+  (`BitConverter.ToSingle` reads; `SingleToInt32Bits` + direct byte writes;
+  `AggressiveInlining`) and preserve AR-3's intent exactly: processors
+  address samples by index and never touch bytes. The allocation audit
+  (T013) regression-tests the zero-alloc claim.
 
 ## R5. GainProcessor re-derivation + balance pan law (AR-4)
 

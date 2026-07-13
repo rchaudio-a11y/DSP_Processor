@@ -39,6 +39,10 @@ Namespace Recording
         ' ASYNC FILE WRITING: Background writer thread + lock-free queue
         Private ReadOnly _writeQueue As New ConcurrentQueue(Of Byte())
         Private _writerThread As Thread
+        ' FEATURE 001: scratch buffer for the write-exit boundary conversion
+        ' (float32 domain -> 16-bit WAV target); reused across writes so the
+        ' steady-state writer performs zero allocations
+        Private _writeScratch As Byte()
         ' Cross-thread flag (control thread <-> writer thread): Integer + Interlocked,
         ' plain Boolean fields have no memory-visibility guarantee (Constitution V)
         Private _writerRunningFlag As Integer = 0
@@ -129,8 +133,12 @@ Namespace Recording
             GC.Collect()
             GC.WaitForPendingFinalizers()
 
-            ' Create WAV file
-            wavOut = New WavFileOutput(fullPath, InputSource.SampleRate, InputSource.Channels, InputSource.BitsPerSample)
+            ' Create WAV file - FEATURE 001: the recorded target stays 16-bit PCM
+            ' (spec FR-006; 24-bit export is a follow-on feature). Incoming data is
+            ' float32 processing domain; the writer thread converts at the write
+            ' exit boundary via the canonical conversion. Do NOT use
+            ' InputSource.BitsPerSample here - engines now report 32 (float).
+            wavOut = New WavFileOutput(fullPath, InputSource.SampleRate, InputSource.Channels, 16)
 
             ' ASYNC: Start background writer thread
             StartWriterThread()
@@ -402,8 +410,17 @@ Namespace Recording
                             ' TIME the write operation
                             _writerStopwatch.Restart()
 
+                            ' FEATURE 001: WRITE EXIT BOUNDARY - convert the float32
+                            ' domain block to the 16-bit WAV target via the canonical
+                            ' conversion (scratch buffer: zero steady-state allocation)
+                            Dim neededBytes = writeBuffer.Length \ 2
+                            If _writeScratch Is Nothing OrElse _writeScratch.Length < neededBytes Then
+                                ReDim _writeScratch(neededBytes - 1)
+                            End If
+                            Dim pcmBytes = Utils.SampleConversion.FloatToPcm16(writeBuffer, writeBuffer.Length, _writeScratch)
+
                             ' Write to disk (on background thread, doesn't block audio!)
-                            wavOut.Write(writeBuffer, writeBuffer.Length)
+                            wavOut.Write(_writeScratch, pcmBytes)
 
                             _writerStopwatch.Stop()
                             Dim elapsed = _writerStopwatch.Elapsed.TotalMilliseconds
@@ -433,7 +450,13 @@ Namespace Recording
             While _writeQueue.TryDequeue(flushBuffer)
                 If flushBuffer IsNot Nothing AndAlso wavOut IsNot Nothing Then
                     Try
-                        wavOut.Write(flushBuffer, flushBuffer.Length)
+                        ' Feature 001: same write-exit boundary conversion as the main loop
+                        Dim neededBytes = flushBuffer.Length \ 2
+                        If _writeScratch Is Nothing OrElse _writeScratch.Length < neededBytes Then
+                            ReDim _writeScratch(neededBytes - 1)
+                        End If
+                        Dim pcmBytes = Utils.SampleConversion.FloatToPcm16(flushBuffer, flushBuffer.Length, _writeScratch)
+                        wavOut.Write(_writeScratch, pcmBytes)
                         remaining += 1
                     Catch ex As Exception
                         Utils.Logger.Instance.Error("Error flushing buffer on shutdown", ex, "RecordingEngine")

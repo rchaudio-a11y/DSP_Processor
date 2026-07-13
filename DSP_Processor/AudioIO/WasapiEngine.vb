@@ -74,10 +74,13 @@ Namespace AudioIO
             End Get
         End Property
 
-        ''' <summary>Gets the bit depth per sample</summary>
+        ''' <summary>Gets the bit depth per sample of EMITTED data</summary>
+        ''' <remarks>Feature 001: this engine always emits float32 processing-domain
+        ''' samples (native float passes through; native int16 converts once at entry
+        ''' via the canonical conversion), so consumers always see 32.</remarks>
         Public ReadOnly Property BitsPerSample As Integer Implements IAudioEngine.BitsPerSample, IInputSource.BitsPerSample
             Get
-                Return _bitsPerSample
+                Return 32
             End Get
         End Property
 
@@ -207,9 +210,9 @@ Namespace AudioIO
                         _nativeBitsPerSample = format.BitsPerSample  ' Store native (32-bit)
                         _nativeEncoding = format.Encoding             ' Store encoding (IeeeFloat)
                         ' Always report 16-bit to consumers (we convert internally)
-                        _bitsPerSample = 16
+                        _bitsPerSample = 32 ' feature 001: emitted data is float32 processing domain
 
-                        Utils.Logger.Instance.Info($"WASAPI initialized: {format.SampleRate}Hz, {format.Channels}ch, {format.BitsPerSample}bit/{format.Encoding} (native) -> converted to {_sampleRate}Hz/16bit PCM, {_latencyMs}ms latency", "WasapiEngine")
+                        Utils.Logger.Instance.Info($"WASAPI initialized: {format.SampleRate}Hz, {format.Channels}ch, {format.BitsPerSample}bit/{format.Encoding} (native) -> float32 processing domain (pass-through if native float), {_latencyMs}ms latency", "WasapiEngine")
 
                         ' Wire up events
                         AddHandler _wasapiCapture.DataAvailable, AddressOf OnWasapiDataAvailable
@@ -314,17 +317,19 @@ Namespace AudioIO
 
         Private Sub OnWasapiDataAvailable(sender As Object, e As WaveInEventArgs)
             Try
-                ' WASAPI typically uses 32-bit float format
-                ' We need to convert to 16-bit PCM for compatibility
+                ' FEATURE 001: emit float32 processing-domain samples.
+                ' Native WASAPI float (typical shared mode): PASS THROUGH un-quantized -
+                ' the old float->int16 entry quantization is DELETED (FR-003).
+                ' Native int16 device: enter the domain ONCE via the canonical conversion.
                 Dim convertedBuffer() As Byte
-                
+
                 If _nativeBitsPerSample = 32 AndAlso _nativeEncoding = WaveFormatEncoding.IeeeFloat Then
-                    ' Convert from 32-bit float to 16-bit PCM
-                    convertedBuffer = ConvertFloatToPCM16(e.Buffer, e.BytesRecorded)
-                Else
-                    ' Already in correct format, just copy
+                    ' Already the processing domain - copy so NAudio can reuse its buffer
                     ReDim convertedBuffer(e.BytesRecorded - 1)
                     Array.Copy(e.Buffer, convertedBuffer, e.BytesRecorded)
+                Else
+                    ' int16 device entry -> float domain (canonical, FR-006)
+                    convertedBuffer = Utils.SampleConversion.Pcm16ToFloat(e.Buffer, e.BytesRecorded)
                 End If
                 
                 ' Apply volume if not 1.0
@@ -360,45 +365,22 @@ Namespace AudioIO
             End Try
         End Sub
         
-        ''' <summary>
-        ''' Convert 32-bit IEEE float samples to 16-bit PCM
-        ''' </summary>
-        Private Function ConvertFloatToPCM16(floatBuffer() As Byte, byteCount As Integer) As Byte()
-            Dim floatCount = byteCount \ 4 ' 4 bytes per float
-            Dim pcmBuffer(floatCount * 2 - 1) As Byte ' 2 bytes per PCM16 sample
-            
-            For i = 0 To floatCount - 1
-                ' Read float value (-1.0 to +1.0)
-                Dim floatSample = BitConverter.ToSingle(floatBuffer, i * 4)
-                
-                ' Clamp to valid range
-                floatSample = Math.Max(-1.0F, Math.Min(1.0F, floatSample))
-                
-                ' Convert to 16-bit signed integer (-32768 to +32767)
-                Dim pcmSample = CShort(floatSample * 32767.0F)
-                
-                ' Write as 16-bit little-endian
-                Dim pcmBytes = BitConverter.GetBytes(pcmSample)
-                pcmBuffer(i * 2) = pcmBytes(0)
-                pcmBuffer(i * 2 + 1) = pcmBytes(1)
-            Next
-            
-            Return pcmBuffer
-        End Function
-        
-        ''' <summary>Apply volume to buffer (16-bit PCM)</summary>
+        ' (Feature 001: the private ConvertFloatToPCM16 duplicate was DELETED -
+        ' FR-003. The canonical pair lives in Utils.SampleConversion; native float
+        ' now passes through to the processing domain un-quantized.)
+
+        ''' <summary>Apply volume to buffer (float32 processing domain)</summary>
         Private Sub ApplyVolume(buffer() As Byte, count As Integer)
-            If _bitsPerSample = 16 Then
-                For i = 0 To count - 1 Step 2
-                    If i + 1 < count Then
-                        Dim sample = BitConverter.ToInt16(buffer, i)
-                        sample = CShort(sample * _volume)
-                        Dim bytes = BitConverter.GetBytes(sample)
-                        buffer(i) = bytes(0)
-                        buffer(i + 1) = bytes(1)
-                    End If
-                Next
-            End If
+            ' Feature 001: buffers are float32 - multiply samples directly, no clamp
+            ' (excursions are legal in the domain; the boundary clamps, FR-007/008)
+            For i = 0 To count - 4 Step 4
+                Dim sample = BitConverter.ToSingle(buffer, i) * _volume
+                Dim bits = BitConverter.SingleToInt32Bits(sample)
+                buffer(i) = CByte(bits And &HFF)
+                buffer(i + 1) = CByte((bits >> 8) And &HFF)
+                buffer(i + 2) = CByte((bits >> 16) And &HFF)
+                buffer(i + 3) = CByte((bits >> 24) And &HFF)
+            Next
         End Sub
 
         Private Sub OnWasapiRecordingStopped(sender As Object, e As NAudio.Wave.StoppedEventArgs)

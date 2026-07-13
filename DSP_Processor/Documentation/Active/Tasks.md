@@ -1,8 +1,20 @@
 # Active Tasks - DSP_Processor
 
 **Last Updated:** July 12, 2026  
-**Current Version:** v1.3.4.3 (v1.3.x lineage; SubPhase 3.4 = feature 002-state-machine-hardening; granularity: one tracker task/version per spec-kit USER STORY)  
-**Current Task:** Feature 002-state-machine-hardening — implementation COMPLETE; manual app smoke pending. Next candidates: 001-float32-pipeline (both prerequisites now met)
+**Current Version:** v1.3.5.1 (v1.3.x lineage; SubPhase 3.5 = feature 001-float32-pipeline on branch `001-float32-pipeline`; granularity: one tracker task/version per spec-kit USER STORY)  
+**Current Task:** Feature 001-float32-pipeline — US1 COMPLETE, US2 in progress
+
+---
+
+## CURRENT - SubPhase 3.5: Feature 001-float32-pipeline (spec-driven, FEATURE BRANCH)
+
+**Spec:** `specs/001-float32-pipeline/` | **Branch:** `001-float32-pipeline` (merge to master gated on manual listening checks, T020)
+
+| Version | Tracker task (= user story) | Status |
+|---------|------------------------------|--------|
+| v1.3.5.1 | US1 - One Domain, One Conversion Per Boundary (float32 migration) | ✅ COMPLETE 2026-07-13 |
+| v1.3.5.2 | US2 - Inter-Stage Headroom, Exit-Only Clamping (proofs) | ⏳ In progress |
+| v1.3.5.3 | US3 - Balance Pan Law (proofs + supersession record) | Pending |
 
 ---
 

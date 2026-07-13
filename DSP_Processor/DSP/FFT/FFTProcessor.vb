@@ -115,12 +115,24 @@ Namespace DSP.FFT
                     Next
                     
                 Case 32
-                    For i As Integer = 0 To count - 1 Step 4
-                        If i + 3 < count Then
-                            Dim sample As Single = BitConverter.ToSingle(buffer, i)
-                            sampleBuffer.Add(sample)
-                        End If
-                    Next
+                    ' IEEE float32 processing domain (feature 001) - no int32-PCM
+                    ' sources exist in this application (analysis B1).
+                    If channels = 2 Then
+                        ' STEREO: mix to mono by averaging L+R (parity with Case 16)
+                        For i As Integer = 0 To count - 1 Step 8 ' 8 bytes = 2 float samples
+                            If i + 7 < count Then
+                                Dim sampleL As Single = BitConverter.ToSingle(buffer, i)
+                                Dim sampleR As Single = BitConverter.ToSingle(buffer, i + 4)
+                                sampleBuffer.Add((sampleL + sampleR) * 0.5F)
+                            End If
+                        Next
+                    Else
+                        For i As Integer = 0 To count - 1 Step 4
+                            If i + 3 < count Then
+                                sampleBuffer.Add(BitConverter.ToSingle(buffer, i))
+                            End If
+                        Next
+                    End If
             End Select
         End Sub
         

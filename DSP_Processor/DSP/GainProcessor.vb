@@ -3,7 +3,22 @@ Imports NAudio.Wave
 Namespace DSP
 
     ''' <summary>
-    ''' Simple gain (volume) processor for DSP chain
+    ''' Gain / balance-pan / stereo-width processor for the DSP chain.
+    '''
+    ''' FEATURE 001 (float32-pipeline) - operates natively on the float32
+    ''' processing domain via AudioBuffer.GetSample/SetSample (never bytes).
+    ''' NO internal clamping: inter-stage excursions beyond +/-1.0 flow
+    ''' undamaged (FR-007); range limiting happens only at the boundary
+    ''' conversion (FR-008).
+    '''
+    ''' PAN = BALANCE LAW (Architect-ruled behavior change, clarify Q1):
+    ''' the favored channel stays at unity for every pan position; only the
+    ''' opposite channel attenuates, on a cosine taper cos(|pan| * pi/2).
+    ''' Center pan is both channels x1.0 - mathematically transparent - so
+    ''' the unity bypass below is a pure optimization with no behavior cliff.
+    ''' (Supersedes the uncompensated constant-power law locked by feature
+    ''' 003; released per FR-011 with the supersession recorded in
+    ''' GainProcessorTests.vb and the changelog.)
     ''' </summary>
     Public Class GainProcessor
         Inherits ProcessorBase
@@ -16,7 +31,7 @@ Namespace DSP
         ''' <summary>
         ''' Creates a new gain processor
         ''' </summary>
-        ''' <param name="format">Wave format</param>
+        ''' <param name="format">Wave format (float32 processing domain)</param>
         Public Sub New(format As WaveFormat)
             MyBase.New(format)
         End Sub
@@ -71,7 +86,7 @@ Namespace DSP
 
         ''' <summary>
         ''' Gets or sets the pan position (-1.0 = full left, 0.0 = center, +1.0 = full right)
-        ''' Uses constant-power pan law to maintain perceived loudness
+        ''' Balance law: favored channel unity, opposite channel cosine taper (feature 001)
         ''' </summary>
         Public Property PanPosition As Single
             Get
@@ -100,92 +115,62 @@ Namespace DSP
 
 
         ''' <summary>
-        ''' Process audio buffer (apply gain)
+        ''' Process audio buffer (apply gain, balance pan, width) in float32
         ''' </summary>
         Protected Overrides Sub ProcessInternal(buffer As AudioBuffer)
             If buffer Is Nothing OrElse buffer.ByteCount = 0 Then
                 Return
             End If
 
-            ' Unity gain, center pan, and normal width - no processing needed, but STILL send to monitor
+            ' Unity gain, center pan, and normal width - no processing needed, but STILL send to monitor.
+            ' Under the balance law this fast path is a pure optimization: center pan is
+            ' mathematically transparent, so skipping the math changes nothing (no behavior cliff).
             If Math.Abs(_gainLinear - 1.0F) < 0.001F AndAlso Math.Abs(_panPosition) < 0.001F AndAlso Math.Abs(_stereoWidth - 1.0F) < 0.001F Then
                 ' DSP TAP POINT PATTERN: Send to monitor even when bypassing processing
                 SendToMonitor(buffer)
                 Return
             End If
 
+            Dim totalSamples = buffer.FloatSampleCount
 
-            ' Process 16-bit PCM samples
-            Dim sampleCount = buffer.ByteCount \ Format.BlockAlign
-            
-            ' Calculate pan gains once (constant-power law)
-            Dim panAngle = (_panPosition + 1.0F) * CSng(Math.PI) / 4.0F ' 0 to pi/2
-            Dim leftPanGain = CSng(Math.Cos(panAngle))
-            Dim rightPanGain = CSng(Math.Sin(panAngle))
+            ' Balance pan factors (clarify Q1 / AR-4): favored channel unity,
+            ' opposite channel cosine taper - no boost anywhere, no clamping anywhere
+            Dim leftPanGain As Single = 1.0F
+            Dim rightPanGain As Single = 1.0F
+            If _panPosition > 0.001F Then
+                leftPanGain = CSng(Math.Cos(_panPosition * Math.PI / 2.0)) ' pan right: left tapers
+            ElseIf _panPosition < -0.001F Then
+                rightPanGain = CSng(Math.Cos(-_panPosition * Math.PI / 2.0)) ' pan left: right tapers
+            End If
 
-            For i = 0 To sampleCount - 1
-                Dim offset = i * Format.BlockAlign
+            If Format.Channels = 1 Then
+                ' Mono - gain only (no panning)
+                For i = 0 To totalSamples - 1
+                    buffer.SetSample(i, buffer.GetSample(i) * _gainLinear)
+                Next
 
-                ' Process each channel with pan
-                If Format.Channels = 1 Then
-                    ' Mono - just apply gain (no panning)
-                    Dim sampleOffset = offset
-                    Dim sample = BitConverter.ToInt16(buffer.Buffer, sampleOffset)
-                    Dim gained = CInt(sample * _gainLinear)
-                    gained = Math.Max(-32768, Math.Min(32767, gained))
-                    ' Direct byte writes - no allocation on the DSP thread (Constitution IV)
-                    buffer.Buffer(sampleOffset) = CByte(gained And &HFF)
-                    buffer.Buffer(sampleOffset + 1) = CByte((gained >> 8) And &HFF)
+            ElseIf Format.Channels = 2 Then
+                ' Stereo - width (M/S), then gain and balance pan; no intermediate rounding
+                For i = 0 To totalSamples - 2 Step 2
+                    Dim leftSample = buffer.GetSample(i)
+                    Dim rightSample = buffer.GetSample(i + 1)
 
-                ElseIf Format.Channels = 2 Then
-                    ' Stereo - apply gain, pan, AND stereo width
-                    ' Read left and right samples
-                    Dim leftOffset = offset
-                    Dim rightOffset = offset + 2
-                    Dim leftSample = BitConverter.ToInt16(buffer.Buffer, leftOffset)
-                    Dim rightSample = BitConverter.ToInt16(buffer.Buffer, rightOffset)
+                    ' Stereo width via mid-side: Mid = (L+R)/2, Side = (L-R)/2
+                    Dim mid As Single = (leftSample + rightSample) * 0.5F
+                    Dim side As Single = (leftSample - rightSample) * 0.5F * _stereoWidth
 
-                    ' Apply stereo width using mid-side processing
-                    ' Mid = (L + R) / 2, Side = (L - R) / 2
-                    Dim mid As Single = (leftSample + rightSample) / 2.0F
-                    Dim side As Single = (leftSample - rightSample) / 2.0F
+                    ' Reconstruct, apply gain and balance pan (excursions flow undamaged)
+                    buffer.SetSample(i, (mid + side) * _gainLinear * leftPanGain)
+                    buffer.SetSample(i + 1, (mid - side) * _gainLinear * rightPanGain)
+                Next
 
-                    ' Apply width to side signal
-                    side *= _stereoWidth
+            Else
+                ' Multi-channel - per-channel gain only
+                For i = 0 To totalSamples - 1
+                    buffer.SetSample(i, buffer.GetSample(i) * _gainLinear)
+                Next
+            End If
 
-                    ' Reconstruct L/R from mid/side
-                    ' L = Mid + Side, R = Mid - Side
-                    Dim leftProcessed As Single = mid + side
-                    Dim rightProcessed As Single = mid - side
-
-                    ' Apply gain and pan
-                    Dim leftGained = CInt(leftProcessed * _gainLinear * leftPanGain)
-                    Dim rightGained = CInt(rightProcessed * _gainLinear * rightPanGain)
-
-                    ' Clamp to 16-bit range
-                    leftGained = Math.Max(-32768, Math.Min(32767, leftGained))
-                    rightGained = Math.Max(-32768, Math.Min(32767, rightGained))
-
-                    ' Write back - direct byte writes, no allocation on the DSP thread
-                    buffer.Buffer(leftOffset) = CByte(leftGained And &HFF)
-                    buffer.Buffer(leftOffset + 1) = CByte((leftGained >> 8) And &HFF)
-
-                    buffer.Buffer(rightOffset) = CByte(rightGained And &HFF)
-                    buffer.Buffer(rightOffset + 1) = CByte((rightGained >> 8) And &HFF)
-
-                Else
-                    ' Multi-channel - fall back to old per-channel gain only
-                    For ch = 0 To Format.Channels - 1
-                        Dim sampleOffset = offset + (ch * 2)
-                        Dim sample = BitConverter.ToInt16(buffer.Buffer, sampleOffset)
-                        Dim gained = CInt(sample * _gainLinear)
-                        gained = Math.Max(-32768, Math.Min(32767, gained))
-                        buffer.Buffer(sampleOffset) = CByte(gained And &HFF)
-                        buffer.Buffer(sampleOffset + 1) = CByte((gained >> 8) And &HFF)
-                    Next
-                End If
-            Next
-            
             ' DSP TAP POINT PATTERN: Send processed output to monitor (after gain/pan applied)
             SendToMonitor(buffer)
         End Sub

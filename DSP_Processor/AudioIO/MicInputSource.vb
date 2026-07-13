@@ -61,27 +61,47 @@ Namespace AudioIO
         Private Sub OnDataAvailable(sender As Object, e As WaveInEventArgs)
             ' Check if disposed - ignore callbacks after disposal starts
             If _disposed Then Return
-            
+
             ' Capture ALL audio data immediately - no delays, no skipping!
             If e.BytesRecorded > 0 Then
-                ' Copy the buffer so NAudio can reuse its internal one
-                Dim copy(e.BytesRecorded - 1) As Byte
-                Buffer.BlockCopy(e.Buffer, 0, copy, 0, e.BytesRecorded)
-                
-                ' Apply volume adjustment if not 100%
+                ' FEATURE 001: enter the float32 processing domain ONCE at device
+                ' entry via the canonical conversion (FR-006). Emitted buffers are
+                ' float32 everywhere downstream (BitsPerSample reports 32).
+                Dim copy As Byte()
+                Select Case bitsValue
+                    Case 16
+                        copy = Utils.SampleConversion.Pcm16ToFloat(e.Buffer, e.BytesRecorded)
+                    Case 32
+                        ' Defensive: already 4-byte samples - pass through as float
+                        ReDim copy(e.BytesRecorded - 1)
+                        Buffer.BlockCopy(e.Buffer, 0, copy, 0, e.BytesRecorded)
+                    Case Else
+                        ' Unsupported native depth for the domain (e.g. 24-bit WaveIn):
+                        ' loud, once - this config was already inconsistent pre-feature
+                        ' (the DSP pipeline assumed 16-bit regardless). Use WASAPI instead.
+                        Static unsupportedLogged As Boolean = False
+                        If Not unsupportedLogged Then
+                            Logger.Instance.Error($"MicInputSource: unsupported capture bit depth {bitsValue} for the float32 processing domain - capture dropped. Use WASAPI or 16-bit WaveIn.", Nothing, "MicInputSource")
+                            unsupportedLogged = True
+                        End If
+                        Return
+                End Select
+
+                ' Apply volume adjustment if not 100% (float multiply - no clamp,
+                ' excursions are legal in the domain)
                 If Math.Abs(volumeValue - 1.0F) > 0.001F Then
-                    ApplyVolume(copy, bitsValue)
+                    ApplyVolumeFloat(copy)
                 End If
-                
+
                 ' REAL-TIME: Raise event for callback-driven recording (GLITCH-FREE!)
                 RaiseEvent AudioDataAvailable(Me, New AudioCallbackEventArgs With {
                     .Buffer = copy,
-                    .BytesRecorded = e.BytesRecorded
+                    .BytesRecorded = copy.Length
                 })
-                
+
                 ' LEGACY: Enqueue to recording buffer (for timer-driven polling - DEPRECATED)
                 bufferQueue.Enqueue(copy)
-                
+
                 ' FREEWHEELING PATH: Enqueue to FFT buffer (drop old frames if too deep)
                 If fftQueue.Count >= MAX_FFT_QUEUE_DEPTH Then
                     ' Queue full - drop oldest frame to prevent blocking
@@ -89,10 +109,10 @@ Namespace AudioIO
                     fftQueue.TryDequeue(discarded)
                     Logger.Instance.Debug($"FFT queue full ({MAX_FFT_QUEUE_DEPTH} frames), dropped oldest frame", "MicInputSource")
                 End If
-                
+
                 ' Make a separate copy for FFT (don't share references!)
-                Dim fftCopy(e.BytesRecorded - 1) As Byte
-                Buffer.BlockCopy(copy, 0, fftCopy, 0, e.BytesRecorded)
+                Dim fftCopy(copy.Length - 1) As Byte
+                Buffer.BlockCopy(copy, 0, fftCopy, 0, copy.Length)
                 fftQueue.Enqueue(fftCopy)
                 
                 ' Detect buffer overflow (recording queue too large = consumer not keeping up)
@@ -108,50 +128,19 @@ Namespace AudioIO
             End If
         End Sub
 
-        Private Sub ApplyVolume(buffer() As Byte, bitDepth As Integer)
-            Select Case bitDepth
-                Case 16
-                    ' 16-bit signed samples
-                    For i As Integer = 0 To buffer.Length - 1 Step 2
-                        Dim sample As Short = BitConverter.ToInt16(buffer, i)
-                        Dim adjusted As Integer = CInt(sample * volumeValue)
-                        ' Clamp to prevent overflow
-                        adjusted = Math.Max(Short.MinValue, Math.Min(Short.MaxValue, adjusted))
-                        Dim bytes = BitConverter.GetBytes(CShort(adjusted))
-                        buffer(i) = bytes(0)
-                        buffer(i + 1) = bytes(1)
-                    Next
-                    
-                Case 24
-                    ' 24-bit samples (3 bytes per sample)
-                    For i As Integer = 0 To buffer.Length - 1 Step 3
-                        ' Read 24-bit sample (little-endian)
-                        Dim sample As Integer = buffer(i) Or (buffer(i + 1) << 8) Or (buffer(i + 2) << 16)
-                        ' Sign extend
-                        If (sample And &H800000) <> 0 Then
-                            sample = sample Or &HFF000000
-                        End If
-                        ' Apply volume
-                        Dim adjusted As Integer = CInt(sample * volumeValue)
-                        ' Clamp
-                        adjusted = Math.Max(&HFF800000, Math.Min(&H7FFFFF, adjusted))
-                        ' Write back
-                        buffer(i) = CByte(adjusted And &HFF)
-                        buffer(i + 1) = CByte((adjusted >> 8) And &HFF)
-                        buffer(i + 2) = CByte((adjusted >> 16) And &HFF)
-                    Next
-                    
-                Case 32
-                    ' 32-bit float samples
-                    For i As Integer = 0 To buffer.Length - 1 Step 4
-                        Dim sample As Single = BitConverter.ToSingle(buffer, i)
-                        Dim adjusted As Single = sample * volumeValue
-                        ' Clamp to prevent distortion
-                        adjusted = Math.Max(-1.0F, Math.Min(1.0F, adjusted))
-                        Dim bytes = BitConverter.GetBytes(adjusted)
-                        System.Buffer.BlockCopy(bytes, 0, buffer, i, 4)
-                    Next
-            End Select
+        ''' <summary>Apply volume to a float32 processing-domain buffer (feature 001).</summary>
+        ''' <remarks>No clamping: excursions beyond full scale are legal in the domain
+        ''' (FR-007); the boundary conversion clamps (FR-008). Replaces the old
+        ''' per-depth integer ApplyVolume - conversion now happens at device entry.</remarks>
+        Private Sub ApplyVolumeFloat(buffer() As Byte)
+            For i As Integer = 0 To buffer.Length - 4 Step 4
+                Dim sample As Single = BitConverter.ToSingle(buffer, i) * volumeValue
+                Dim bits = BitConverter.SingleToInt32Bits(sample)
+                buffer(i) = CByte(bits And &HFF)
+                buffer(i + 1) = CByte((bits >> 8) And &HFF)
+                buffer(i + 2) = CByte((bits >> 16) And &HFF)
+                buffer(i + 3) = CByte((bits >> 24) And &HFF)
+            Next
         End Sub
 
         Public ReadOnly Property SampleRate As Integer Implements IInputSource.SampleRate
@@ -166,9 +155,11 @@ Namespace AudioIO
             End Get
         End Property
 
+        ''' <remarks>Feature 001: emitted data is always float32 processing domain
+        ''' (device int16 converts once at entry), so consumers always see 32.</remarks>
         Public ReadOnly Property BitsPerSample As Integer Implements IInputSource.BitsPerSample
             Get
-                Return bitsValue
+                Return 32
             End Get
         End Property
 

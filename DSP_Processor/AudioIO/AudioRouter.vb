@@ -218,13 +218,11 @@ Namespace AudioIO
 
             If bytesRead <= 0 Then Return Nothing
 
-            ' Convert Int16 PCM to Float32 samples
-            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+            ' FEATURE 001: taps carry the float32 processing domain - reinterpret
+            ' the bytes directly; the per-read int16 conversion loop is DELETED (FR-005)
+            Dim sampleCount = bytesRead \ 4 ' 32-bit float samples
             Dim samples(sampleCount - 1) As Single
-            For i = 0 To sampleCount - 1
-                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
-                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
-            Next
+            System.Buffer.BlockCopy(buffer, 0, samples, 0, sampleCount * 4)
             Return samples
         End Function
 
@@ -448,42 +446,35 @@ Namespace AudioIO
 
                 Utils.Logger.Instance.Info($"Starting DSP playback: {_selectedInputFile}", "AudioRouter")
 
-                ' Create file reader (AudioFileReader provides IEEE Float)
+                ' Create file reader (AudioFileReader provides IEEE Float natively)
                 fileReader = New AudioFileReader(_selectedInputFile)
-                Utils.Logger.Instance.Info($"File format: {fileReader.WaveFormat.SampleRate}Hz, {fileReader.WaveFormat.Channels}ch, IEEE Float (will convert to PCM16)", "AudioRouter")
+                Utils.Logger.Instance.Info($"File format: {fileReader.WaveFormat.SampleRate}Hz, {fileReader.WaveFormat.Channels}ch, IEEE Float (processing domain - no conversion)", "AudioRouter")
 
-                ' Create PCM16 wave format for DSP processing
-                Dim pcm16Format As New WaveFormat(fileReader.WaveFormat.SampleRate, 16, fileReader.WaveFormat.Channels)
+                ' FEATURE 001: the processing domain IS the file reader's float format.
+                ' The playback path has ZERO conversions end-to-end (research R2).
+                Dim dspFloatFormat = WaveFormat.CreateIeeeFloatWaveFormat(fileReader.WaveFormat.SampleRate, fileReader.WaveFormat.Channels)
 
                 Utils.Logger.Instance.Info("=== FORMAT CHAIN ===", "AudioRouter")
                 Utils.Logger.Instance.Info($"FILE format: {fileReader.WaveFormat.SampleRate}Hz, {fileReader.WaveFormat.Channels}ch, {fileReader.WaveFormat.BitsPerSample}bit, Encoding={fileReader.WaveFormat.Encoding}, BlockAlign={fileReader.WaveFormat.BlockAlign}, AvgBytes/sec={fileReader.WaveFormat.AverageBytesPerSecond}", "AudioRouter")
-                Utils.Logger.Instance.Info($"PCM16 format: {pcm16Format.SampleRate}Hz, {pcm16Format.Channels}ch, {pcm16Format.BitsPerSample}bit, Encoding={pcm16Format.Encoding}, BlockAlign={pcm16Format.BlockAlign}, AvgBytes/sec={pcm16Format.AverageBytesPerSecond}", "AudioRouter")
+                Utils.Logger.Instance.Info($"DSP format: {dspFloatFormat.SampleRate}Hz, {dspFloatFormat.Channels}ch, {dspFloatFormat.BitsPerSample}bit float, BlockAlign={dspFloatFormat.BlockAlign}, AvgBytes/sec={dspFloatFormat.AverageBytesPerSecond}", "AudioRouter")
 
                 ' Create DSP thread with 2-second ring buffers (proven stable size)
-                ' 2 seconds provides ample buffering for 100ms WaveOut latency + processing overhead
-                ' At 44.1kHz: 2 seconds = 88,200 samples per channel
-                Dim inputBufferSize = pcm16Format.AverageBytesPerSecond * 2 ' 2 seconds of audio
-                Dim outputBufferSize = pcm16Format.AverageBytesPerSecond * 2 ' 2 seconds of audio
-                dspThread = New DSP.DSPThread(pcm16Format, inputBufferSize, outputBufferSize)
+                ' Sizes derive from the format's AverageBytesPerSecond, so the float
+                ' format's wider samples double the bytes while preserving the 2-second
+                ' time semantics automatically (clarify Q3 / AR-5)
+                Dim inputBufferSize = dspFloatFormat.AverageBytesPerSecond * 2 ' 2 seconds of audio
+                Dim outputBufferSize = dspFloatFormat.AverageBytesPerSecond * 2 ' 2 seconds of audio
+                dspThread = New DSP.DSPThread(dspFloatFormat, inputBufferSize, outputBufferSize)
 
-                ' AUTO-CREATE DEFAULT READERS for file playback FFT/meters
-                ' (RecordingManager uses TapPointManager which creates its own readers)
-                If Not dspThread.inputMonitorBuffer.HasReader("_default_input") Then
-                    dspThread.inputMonitorBuffer.CreateReader("_default_input")
-                    Utils.Logger.Instance.Info("✅ Created default INPUT monitor reader for file playback", "AudioRouter")
-                End If
-
-                If Not dspThread.outputMonitorBuffer.HasReader("_default_output") Then
-                    dspThread.outputMonitorBuffer.CreateReader("_default_output")
-                    Utils.Logger.Instance.Info("✅ Created default OUTPUT monitor reader for file playback", "AudioRouter")
-                End If
+                ' (Feature 001 cleanup: orphan "_default_input"/"_default_output" reader
+                ' creation deleted - their consumers were removed by feature 003 US3)
 
                 Utils.Logger.Instance.Info($"DSP format: {dspThread.Format.SampleRate}Hz, {dspThread.Format.Channels}ch, {dspThread.Format.BitsPerSample}bit, Encoding={dspThread.Format.Encoding}, BlockAlign={dspThread.Format.BlockAlign}, AvgBytes/sec={dspThread.Format.AverageBytesPerSecond}", "AudioRouter")
                 Utils.Logger.Instance.Info($"DSP buffers: {inputBufferSize} bytes input, {outputBufferSize} bytes output (2 seconds each)", "AudioRouter")
 
 
                 ' PHASE 2.5: Add INPUT gain processor (first in chain)
-                _inputGainProcessor = New DSP.GainProcessor(pcm16Format) With {
+                _inputGainProcessor = New DSP.GainProcessor(dspFloatFormat) With {
                     .GainDB = 0.0F ' 0 dB = unity gain (no change)
                 }
                 dspThread.Chain.AddProcessor(_inputGainProcessor)
@@ -508,7 +499,7 @@ Namespace AudioIO
                 Utils.Logger.Instance.Info("✅ INPUT GainProcessor tap point wired to PostGainMonitor buffer", "AudioRouter")
 
                 ' PHASE 2.5: Add OUTPUT gain processor (last in chain)
-                _outputGainProcessor = New DSP.GainProcessor(pcm16Format) With {
+                _outputGainProcessor = New DSP.GainProcessor(dspFloatFormat) With {
                     .GainDB = 0.0F ' 0 dB = unity gain (no change)
                 }
                 dspThread.Chain.AddProcessor(_outputGainProcessor)
@@ -560,13 +551,10 @@ Namespace AudioIO
                 Dim bytesRead = fileReader.Read(prebufferFloat, 0, prebufferSize)
 
                 If bytesRead > 0 Then
-                    ' Convert pre-fill data to PCM16
-                    Dim prebufferPCM16 = ConvertFloatToPCM16(prebufferFloat, bytesRead, fileReader.WaveFormat.Channels)
+                    ' FEATURE 001: float passes straight into the domain - no conversion
+                    dspThread.WriteInput(prebufferFloat, 0, bytesRead)
 
-                    ' Write pre-fill to DSP input buffer
-                    dspThread.WriteInput(prebufferPCM16, 0, prebufferPCM16.Length)
-
-                    Utils.Logger.Instance.Info($"Pre-filled {prebufferPCM16.Length} bytes PCM16 (1 second)", "AudioRouter")
+                    Utils.Logger.Instance.Info($"Pre-filled {bytesRead} bytes float32 (1 second)", "AudioRouter")
                 End If
 
                 ' Start feeding audio from file to DSP input
@@ -608,7 +596,6 @@ Namespace AudioIO
 
             ' Capture format and signal event for use in thread
             Dim inputFormat = fileReader.WaveFormat
-            Dim pcm16BlockAlign = inputFormat.Channels * 2 ' 2 bytes per PCM16 sample
             Dim inputLowSignal = dspThread.InputLowSignal
 
             ' CRITICAL: Capture local reference to dspThread to prevent race condition
@@ -623,13 +610,12 @@ Namespace AudioIO
                         Const BLOCK_SIZE_SAMPLES As Integer = 256
 
                         Dim floatBlockSize = BLOCK_SIZE_SAMPLES * inputFormat.Channels * 4 ' 4 bytes per float
-                        Dim pcm16BlockSize = BLOCK_SIZE_SAMPLES * pcm16BlockAlign
                         Dim floatBuffer(floatBlockSize - 1) As Byte
                         Dim bytesRead As Integer
                         Dim blockCount As Integer = 0
 
                         ' Log startup ONCE
-                        Utils.Logger.Instance.Info($"File feeder started (EVENT-DRIVEN): {BLOCK_SIZE_SAMPLES} samples per block ({floatBlockSize} bytes IEEE Float → {pcm16BlockSize} bytes PCM16)", "AudioRouter")
+                        Utils.Logger.Instance.Info($"File feeder started (EVENT-DRIVEN): {BLOCK_SIZE_SAMPLES} samples per block ({floatBlockSize} bytes IEEE Float, pass-through - feature 001)", "AudioRouter")
 
                         Dim reachedEOF As Boolean = False ' Track if we reached end naturally
 
@@ -660,13 +646,11 @@ Namespace AudioIO
                                     Exit While
                                 End If
 
-                                ' Convert to PCM16
-                                Dim pcm16Buffer = ConvertFloatToPCM16(floatBuffer, bytesRead, inputFormat.Channels)
+                                ' FEATURE 001: float passes straight into the domain - the
+                                ' per-block entry conversion is DELETED, not relocated
+                                Dim bytesWritten = localDspThread.WriteInput(floatBuffer, 0, bytesRead)
 
-                                ' Write to input buffer
-                                Dim bytesWritten = localDspThread.WriteInput(pcm16Buffer, 0, pcm16Buffer.Length)
-
-                                If bytesWritten < pcm16Buffer.Length Then
+                                If bytesWritten < bytesRead Then
                                     ' Buffer full - exit burst
                                     Exit While
                                 End If
@@ -726,17 +710,9 @@ Namespace AudioIO
         ''' <summary>
         ''' Convert IEEE Float samples (AudioFileReader format) to 16-bit PCM
         ''' </summary>
-        Private Function ConvertFloatToPCM16(floatBuffer As Byte(), byteCount As Integer, channels As Integer) As Byte()
-            ' Extracted to Utils.SampleConversion (feature 003) - this wrapper keeps
-            ' the one-time diagnostic log and the existing call sites unchanged
-            Static firstLog As Boolean = True
-            If firstLog Then
-                Utils.Logger.Instance.Info($"Float->PCM16: {byteCount} bytes float -> {byteCount \ 4} samples -> {(byteCount \ 4) * 2} bytes PCM16", "AudioRouter")
-                firstLog = False
-            End If
-
-            Return Utils.SampleConversion.FloatToPcm16(floatBuffer, byteCount, channels)
-        End Function
+        ' (Feature 001: the ConvertFloatToPCM16 wrapper was DELETED - the playback
+        ' path carries the file reader's float straight through the domain with
+        ' zero conversions; the canonical pair lives in Utils.SampleConversion.)
 
         ''' <summary>
         ''' Stop DSP playback
@@ -868,14 +844,13 @@ Namespace AudioIO
                             ' DIAGNOSTIC: Check sample amplitude RIGHT AFTER reading from monitor buffer
                             Static lastDiagTime As DateTime = DateTime.MinValue
                             If (DateTime.Now - lastDiagTime).TotalSeconds >= 1.0 Then
+                                ' Feature 001: monitor bytes are float32 - peak-scan floats directly
                                 Dim maxSample As Single = 0.0F
-                                For i = 0 To bytesRead - 1 Step 2
-                                    If i + 1 < bytesRead Then
-                                        Dim sample = Math.Abs(BitConverter.ToInt16(buffer, i))
-                                        If sample > maxSample Then maxSample = sample
-                                    End If
+                                For i = 0 To bytesRead - 4 Step 4
+                                    Dim sample = Math.Abs(BitConverter.ToSingle(buffer, i))
+                                    If sample > maxSample Then maxSample = sample
                                 Next
-                                Dim maxSampleDB = 20.0F * Math.Log10(Math.Max(maxSample / 32768.0F, 0.00001F))
+                                Dim maxSampleDB = 20.0F * Math.Log10(Math.Max(maxSample, 0.00001F))
                                 Utils.Logger.Instance.Info($"MONITOR BUFFER CHECK: Peak={maxSampleDB:F1} dBFS from {bytesRead} bytes BEFORE FFT", "AudioRouter")
                                 lastDiagTime = DateTime.Now
                             End If
@@ -889,7 +864,7 @@ Namespace AudioIO
                                 .Count = bytesRead,
                                 .SampleRate = fileReader.WaveFormat.SampleRate,
                                 .Channels = fileReader.WaveFormat.Channels,
-                                .BitsPerSample = 16
+                                .BitsPerSample = 32 ' float32 processing domain (feature 001)
                             }
 
                             ' Raise event asynchronously
@@ -946,7 +921,7 @@ Namespace AudioIO
                                 .Count = bytesRead,
                                 .SampleRate = fileReader.WaveFormat.SampleRate,
                                 .Channels = fileReader.WaveFormat.Channels,
-                                .BitsPerSample = 16
+                                .BitsPerSample = 32 ' float32 processing domain (feature 001)
                             }
 
                             ' Raise event asynchronously
@@ -985,6 +960,11 @@ Namespace AudioIO
     End Class
 
     ''' <summary>Event args for audio samples (FFT analysis)</summary>
+    ''' <remarks>
+    ''' BitsPerSample = 32 means IEEE float32 (the processing domain, feature 001).
+    ''' No int32-PCM sources exist in this application; an explicit encoding field
+    ''' is deferred until one does (analysis B1).
+    ''' </remarks>
     Public Class AudioSamplesEventArgs
         Inherits EventArgs
 
