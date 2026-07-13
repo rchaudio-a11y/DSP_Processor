@@ -61,3 +61,4 @@ second-order/SSM-boundary note present.
 |------|-----------|--------|
 | 2026-07-13 | T001 baseline (pre-change, `--no-build` against v1.3.3.3 binaries — app exe was running, source unchanged) | ✅ 55/55, 183 ms, clean tree |
 | 2026-07-13 | US1 gate (T004): single-drainer rewrite + 6 new tests | ✅ 61/61, 211 ms; `GlobalStateMachineTests.vb` diff EMPTY (SC-002); `InternalsVisibleTo` added for the E1 Friend seam |
+| 2026-07-13 | US2 gate (T009): 4 delivery tests + 11-subscriber audit | ✅ 65/65, 212 ms; matrix diff still EMPTY; audit: 0 fixes (8 clean, 2 justified-own-state, 1 justified-live-by-design) |

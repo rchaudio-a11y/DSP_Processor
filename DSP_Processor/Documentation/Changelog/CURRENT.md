@@ -3,7 +3,21 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.4.1
+**Current Version:** v1.3.4.2
+
+---
+
+## [v1.3.4.2] - 2026-07-13 - Ordered Delivery Proven + Subscriber Audit (Feature 002, User Story 2)
+
+**RDF Phase:** Phase 5 (Validation Loop)  
+**Feature:** `specs/002-state-machine-hardening/` — US2 "Deadlock-Free, Ordered Event Delivery"
+
+### Added
+- 4 delivery-guarantee tests in `StateMachineHardeningTests`: lock-free delivery probe (cross-thread lock acquisition inside a handler), cured-class deadlock scenario (subscriber own-lock + cascade + concurrent cross-thread caller), 103-transition ordering stress (gapless ascending transition IDs, continuous old→new event chain), throwing-subscriber containment
+- `Documentation/Architecture/GSM-Subscriber-Audit.md` (FR-009/SC-005): all 11 direct GSM subscribers audited — **0 fixes required** (8 payload-only clean; RecordingManagerSSM/PlaybackSSM justified own-state reads; ConflictDetector justified live-read-by-design with a documented mid-cascade false-positive note); boundary notes for second-order subscribers and the R1-RESIDUAL lock discipline
+
+### Verified
+- 65/65 tests green; matrix behavior lock still holding (empty diff)
 
 ---
 

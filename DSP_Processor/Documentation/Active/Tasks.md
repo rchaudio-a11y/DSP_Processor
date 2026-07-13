@@ -13,8 +13,8 @@
 | Version | Tracker task (= user story) | Status |
 |---------|------------------------------|--------|
 | v1.3.4.1 | US1 - Truthful, Lossless Transition Requests (single-drainer GSM) | ✅ COMPLETE 2026-07-13 |
-| v1.3.4.2 | US2 - Deadlock-Free, Ordered Event Delivery (+ 11-subscriber audit) | ⏳ In progress |
-| v1.3.4.3 | US3 - Process-Lifetime Coordinator | Pending |
+| v1.3.4.2 | US2 - Deadlock-Free, Ordered Event Delivery (+ 11-subscriber audit) | ✅ COMPLETE 2026-07-13 (audit: 0 fixes) |
+| v1.3.4.3 | US3 - Process-Lifetime Coordinator | ⏳ In progress |
 
 ---
 

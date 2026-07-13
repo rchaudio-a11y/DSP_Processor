@@ -177,4 +177,131 @@ Public Class StateMachineHardeningTests
 
 #End Region
 
+#Region "US2 - Deadlock-free, ordered delivery (FR-006/007/008)"
+
+    <TestMethod>
+    Public Sub Delivery_LockNotHeld_CrossThreadProbe()
+        ' Invariant 6: the machine's lock must be FREE while subscribers run.
+        ' Probe: from inside a handler, a second thread acquires the lock
+        ' (GetTransitionHistory takes _stateLock) - if delivery held the lock,
+        ' the probe would block and the bounded join would fail.
+        Dim gsm As New GlobalStateMachine()
+        Dim probeCompleted = False
+        Dim probeJoined = False
+
+        AddHandler gsm.StateChanged,
+            Sub(sender, args)
+                Dim probe As New Thread(
+                    Sub()
+                        Dim history = gsm.GetTransitionHistory()
+                        probeCompleted = history IsNot Nothing
+                    End Sub)
+                probe.IsBackground = True
+                probe.Start()
+                probeJoined = probe.Join(5000)
+            End Sub
+
+        gsm.TransitionTo(GlobalState.Idle, "probe trigger")
+
+        Assert.IsTrue(probeJoined, "lock-acquiring probe must complete while delivery is in progress - the lock may not be held during delivery")
+        Assert.IsTrue(probeCompleted)
+    End Sub
+
+    <TestMethod>
+    Public Sub Deadlock_CuredClass_SubscriberOwnLockAndCascade_Completes()
+        ' Spec US2-AS1 (the class this feature CURES): a subscriber that takes
+        ' its own lock and requests a further transition inside its handler
+        ' completes without deadlock. Plus a concurrent cross-thread caller
+        ' holding NO subscriber locks. The residual AB-BA interleaving (caller
+        ' HOLDING a subscriber lock) remains a documented discipline -
+        ' research R1-RESIDUAL / GSM-Subscriber-Audit.md.
+        Dim gsm As New GlobalStateMachine()
+        Dim subscriberLock As New Object()
+        Dim cascadeOutcome As TransitionOutcome = TransitionOutcome.Rejected
+        Dim cascaded = False
+
+        AddHandler gsm.StateChanged,
+            Sub(sender, args)
+                SyncLock subscriberLock ' own lock inside handler
+                    If Not cascaded Then
+                        cascaded = True
+                        cascadeOutcome = gsm.RequestTransition(GlobalState.Playing, "in-handler under own lock")
+                    End If
+                End SyncLock
+            End Sub
+
+        Dim worker As New Thread(Sub() gsm.TransitionTo(GlobalState.Idle, "cross-thread opener"))
+        worker.IsBackground = True
+        worker.Start()
+
+        Assert.IsTrue(worker.Join(5000), "must complete without deadlock (bounded wait)")
+        Assert.AreEqual(TransitionOutcome.Deferred, cascadeOutcome)
+        Assert.AreEqual(GlobalState.Playing, gsm.CurrentState, "the deferred cascade must have executed")
+    End Sub
+
+    <TestMethod>
+    Public Sub Ordering_100TransitionsWithCascade_StrictCommitOrder()
+        ' Invariant 7: payload order = commit order, transition IDs strictly
+        ' ascending, event chain continuous - across cascaded transitions.
+        ' Cascade fires ONLY on Playing->Stopping and returns the machine to
+        ' Idle (a known state), keeping this single-threaded script
+        ' deterministic (analysis C1).
+        Dim gsm As New GlobalStateMachine()
+        Dim events As New List(Of StateChangedEventArgs(Of GlobalState))
+
+        AddHandler gsm.StateChanged,
+            Sub(sender, args)
+                events.Add(args)
+                If args.OldState = GlobalState.Playing AndAlso args.NewState = GlobalState.Stopping Then
+                    gsm.RequestTransition(GlobalState.Idle, "cascade back to Idle")
+                End If
+            End Sub
+
+        Assert.IsTrue(gsm.TransitionTo(GlobalState.Idle, "setup"))
+        For cycle = 1 To 34 ' 1 + 34*3 = 103 committed transitions
+            Assert.IsTrue(gsm.TransitionTo(GlobalState.Playing, $"cycle {cycle}"))
+            Assert.IsTrue(gsm.TransitionTo(GlobalState.Stopping, $"cycle {cycle}"))
+            Assert.AreEqual(GlobalState.Idle, gsm.CurrentState, $"cascade must have returned to Idle in cycle {cycle}")
+        Next
+
+        Assert.IsTrue(events.Count >= 100, $"expected >= 100 events, got {events.Count}")
+
+        ' Transition IDs strictly ascending, no gaps (format GSM_Tnn_...)
+        Dim lastNum = 0
+        For Each e In events
+            Dim numPart = Integer.Parse(e.TransitionID.Substring(5, e.TransitionID.IndexOf("_"c, 5) - 5))
+            Assert.AreEqual(lastNum + 1, numPart, $"transition IDs must be gapless ascending; got {e.TransitionID} after {lastNum}")
+            lastNum = numPart
+        Next
+
+        ' Event chain continuity: each event's OldState = previous NewState
+        For i = 1 To events.Count - 1
+            Assert.AreEqual(events(i - 1).NewState, events(i).OldState,
+                $"event {i} out of order: chain breaks at {events(i - 1).NewState} -> {events(i).OldState}")
+        Next
+    End Sub
+
+    <TestMethod>
+    Public Sub Containment_ThrowingSubscriber_OthersStillNotified()
+        Dim gsm As New GlobalStateMachine()
+        Dim secondSubscriberNotified = False
+
+        AddHandler gsm.StateChanged,
+            Sub(sender, args)
+                Throw New InvalidOperationException("deliberately hostile subscriber")
+            End Sub
+        AddHandler gsm.StateChanged,
+            Sub(sender, args)
+                secondSubscriberNotified = True
+            End Sub
+
+        Dim performed = gsm.TransitionTo(GlobalState.Idle, "containment trigger")
+
+        Assert.IsTrue(performed, "a subscriber exception must never look like a transition failure")
+        Assert.IsTrue(secondSubscriberNotified, "remaining subscribers must still be notified (FR-008)")
+        Assert.AreEqual(GlobalState.Idle, gsm.CurrentState, "the committed transition is unaffected")
+    End Sub
+
+#End Region
+
 End Class
