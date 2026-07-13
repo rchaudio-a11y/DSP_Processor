@@ -109,15 +109,24 @@ Audio Output
 ### Routing Examples
 
 ```vb
-' Create reader at specific tap:
-Dim fftReader = dspThread.CreateMonitorReader(TapPoint.PostGain, "InputFFT")
+' Create a named reader at a specific tap (single monitoring API, v1.3.3.3):
+Dim fftReader = dspThread.CreateTapReader(DSPThread.TapLocation.PostGain, "InputFFT")
 
 ' Read from tap:
-Dim available = dspThread.TapAvailable(TapPoint.PostGain, "InputFFT")
+Dim available = dspThread.TapAvailable(DSPThread.TapLocation.PostGain, "InputFFT")
 If available > 0 Then
-    Dim bytesRead = dspThread.ReadFromTap(TapPoint.PostGain, "InputFFT", buffer, 0, count)
+    Dim bytesRead = dspThread.ReadFromTap(DSPThread.TapLocation.PostGain, "InputFFT", buffer, 0, count)
+End If
+
+' Overrun diagnostics (readers are lap-aware - a stalled reader is told
+' how much audio it lost and is resynced; reads are never spliced):
+Dim stats = dspThread.GetTapReaderStats(DSPThread.TapLocation.PostGain, "InputFFT")
+If stats.OverrunEvents > 0 Then
+    Logger.Instance.Warning($"InputFFT lost {stats.TotalBytesLost} bytes over {stats.OverrunEpisodeCount} episodes")
 End If
 ```
+
+**Full semantics:** [Tap-Point-Semantics.md](../../Documentation/Architecture/Tap-Point-Semantics.md)
 
 ---
 

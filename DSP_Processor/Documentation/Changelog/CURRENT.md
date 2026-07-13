@@ -3,7 +3,30 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.3.2
+**Current Version:** v1.3.3.3
+
+---
+
+## [v1.3.3.3] - 2026-07-12 - Single Monitoring API (Feature 003, User Story 3)
+
+**RDF Phase:** Phase 3-6 (Build → Synthesis)  
+**Feature:** `specs/003-tap-consolidation/` — US3 "One Way to Monitor"
+
+### Changed
+- **AudioRouter** — 6 legacy monitor call sites migrated to the TapLocation reader API via a shared `ReadTapSamples` helper; named readers: `Router.InputSamples`, `Router.PostGainSamples`, `Router.PostOutputGainSamples`, `Router.OutputSamples`, `Router.OutputEvents`, `Router.InputEvents` (default read signature per analysis F1)
+- **RecordingManager** — 2 legacy call sites migrated (`RecMgr.PostGain`, `RecMgr.PostOutputGain`)
+
+### Removed
+- **DSPThread** — the 8 legacy monitor members deleted (`ReadInputMonitor`, `ReadOutputMonitor`, `ReadPostGainMonitor`, `ReadPostOutputGainMonitor`, `InputMonitorAvailable`, `OutputMonitorAvailable`, `PostGainMonitorAvailable`, `PostOutputGainMonitorAvailable`) plus their hidden `"_default_*"` readers — the TapLocation reader API is now the ONLY monitoring surface (FR-001, SC-001 audit: zero references)
+
+### Documentation
+- NEW `Documentation/Architecture/Tap-Point-Semantics.md` (FR-003): all four tap positions, the PostDSP≈PreOutput equivalence today + divergence conditions, registered reader names
+- `.github/instructions/audio.md` — stale `CreateMonitorReader`/`TapPoint` examples replaced with the real consolidated API + overrun-stats example
+- `.github/instructions/architecture.md` — invariants updated per Constitution v1.1.0 (float32 target; monitor-tap loss detected, never silent)
+
+### Verified
+- SC-001 audit clean (zero legacy references in production code); 55/55 tests green, 90 ms
+- **PENDING (manual):** SC-006 smoke test — arm mic / play file, confirm meters+FFT visually unchanged; State Debugger pre-arm; named readers in log. Requires audio hardware + GUI.
 
 ---
 

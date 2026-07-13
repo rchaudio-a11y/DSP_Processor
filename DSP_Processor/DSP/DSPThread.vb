@@ -210,120 +210,16 @@ Namespace DSP
             Return outputBuffer.Read(data, offset, count)
         End Function
 
-        ''' <summary>
-        ''' Reads RAW audio from INPUT monitor buffer (before DSP processing)
-        ''' NON-BLOCKING: For FFT comparison - shows what went INTO the DSP
-        ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
-        ''' </summary>
-        Public Function ReadInputMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
-            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
-                Throw New ObjectDisposedException(NameOf(DSPThread))
-            End If
-            ' Auto-create default reader if not exists
-            If Not inputMonitorBuffer.HasReader("_default_input") Then
-                inputMonitorBuffer.CreateReader("_default_input")
-            End If
-            Return inputMonitorBuffer.Read("_default_input", data, offset, count)
-        End Function
-
-        ''' <summary>
-        ''' Reads PROCESSED audio from OUTPUT monitor buffer (after DSP processing)
-        ''' NON-BLOCKING: For FFT comparison - shows what came OUT of the DSP
-        ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
-        ''' </summary>
-        Public Function ReadOutputMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
-            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
-                Throw New ObjectDisposedException(NameOf(DSPThread))
-            End If
-            ' Auto-create default reader if not exists
-            If Not outputMonitorBuffer.HasReader("_default_output") Then
-                outputMonitorBuffer.CreateReader("_default_output")
-            End If
-            Return outputMonitorBuffer.Read("_default_output", data, offset, count)
-        End Function
-
-        ''' <summary>
-        ''' Reads audio from POST-GAIN monitor buffer (after Gain/Pan, DSP tap point pattern)
-        ''' NON-BLOCKING: For meters - shows audio after INPUT gain/pan adjustments
-        ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
-        ''' </summary>
-        Public Function ReadPostGainMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
-            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
-                Throw New ObjectDisposedException(NameOf(DSPThread))
-            End If
-            ' Auto-create default reader if not exists
-            If Not postGainMonitorBuffer.HasReader("_default_postgain") Then
-                postGainMonitorBuffer.CreateReader("_default_postgain")
-            End If
-            Return postGainMonitorBuffer.Read("_default_postgain", data, offset, count)
-        End Function
-
-        ''' <summary>
-        ''' Reads audio from POST-OUTPUT-GAIN monitor buffer (Phase 2.5)
-        ''' NON-BLOCKING: For output meters - shows audio after OUTPUT gain/pan adjustments
-        ''' DEPRECATED: Use CreateTapReader() and ReadFromTap() for multi-reader support
-        ''' </summary>
-        Public Function ReadPostOutputGainMonitor(data As Byte(), offset As Integer, count As Integer) As Integer
-            If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
-                Throw New ObjectDisposedException(NameOf(DSPThread))
-            End If
-            ' Auto-create default reader if not exists
-            If Not postOutputGainMonitorBuffer.HasReader("_default_postoutputgain") Then
-                postOutputGainMonitorBuffer.CreateReader("_default_postoutputgain")
-            End If
-            Return postOutputGainMonitorBuffer.Read("_default_postoutputgain", data, offset, count)
-        End Function
-
+        ' Feature 003 US3: the four legacy per-tap Read*Monitor/*MonitorAvailable
+        ' method pairs (and their hidden "_default_*" readers) were REMOVED.
+        ' The TapLocation reader API below is the single monitoring surface -
+        ' see specs/003-tap-consolidation/contracts/monitor-reader-api.md.
 
         ''' <summary>
         ''' Gets the number of bytes available in the output buffer
         ''' </summary>
         Public Function OutputAvailable() As Integer
             Return outputBuffer.Available
-        End Function
-
-        ''' <summary>
-        ''' Gets the number of bytes available in the INPUT monitor buffer
-        ''' </summary>
-        Public Function InputMonitorAvailable() As Integer
-            ' Use default reader or return total available
-            If inputMonitorBuffer.HasReader("_default_input") Then
-                Return inputMonitorBuffer.Available("_default_input")
-            End If
-            Return 0 ' No reader yet
-        End Function
-
-        ''' <summary>
-        ''' Gets the number of bytes available in the OUTPUT monitor buffer
-        ''' </summary>
-        Public Function OutputMonitorAvailable() As Integer
-            ' Use default reader or return total available
-            If outputMonitorBuffer.HasReader("_default_output") Then
-                Return outputMonitorBuffer.Available("_default_output")
-            End If
-            Return 0 ' No reader yet
-        End Function
-
-        ''' <summary>
-        ''' Gets the number of bytes available in the POST-GAIN monitor buffer (DSP tap point)
-        ''' </summary>
-        Public Function PostGainMonitorAvailable() As Integer
-            ' Use default reader or return total available
-            If postGainMonitorBuffer.HasReader("_default_postgain") Then
-                Return postGainMonitorBuffer.Available("_default_postgain")
-            End If
-            Return 0 ' No reader yet
-        End Function
-
-        ''' <summary>
-        ''' Gets the number of bytes available in the POST-OUTPUT-GAIN monitor buffer (Phase 2.5)
-        ''' </summary>
-        Public Function PostOutputGainMonitorAvailable() As Integer
-            ' Use default reader or return total available
-            If postOutputGainMonitorBuffer.HasReader("_default_postoutputgain") Then
-                Return postOutputGainMonitorBuffer.Available("_default_postoutputgain")
-            End If
-            Return 0 ' No reader yet
         End Function
 
         ''' <summary>

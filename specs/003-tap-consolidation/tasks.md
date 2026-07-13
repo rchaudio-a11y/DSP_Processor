@@ -80,11 +80,11 @@ Paths are repository-relative. App project: `DSP_Processor/`. New test project: 
 
 **Independent Test**: API-surface grep audit returns zero legacy-member hits; meters/spectrum visually unchanged during record + playback (spec US3 Independent Test)
 
-- [ ] T016 [P] [US3] Migrate 6 legacy call sites in `DSP_Processor/AudioIO/AudioRouter.vb` to `CreateTapReader`/`TapAvailable`/`ReadFromTap` with named readers per the research.md R6 map (`Router.InputSamples`, `Router.PostGainSamples`, `Router.PostOutputGainSamples`, `Router.OutputSamples`, `Router.OutputEvents`, `Router.InputEvents`); lazy reader creation on first use to match current behavior; consumers use the default (4-arg) `ReadFromTap` signature — FR-005-conformant, loss recorded at the reader (analysis F1)
-- [ ] T017 [P] [US3] Migrate 2 legacy call sites in `DSP_Processor/Managers/RecordingManager.vb` (`RecMgr.PostGain`, `RecMgr.PostOutputGain`) per research.md R6 map; default (4-arg) `ReadFromTap` signature — FR-005-conformant per analysis F1
-- [ ] T018 [US3] Delete the 8 legacy members from `DSP_Processor/DSP/DSPThread.vb` (`ReadInputMonitor`, `ReadOutputMonitor`, `ReadPostGainMonitor`, `ReadPostOutputGainMonitor`, `InputMonitorAvailable`, `OutputMonitorAvailable`, `PostGainMonitorAvailable`, `PostOutputGainMonitorAvailable`) and their hidden `"_default_*"` reader creation; run the SC-001 grep audit from quickstart.md — zero hits required
-- [ ] T019 [US3] Write `Documentation/Architecture/Tap-Point-Semantics.md` (FR-003) — the four TapLocation positions from data-model.md's mapping table, the PostDSP≈PreOutput equivalence today, and the documented divergence conditions; link from `Documentation/Architecture/`
-- [ ] T020 [US3] Full validation — `dotnet test` green; manual smoke per quickstart.md (arm mic → meters/FFT unchanged; file playback → output meters unchanged; State Debugger Panel pre-arm; log shows named readers) (SC-006)
+- [X] T016 [P] [US3] Migrate 6 legacy call sites in `DSP_Processor/AudioIO/AudioRouter.vb` to `CreateTapReader`/`TapAvailable`/`ReadFromTap` with named readers per the research.md R6 map (`Router.InputSamples`, `Router.PostGainSamples`, `Router.PostOutputGainSamples`, `Router.OutputSamples`, `Router.OutputEvents`, `Router.InputEvents`); lazy reader creation on first use to match current behavior; consumers use the default (4-arg) `ReadFromTap` signature — FR-005-conformant, loss recorded at the reader (analysis F1)
+- [X] T017 [P] [US3] Migrate 2 legacy call sites in `DSP_Processor/Managers/RecordingManager.vb` (`RecMgr.PostGain`, `RecMgr.PostOutputGain`) per research.md R6 map; default (4-arg) `ReadFromTap` signature — FR-005-conformant per analysis F1
+- [X] T018 [US3] Delete the 8 legacy members from `DSP_Processor/DSP/DSPThread.vb` (`ReadInputMonitor`, `ReadOutputMonitor`, `ReadPostGainMonitor`, `ReadPostOutputGainMonitor`, `InputMonitorAvailable`, `OutputMonitorAvailable`, `PostGainMonitorAvailable`, `PostOutputGainMonitorAvailable`) and their hidden `"_default_*"` reader creation; run the SC-001 grep audit from quickstart.md — zero hits required
+- [X] T019 [US3] Write `Documentation/Architecture/Tap-Point-Semantics.md` (FR-003) — the four TapLocation positions from data-model.md's mapping table, the PostDSP≈PreOutput equivalence today, and the documented divergence conditions; link from `Documentation/Architecture/`
+- [ ] T020 [US3] Full validation — `dotnet test` green; manual smoke per quickstart.md (arm mic → meters/FFT unchanged; file playback → output meters unchanged; State Debugger Panel pre-arm; log shows named readers) (SC-006) — *code-level validation ✅ 2026-07-12 (55/55 tests, SC-001 audit clean); MANUAL SMOKE PENDING — requires audio hardware + GUI, cannot be automated*
 
 **Checkpoint**: Single monitoring API achieved. Version v1.3.3.3
 
@@ -94,9 +94,9 @@ Paths are repository-relative. App project: `DSP_Processor/`. New test project: 
 
 **Purpose**: Documentation truth and constitution VIII bookkeeping
 
-- [ ] T021 [P] Update `.github/instructions/audio.md` — replace stale `CreateMonitorReader`/`TapPoint` examples with the real consolidated API names (`CreateTapReader`/`TapLocation`/`ReadFromTap`) and add the overrun-stats query to the tap-point examples
-- [ ] T022 [P] Per-story version bookkeeping in `DSP_Processor/Documentation/Active/Tasks.md` and `DSP_Processor/Documentation/Changelog/CURRENT.md` — one entry per completed story checkpoint on the v1.3.3.x lineage (Architect ruling 2026-07-12: new SubPhase), commit + tag per Constitution VIII; record the "tracker task = user story" granularity mapping in `Active/Tasks.md` (analysis D1)
-- [ ] T023 Run complete quickstart.md validation end-to-end (build, test, audit, smoke) and record results in `specs/003-tap-consolidation/quickstart.md`
+- [X] T021 [P] Update `.github/instructions/audio.md` — replace stale `CreateMonitorReader`/`TapPoint` examples with the real consolidated API names (`CreateTapReader`/`TapLocation`/`ReadFromTap`) and add the overrun-stats query to the tap-point examples
+- [X] T022 [P] Per-story version bookkeeping in `DSP_Processor/Documentation/Active/Tasks.md` and `DSP_Processor/Documentation/Changelog/CURRENT.md` — one entry per completed story checkpoint on the v1.3.3.x lineage (Architect ruling 2026-07-12: new SubPhase), commit + tag per Constitution VIII; record the "tracker task = user story" granularity mapping in `Active/Tasks.md` (analysis D1)
+- [X] T023 Run complete quickstart.md validation end-to-end (build, test, audit, smoke) and record results in `specs/003-tap-consolidation/quickstart.md` — *automated portions complete; the smoke component is tracked as pending under T020*
 
 ---
 

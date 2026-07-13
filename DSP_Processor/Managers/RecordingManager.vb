@@ -160,57 +160,51 @@ Namespace Managers
             End Get
         End Property
 
-        ''' <summary>Gets post-gain samples for meter display (Phase 2: DSP Tap Point Pattern)</summary>
+        ''' <summary>
+        ''' Shared tap-read path for the meter properties (feature 003 US3).
+        ''' Default ReadFromTap signature - FR-005-conformant: data loss is
+        ''' recorded at the reader and queryable via GetTapReaderStats.
+        ''' Lazy reader creation matches the legacy hidden-reader behavior.
+        ''' </summary>
+        Private Function ReadTapSamples(tap As DSP.DSPThread.TapLocation, readerName As String) As Single()
+            Dim dsp = dspThread ' local capture against cross-thread teardown
+            If dsp Is Nothing Then Return Nothing
+
+            If Not dsp.HasTapReader(tap, readerName) Then
+                dsp.CreateTapReader(tap, readerName)
+            End If
+
+            Dim available = dsp.TapAvailable(tap, readerName)
+            If available <= 0 Then Return Nothing
+
+            ' Read up to 4KB for meters
+            Dim bufferSize = Math.Min(available, 4096)
+            Dim buffer(bufferSize - 1) As Byte
+            Dim bytesRead = dsp.ReadFromTap(tap, readerName, buffer, 0, buffer.Length)
+
+            If bytesRead <= 0 Then Return Nothing
+
+            ' Convert Int16 PCM to Float32 samples
+            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+            Dim samples(sampleCount - 1) As Single
+            For i = 0 To sampleCount - 1
+                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
+                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
+            Next
+            Return samples
+        End Function
+
+        ''' <summary>Gets post-gain samples for meter display (PostGain tap - DSP Tap Point Pattern)</summary>
         Public ReadOnly Property PostGainSamples As Single()
             Get
-                If dspThread IsNot Nothing Then
-                    Dim available = dspThread.PostGainMonitorAvailable()
-                    If available > 0 Then
-                        ' Read up to 4KB for meters
-                        Dim bufferSize = Math.Min(available, 4096)
-                        Dim buffer(bufferSize - 1) As Byte
-                        Dim bytesRead = dspThread.ReadPostGainMonitor(buffer, 0, buffer.Length)
-
-                        If bytesRead > 0 Then
-                            ' Convert Int16 PCM to Float32 samples
-                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
-                            Dim samples(sampleCount - 1) As Single
-                            For i = 0 To sampleCount - 1
-                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
-                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
-                            Next
-                            Return samples
-                        End If
-                    End If
-                End If
-                Return Nothing
+                Return ReadTapSamples(DSP.DSPThread.TapLocation.PostGain, "RecMgr.PostGain")
             End Get
         End Property
 
-        ''' <summary>Gets post-OUTPUT-gain samples for meter display (Phase 2.5 - Output tap point)</summary>
+        ''' <summary>Gets post-OUTPUT-gain samples for meter display (PostDSP tap)</summary>
         Public ReadOnly Property PostOutputGainSamples As Single()
             Get
-                If dspThread IsNot Nothing Then
-                    Dim available = dspThread.PostOutputGainMonitorAvailable()
-                    If available > 0 Then
-                        ' Read up to 4KB for meters
-                        Dim bufferSize = Math.Min(available, 4096)
-                        Dim buffer(bufferSize - 1) As Byte
-                        Dim bytesRead = dspThread.ReadPostOutputGainMonitor(buffer, 0, buffer.Length)
-
-                        If bytesRead > 0 Then
-                            ' Convert Int16 PCM to Float32 samples
-                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
-                            Dim samples(sampleCount - 1) As Single
-                            For i = 0 To sampleCount - 1
-                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
-                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
-                            Next
-                            Return samples
-                        End If
-                    End If
-                End If
-                Return Nothing
+                Return ReadTapSamples(DSP.DSPThread.TapLocation.PostDSP, "RecMgr.PostOutputGain")
             End Get
         End Property
 

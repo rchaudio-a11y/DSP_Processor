@@ -187,111 +187,72 @@ Namespace AudioIO
             End Get
         End Property
 
-        ''' <summary>Gets input samples for meter display (reads from monitor buffer)</summary>
+        ''' <summary>
+        ''' Ensures a named tap reader exists (lazy creation on first use - matches
+        ''' the legacy hidden-reader behavior). Feature 003 US3 migration helper.
+        ''' </summary>
+        Private Shared Sub EnsureTapReader(dsp As DSP.DSPThread, tap As DSP.DSPThread.TapLocation, readerName As String)
+            If Not dsp.HasTapReader(tap, readerName) Then
+                dsp.CreateTapReader(tap, readerName)
+            End If
+        End Sub
+
+        ''' <summary>
+        ''' Shared tap-read path for the four meter properties (feature 003 US3).
+        ''' Uses the default ReadFromTap signature - FR-005-conformant: data loss
+        ''' is recorded at the reader and queryable via GetTapReaderStats.
+        ''' </summary>
+        Private Function ReadTapSamples(tap As DSP.DSPThread.TapLocation, readerName As String) As Single()
+            Dim dsp = dspThread ' local capture: StopDSPPlayback can null the field cross-thread
+            If dsp Is Nothing Then Return Nothing
+
+            EnsureTapReader(dsp, tap, readerName)
+
+            Dim available = dsp.TapAvailable(tap, readerName)
+            If available <= 0 Then Return Nothing
+
+            ' Read up to 4KB for meters (0.1 seconds at 44.1kHz stereo)
+            Dim bufferSize = Math.Min(available, 4096)
+            Dim buffer(bufferSize - 1) As Byte
+            Dim bytesRead = dsp.ReadFromTap(tap, readerName, buffer, 0, buffer.Length)
+
+            If bytesRead <= 0 Then Return Nothing
+
+            ' Convert Int16 PCM to Float32 samples
+            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
+            Dim samples(sampleCount - 1) As Single
+            For i = 0 To sampleCount - 1
+                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
+                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
+            Next
+            Return samples
+        End Function
+
+        ''' <summary>Gets input samples for meter display (PreDSP tap)</summary>
         Public ReadOnly Property InputSamples As Single()
             Get
-                If dspThread IsNot Nothing Then
-                    Dim available = dspThread.InputMonitorAvailable()
-                    If available > 0 Then
-                        ' Read up to 4KB for meters (0.1 seconds at 44.1kHz stereo)
-                        Dim bufferSize = Math.Min(available, 4096)
-                        Dim buffer(bufferSize - 1) As Byte
-                        Dim bytesRead = dspThread.ReadInputMonitor(buffer, 0, buffer.Length)
-
-                        If bytesRead > 0 Then
-                            ' Convert Int16 PCM to Float32 samples
-                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
-                            Dim samples(sampleCount - 1) As Single
-                            For i = 0 To sampleCount - 1
-                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
-                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
-                            Next
-                            Return samples
-                        End If
-                    End If
-                End If
-                Return Nothing
+                Return ReadTapSamples(DSP.DSPThread.TapLocation.PreDSP, "Router.InputSamples")
             End Get
         End Property
 
-        ''' <summary>Gets post-gain samples for meter display (reads from PostGain tap point - DSP TAP PATTERN)</summary>
+        ''' <summary>Gets post-gain samples for meter display (PostGain tap - DSP TAP PATTERN)</summary>
         Public ReadOnly Property PostGainSamples As Single()
             Get
-                If dspThread IsNot Nothing Then
-                    Dim available = dspThread.PostGainMonitorAvailable()
-                    If available > 0 Then
-                        ' Read up to 4KB for meters
-                        Dim bufferSize = Math.Min(available, 4096)
-                        Dim buffer(bufferSize - 1) As Byte
-                        Dim bytesRead = dspThread.ReadPostGainMonitor(buffer, 0, buffer.Length)
-
-                        If bytesRead > 0 Then
-                            ' Convert Int16 PCM to Float32 samples
-                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
-                            Dim samples(sampleCount - 1) As Single
-                            For i = 0 To sampleCount - 1
-                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
-                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
-                            Next
-                            Return samples
-                        End If
-                    End If
-                End If
-                Return Nothing
+                Return ReadTapSamples(DSP.DSPThread.TapLocation.PostGain, "Router.PostGainSamples")
             End Get
         End Property
 
-        ''' <summary>Gets post-OUTPUT-gain samples for meter display (Phase 2.5 - Output tap point)</summary>
+        ''' <summary>Gets post-OUTPUT-gain samples for meter display (PostDSP tap)</summary>
         Public ReadOnly Property PostOutputGainSamples As Single()
             Get
-                If dspThread IsNot Nothing Then
-                    Dim available = dspThread.PostOutputGainMonitorAvailable()
-                    If available > 0 Then
-                        ' Read up to 4KB for meters
-                        Dim bufferSize = Math.Min(available, 4096)
-                        Dim buffer(bufferSize - 1) As Byte
-                        Dim bytesRead = dspThread.ReadPostOutputGainMonitor(buffer, 0, buffer.Length)
-
-                        If bytesRead > 0 Then
-                            ' Convert Int16 PCM to Float32 samples
-                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
-                            Dim samples(sampleCount - 1) As Single
-                            For i = 0 To sampleCount - 1
-                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
-                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
-                            Next
-                            Return samples
-                        End If
-                    End If
-                End If
-                Return Nothing
+                Return ReadTapSamples(DSP.DSPThread.TapLocation.PostDSP, "Router.PostOutputGainSamples")
             End Get
         End Property
 
-        ''' <summary>Gets output samples for meter display (reads from monitor buffer)</summary>
+        ''' <summary>Gets output samples for meter display (PreOutput tap)</summary>
         Public ReadOnly Property OutputSamples As Single()
             Get
-                If dspThread IsNot Nothing Then
-                    Dim available = dspThread.OutputMonitorAvailable()
-                    If available > 0 Then
-                        ' Read up to 4KB for meters
-                        Dim bufferSize = Math.Min(available, 4096)
-                        Dim buffer(bufferSize - 1) As Byte
-                        Dim bytesRead = dspThread.ReadOutputMonitor(buffer, 0, buffer.Length)
-
-                        If bytesRead > 0 Then
-                            ' Convert Int16 PCM to Float32 samples
-                            Dim sampleCount = bytesRead \ 2 ' 16-bit samples
-                            Dim samples(sampleCount - 1) As Single
-                            For i = 0 To sampleCount - 1
-                                Dim int16Sample = BitConverter.ToInt16(buffer, i * 2)
-                                samples(i) = int16Sample / 32768.0F ' Normalize to -1.0 to +1.0
-                            Next
-                            Return samples
-                        End If
-                    End If
-                End If
-                Return Nothing
+                Return ReadTapSamples(DSP.DSPThread.TapLocation.PreOutput, "Router.OutputSamples")
             End Get
         End Property
 
@@ -885,8 +846,10 @@ Namespace AudioIO
         Public Sub UpdateOutputSamples()
             Try
                 If dspThread IsNot Nothing AndAlso fileReader IsNot Nothing Then
-                    ' Read from OUTPUT MONITOR buffer (after DSP processing)
-                    Dim available = dspThread.OutputMonitorAvailable()
+                    ' Read from the PreOutput tap (after DSP processing) via the
+                    ' consolidated tap API (feature 003 US3)
+                    EnsureTapReader(dspThread, DSP.DSPThread.TapLocation.PreOutput, "Router.OutputEvents")
+                    Dim available = dspThread.TapAvailable(DSP.DSPThread.TapLocation.PreOutput, "Router.OutputEvents")
 
                     ' DIAGNOSTIC: Log every 30 calls (~500ms at 60Hz)
                     Static callCount As Integer = 0
@@ -899,7 +862,7 @@ Namespace AudioIO
                         ' Read up to 8KB for FFT
                         Dim bufferSize = Math.Min(available, 8192)
                         Dim buffer(bufferSize - 1) As Byte
-                        Dim bytesRead = dspThread.ReadOutputMonitor(buffer, 0, buffer.Length)
+                        Dim bytesRead = dspThread.ReadFromTap(DSP.DSPThread.TapLocation.PreOutput, "Router.OutputEvents", buffer, 0, buffer.Length)
 
                         If bytesRead > 0 Then
                             ' DIAGNOSTIC: Check sample amplitude RIGHT AFTER reading from monitor buffer
@@ -955,8 +918,10 @@ Namespace AudioIO
         Public Sub UpdateInputSamples()
             Try
                 If dspThread IsNot Nothing AndAlso fileReader IsNot Nothing Then
-                    ' Read from INPUT MONITOR buffer (before DSP processing)
-                    Dim available = dspThread.InputMonitorAvailable()
+                    ' Read from the PreDSP tap (before DSP processing) via the
+                    ' consolidated tap API (feature 003 US3)
+                    EnsureTapReader(dspThread, DSP.DSPThread.TapLocation.PreDSP, "Router.InputEvents")
+                    Dim available = dspThread.TapAvailable(DSP.DSPThread.TapLocation.PreDSP, "Router.InputEvents")
 
                     ' DIAGNOSTIC: Log every 30 calls (~500ms at 60Hz)
                     Static callCount As Integer = 0
@@ -969,7 +934,7 @@ Namespace AudioIO
                         ' Read up to 8KB for FFT
                         Dim bufferSize = Math.Min(available, 8192)
                         Dim buffer(bufferSize - 1) As Byte
-                        Dim bytesRead = dspThread.ReadInputMonitor(buffer, 0, buffer.Length)
+                        Dim bytesRead = dspThread.ReadFromTap(DSP.DSPThread.TapLocation.PreDSP, "Router.InputEvents", buffer, 0, buffer.Length)
 
                         If bytesRead > 0 Then
                             ' Clone buffer for async processing

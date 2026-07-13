@@ -134,8 +134,11 @@
 
 **Invariants:**
 - Audio callbacks must complete in < 10ms
-- Ring buffers never overwrite unread data
-- All audio is 16-bit PCM internally
+- Main-path ring buffers never overwrite unread data; monitor tap buffers may
+  lap a stalled reader, but the loss is always detected and reported (never silent)
+- Internal DSP targets float32 end-to-end; integer PCM (16/24-bit) exists only
+  at I/O boundaries (Constitution v1.1.0 - current Int16 pipeline is legacy,
+  migration = feature 001-float32-pipeline)
 - Zero-copy for tap points (no buffer duplication)
 
 ### Documenting Them
