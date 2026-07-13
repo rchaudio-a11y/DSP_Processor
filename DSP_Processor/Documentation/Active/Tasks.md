@@ -1,8 +1,20 @@
 # Active Tasks - DSP_Processor
 
 **Last Updated:** July 12, 2026  
-**Current Version:** v1.3.3.3 (Architect rulings 2026-07-12: v1.3.x lineage, version Phase digit does NOT track project phase; SubPhase 3.3 = feature 003-tap-consolidation; granularity: one tracker task/version per spec-kit USER STORY, not per micro-task)  
-**Current Task:** Feature 003-tap-consolidation — implementation COMPLETE; manual smoke test (SC-006) pending
+**Current Version:** v1.3.4.1 (v1.3.x lineage; SubPhase 3.4 = feature 002-state-machine-hardening; granularity: one tracker task/version per spec-kit USER STORY)  
+**Current Task:** Feature 002-state-machine-hardening — US1 COMPLETE, US2 in progress
+
+---
+
+## CURRENT - SubPhase 3.4: Feature 002-state-machine-hardening (spec-driven)
+
+**Spec:** `specs/002-state-machine-hardening/`
+
+| Version | Tracker task (= user story) | Status |
+|---------|------------------------------|--------|
+| v1.3.4.1 | US1 - Truthful, Lossless Transition Requests (single-drainer GSM) | ✅ COMPLETE 2026-07-13 |
+| v1.3.4.2 | US2 - Deadlock-Free, Ordered Event Delivery (+ 11-subscriber audit) | ⏳ In progress |
+| v1.3.4.3 | US3 - Process-Lifetime Coordinator | Pending |
 
 ---
 

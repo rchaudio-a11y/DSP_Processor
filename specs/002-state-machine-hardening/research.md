@@ -31,6 +31,22 @@ Codebase facts verified at v1.3.3.3 (`5f08494`).
   executed anyway. Blocking is safe because delivery is non-blocking per
   Constitution V — `UIStateMachine` posts via `BeginInvoke` and returns, so
   the window always closes without needing the blocked thread.
+- **R1-RESIDUAL (implementation discovery, 2026-07-13)**: cross-thread
+  blocking necessarily carries over ONE hazard that also exists today: a
+  caller that requests a transition **while holding a lock that a subscriber
+  handler acquires** still forms a cycle (caller holds L, waits for window;
+  drainer delivers, handler waits for L). This is inherent to any design
+  where cross-thread callers synchronously receive performed/rejected —
+  waiting is what preserves the MainForm semantics. What the feature CURES is
+  the broader pre-fix class (the machine's own lock held during delivery,
+  making *every* subscriber lock a cycle edge) and same-thread cascade
+  re-entrancy. The remaining discipline — "do not hold subscriber-acquired
+  locks while requesting transitions cross-thread" — is identical to the
+  pre-feature discipline, and is recorded in GSM-Subscriber-Audit.md.
+  Consequence for R5 item 2: the deadlock test exercises the CURED class
+  (cross-thread transition concurrent with delivery, caller holding no
+  subscriber locks; plus same-thread own-lock cascade per spec US2-AS1),
+  not the residual AB-BA interleaving, which remains a documented boundary.
 - **Rationale**:
   1. Preserves today's cascade semantics: a handler-triggered transition
      executes *after* the current transition completes (the current queue does

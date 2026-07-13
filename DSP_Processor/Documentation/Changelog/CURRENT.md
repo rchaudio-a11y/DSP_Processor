@@ -3,7 +3,31 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.3.3
+**Current Version:** v1.3.4.1
+
+---
+
+## [v1.3.4.1] - 2026-07-13 - Truthful Lossless Deferral (Feature 002, User Story 1)
+
+**RDF Phase:** Phase 2-5 (Insight → Validate)  
+**Feature:** `specs/002-state-machine-hardening/` — US1 "Truthful, Lossless Transition Requests"  
+**SubPhase 3.4 opened** (tracker task = user story, per standing granularity ruling)
+
+### Changed
+- **`GlobalStateMachine`** restructured around the single-drainer design (research R1 + F1 amendment):
+  - Transitions commit under the lock; events deliver OUTSIDE it in strict commit order with per-subscriber exception containment — the review-P2 lock-held-delivery hazard is structurally gone
+  - Handler-cascade requests defer to a lossless FIFO queue (the old single pending slot and its silent overwrite are deleted), each validated at execution, rejections logged with a deferred-origin marker
+  - NEW truthful surface: `RequestTransition` → `TransitionOutcome` (Performed/Deferred/Rejected); Boolean `TransitionTo` now returns True ONLY for performed — the "deferred→True" lie is dead
+  - Cross-thread callers arriving mid-window block-then-perform (analysis F1) — preserves pre-feature semantics exactly (MainForm modal-dialog evidence); NEVER see Deferred
+  - Depth>16 runaway-cascade diagnostic with `DepthWarningCount` observable seam (analysis E1); `InternalsVisibleTo("DSP_Processor.Tests")` added
+  - Empty `OnStateExiting`/`OnStateEntering` scaffolding deleted; error-state entry logging inlined (FR-012)
+  - Failsafe window closure guarantees blocked callers can never hang on an abnormal drain
+
+### Verified
+- 61/61 tests green (6 new US1 tests incl. cross-thread block-then-perform); **`GlobalStateMachineTests.vb` diff EMPTY** — the 64-pair matrix behavior lock held through the lock-critical rewrite (SC-002)
+
+### Recorded
+- **R1-RESIDUAL** (implementation discovery): callers must not hold subscriber-acquired locks while requesting transitions cross-thread — identical discipline to pre-feature; the cured class is the machine-lock-held-during-delivery cycle. Documented in research.md and (upcoming) GSM-Subscriber-Audit.md
 
 ---
 

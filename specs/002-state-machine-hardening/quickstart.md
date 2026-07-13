@@ -59,4 +59,5 @@ second-order/SSM-boundary note present.
 
 | Date | Milestone | Result |
 |------|-----------|--------|
-| _(filled at implementation checkpoints)_ | | |
+| 2026-07-13 | T001 baseline (pre-change, `--no-build` against v1.3.3.3 binaries — app exe was running, source unchanged) | ✅ 55/55, 183 ms, clean tree |
+| 2026-07-13 | US1 gate (T004): single-drainer rewrite + 6 new tests | ✅ 61/61, 211 ms; `GlobalStateMachineTests.vb` diff EMPTY (SC-002); `InternalsVisibleTo` added for the E1 Friend seam |

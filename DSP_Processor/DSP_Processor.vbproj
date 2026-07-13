@@ -43,4 +43,9 @@
     <PackageReference Include="System.Management" Version="8.*" />
   </ItemGroup>
 
+  <!-- Friend members observable from the test suite (feature 002, analysis E1) -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="DSP_Processor.Tests" />
+  </ItemGroup>
+
 </Project>
