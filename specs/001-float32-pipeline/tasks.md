@@ -97,9 +97,9 @@ balance-law assertion group + supersession record verification (US3).
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T018 [P] Per-story version bookkeeping (rides each checkpoint): `DSP_Processor/Documentation/Active/Tasks.md` SubPhase 3.5 story table + `DSP_Processor/Documentation/Changelog/CURRENT.md` entries per Constitution VIII
-- [ ] T019 [P] Update `.github/instructions/audio.md`: replace the stale "All audio is 16-bit PCM internally" invariant with the float32 processing-domain invariant (this closes the constitution v1.1.0 Sync Impact Report's ⚠ follow-up — the code now matches the constitution); refresh the tap/metering examples to float payloads
-- [ ] T020 Run the complete quickstart.md validation end-to-end and record results; then hand off the **manual listening checklist** (unity playback identical, pan sweep without center step, record + playback both capture engines, meters/FFT, float device compatibility) — **merge `001-float32-pipeline` to master ONLY after the user confirms the listening checks** (Architect branch ruling: merge at feature end)
+- [X] T018 [P] Per-story version bookkeeping (rides each checkpoint): `DSP_Processor/Documentation/Active/Tasks.md` SubPhase 3.5 story table + `DSP_Processor/Documentation/Changelog/CURRENT.md` entries per Constitution VIII
+- [X] T019 [P] Update `.github/instructions/audio.md`: replace the stale "All audio is 16-bit PCM internally" invariant with the float32 processing-domain invariant (this closes the constitution v1.1.0 Sync Impact Report's ⚠ follow-up — the code now matches the constitution); refresh the tap/metering examples to float payloads
+- [X] T020 Run the complete quickstart.md validation end-to-end and record results (✅ code-level complete 2026-07-13: solution build 0 errors, 83/83 tests, FR-012 empty diffs end-to-end, SC-002 audit clean); **manual listening checklist HANDED OFF TO USER** (unity playback identical, pan sweep without center step, record + playback both capture engines, meters/FFT, float device compatibility) — **merge `001-float32-pipeline` to master ONLY after the user confirms the listening checks** (Architect branch ruling)
 
 ---
 

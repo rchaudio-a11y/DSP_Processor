@@ -136,9 +136,10 @@
 - Audio callbacks must complete in < 10ms
 - Main-path ring buffers never overwrite unread data; monitor tap buffers may
   lap a stalled reader, but the loss is always detected and reported (never silent)
-- Internal DSP targets float32 end-to-end; integer PCM (16/24-bit) exists only
-  at I/O boundaries (Constitution v1.1.0 - current Int16 pipeline is legacy,
-  migration = feature 001-float32-pipeline)
+- Internal DSP is float32 end-to-end; integer PCM (16/24-bit) exists only
+  at I/O boundaries (Constitution v1.1.0 - DELIVERED by feature
+  001-float32-pipeline, v1.3.5.x: canonical conversion pair in
+  Utils.SampleConversion, zero-conversion playback path, balance pan law)
 - Zero-copy for tap points (no buffer duplication)
 
 ### Documenting Them
@@ -154,7 +155,8 @@
 ### Constraints
 - Maximum latency: 10ms
 - Sample rate: 44.1kHz or 48kHz
-- Bit depth: 16-bit PCM
+- Processing domain: float32 normalized (integer PCM only at I/O boundaries;
+  recorded WAV target is 16-bit until the 24-bit export feature)
 ```
 
 ---
