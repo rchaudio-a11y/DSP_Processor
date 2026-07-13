@@ -342,4 +342,71 @@ Public Class FloatPipelineTests
 
 #End Region
 
+#Region "US3 - Balance pan law (SC-004; supersedes the 003-locked constant-power law)"
+
+    Private Shared Function ProcessStereo(gain As Single, pan As Single, left As Single, right As Single) As (L As Single, R As Single)
+        Dim gp As New DSP.GainProcessor(FloatStereo) With {.GainLinear = gain, .PanPosition = pan}
+        Dim bytes = FloatsToBytes({left, right})
+        Dim buf As New DSP.AudioBuffer(FloatStereo, bytes.Length, True)
+        buf.CopyFrom(bytes, 0, bytes.Length)
+        gp.Process(buf)
+        Return (buf.GetSample(0), buf.GetSample(1))
+    End Function
+
+    <TestMethod>
+    Public Sub CenterPan_Gain2_ExactlyDoubles()
+        ' SC-004: the hidden ~-3 dB center attenuation is GONE - gain 2.0 at
+        ' center yields exactly x2.0 (the defect feature 003 locked, now fixed).
+        Dim result = ProcessStereo(2.0F, 0.0F, 0.25F, -0.25F)
+        Assert.AreEqual(0.5F, result.L, "center pan: L = input x gain, exactly")
+        Assert.AreEqual(-0.5F, result.R, "center pan: R = input x gain, exactly")
+    End Sub
+
+    <TestMethod>
+    Public Sub BypassBoundary_NoStep()
+        ' SC-004: sweeping across the unity-bypass threshold produces no level
+        ' step > 0.01 dB. Gain 1.0 hits the bypass fast path; 1.001 runs the
+        ' full math path - under the balance law both are (near-)transparent.
+        Dim bypassed = ProcessStereo(1.0F, 0.0F, 0.5F, 0.5F)
+        Dim fullPath = ProcessStereo(1.001F, 0.0F, 0.5F, 0.5F)
+
+        Dim stepDb = Math.Abs(20.0 * Math.Log10(fullPath.L / bypassed.L))
+        Dim expectedDb = 20.0 * Math.Log10(1.001) ' ~0.0087 dB from the gain itself
+        Assert.IsTrue(Math.Abs(stepDb - expectedDb) < 0.001,
+            $"bypass-boundary step: {stepDb:F5} dB vs expected {expectedDb:F5} dB from gain alone - the law itself must add NOTHING")
+        Assert.IsTrue(stepDb < 0.01, $"total step {stepDb:F5} dB must be < 0.01 dB")
+    End Sub
+
+    <TestMethod>
+    Public Sub PanSweep_FavoredChannelUnity()
+        ' SC-004: the favored channel equals input x gain at EVERY pan position.
+        Const gain As Single = 1.5F
+        Const input As Single = 0.4F
+        For Each pan In New Single() {-1.0F, -0.5F, -0.1F, 0.0F, 0.1F, 0.5F, 1.0F}
+            Dim r = ProcessStereo(gain, pan, input, input)
+            Dim favored = If(pan <= 0.0F, r.L, r.R)
+            Assert.AreEqual(input * gain, favored, 0.0000005F,
+                $"pan {pan}: favored channel must be input x gain (unity pan contribution)")
+        Next
+    End Sub
+
+    <TestMethod>
+    Public Sub PanSweep_OppositeTaper_CosineMonotonic()
+        ' SC-004: opposite channel = cos(|pan| * pi/2) x input x gain, strictly
+        ' decreasing in |pan|, and never a factor > 1.0 before user gain.
+        Const input As Single = 0.4F
+        Dim lastOpposite As Single = Single.MaxValue
+        For Each pan In New Single() {0.1F, 0.25F, 0.5F, 0.75F, 0.9F, 1.0F}
+            Dim r = ProcessStereo(1.0F, pan, input, input) ' pan right: L is opposite
+            Dim expected = CSng(Math.Cos(pan * Math.PI / 2.0)) * input
+            Assert.AreEqual(expected, r.L, 0.0000005F, $"pan {pan}: opposite must follow the cosine taper")
+            Assert.IsTrue(r.L < lastOpposite, $"pan {pan}: taper must be strictly decreasing")
+            Assert.IsTrue(r.L <= input + 0.0000005F AndAlso r.R <= input + 0.0000005F,
+                $"pan {pan}: no boost anywhere before user gain")
+            lastOpposite = r.L
+        Next
+    End Sub
+
+#End Region
+
 End Class

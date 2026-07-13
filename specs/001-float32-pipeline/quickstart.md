@@ -80,5 +80,6 @@ allocation audit (0 bytes/block steady-state), Pcm16ToFloat accuracy.
 |------|-----------|--------|
 | 2026-07-13 | T001 baseline (feature branch) | ✅ 67/67, 332 ms, surviving suites committed-clean |
 | 2026-07-13 | T004 foundational (canonical pair + accessors) | ✅ 72/72; surviving diffs EMPTY |
+| 2026-07-13 | US3 gate (T017): balance-law group (4 tests) + supersession header verified + SC-002 re-run clean | ✅ 83/83, 282 ms; surviving diffs EMPTY end-to-end |
 | 2026-07-13 | US2 gate (T014): headroom (3 tests) + zero-alloc audit (delta = 0 bytes / 1000 blocks) + denormal sanity (< 5×) | ✅ 79/79, 317 ms; surviving diffs EMPTY |
 | 2026-07-13 | US1 gate (T011): domain migrated, 3 null variants | ✅ 74/74, 210 ms; surviving diffs EMPTY; **SC-002 audit: only `SampleConversion.vb` converts** — 5 residual `32767/32768` hits reviewed and classified as inert 16-bit display dispatcher branches (`AudioLevelMeter.Analyze16Bit` :196/:204, `FFTProcessor` Case 16 :88/:97, `MainForm.CalculateTruePeakDB` 16-branch :1650); no int16 data reaches them (all sources emit 32) and none is a conversion loop on the active path. R4 deviation recorded (accessors, not Span). |

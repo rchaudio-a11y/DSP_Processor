@@ -87,9 +87,9 @@ balance-law assertion group + supersession record verification (US3).
 
 **Independent Test**: gain 2.0 at center = exactly ×2.0; no step > 0.01 dB across the bypass boundary; favored unity + monotonic taper across the pan sweep
 
-- [ ] T015 [US3] Add the balance-law group to `DSP_Processor.Tests/FloatPipelineTests.vb` (SC-004): `CenterPan_Gain2_ExactlyDoubles` (the hidden −3 dB is gone); `BypassBoundary_NoStep` (gain 1.0 vs 1.001 at center: level difference < 0.01 dB); `PanSweep_FavoredChannelUnity` (favored = input × gain at pan ∈ {−1, −0.5, −0.1, 0, 0.1, 0.5, 1}); `PanSweep_OppositeTaper_CosineMonotonic` (opposite = cos(|pan|·π/2) within float tolerance, strictly decreasing); no factor > 1.0 anywhere before user gain
-- [ ] T016 [US3] Verify the supersession record (FR-011): `DSP_Processor.Tests/GainProcessorTests.vb` header cites the Architect ruling + date + named superseded assertions (landed with T006 — verify present and accurate); add the supersession paragraph to `DSP_Processor/Documentation/Changelog/CURRENT.md` as part of the v1.3.5.3 entry (the first intentional release of a feature-003 behavior lock — the process is part of the contract)
-- [ ] T017 [US3] Gate + checkpoint: full suite green; surviving diffs EMPTY; SC-002 audit re-run; record in quickstart.md. **Version v1.3.5.3, commit + tag**
+- [X] T015 [US3] Add the balance-law group to `DSP_Processor.Tests/FloatPipelineTests.vb` (SC-004): `CenterPan_Gain2_ExactlyDoubles` (the hidden −3 dB is gone); `BypassBoundary_NoStep` (gain 1.0 vs 1.001 at center: level difference < 0.01 dB); `PanSweep_FavoredChannelUnity` (favored = input × gain at pan ∈ {−1, −0.5, −0.1, 0, 0.1, 0.5, 1}); `PanSweep_OppositeTaper_CosineMonotonic` (opposite = cos(|pan|·π/2) within float tolerance, strictly decreasing); no factor > 1.0 anywhere before user gain
+- [X] T016 [US3] Verify the supersession record (FR-011): `DSP_Processor.Tests/GainProcessorTests.vb` header cites the Architect ruling + date + named superseded assertions (landed with T006 — verify present and accurate); add the supersession paragraph to `DSP_Processor/Documentation/Changelog/CURRENT.md` as part of the v1.3.5.3 entry (the first intentional release of a feature-003 behavior lock — the process is part of the contract)
+- [X] T017 [US3] Gate + checkpoint: full suite green; surviving diffs EMPTY; SC-002 audit re-run; record in quickstart.md. **Version v1.3.5.3, commit + tag**
 
 **Checkpoint**: feature complete on the branch; all three story proofs green
 

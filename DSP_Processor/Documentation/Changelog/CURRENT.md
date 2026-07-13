@@ -3,7 +3,36 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.5.2
+**Current Version:** v1.3.5.3
+
+---
+
+## [v1.3.5.3] - 2026-07-13 - Balance Pan Law Proven (Feature 001, User Story 3) - FEATURE 001 CODE-COMPLETE
+
+**RDF Phase:** Phase 5-6 (Validate → Synthesis)  
+**Feature:** `specs/001-float32-pipeline/` — US3 "Balance Pan Law" ⚠️ deliberate behavior change
+
+### BEHAVIOR-LOCK SUPERSESSION RECORD (FR-011)
+
+This release completes the **first intentional release of a feature-003
+behavior lock**. Feature 003 (v1.3.3.1) locked the then-current uncompensated
+constant-power pan law INCLUDING its defect: any non-unity setting applied
+~−3 dB to center-panned audio, a step discontinuity at the bypass boundary.
+Per Architect ruling (feature 001 description §5, refined by clarification Q1
+on 2026-07-13), that law is superseded by the **balance law**: favored channel
+unity at every pan position, opposite channel on a cosine taper cos(|pan|·π/2),
+center pan mathematically transparent. Superseded assertions (named in the
+`GainProcessorTests.vb` header): `Stereo_CenterPan_AppliesConstantPowerAttenuation`,
+`HardPan_FullyAttenuatesOppositeChannel`, `ConstantPowerPan_PowerPreservedAcrossPanRange`.
+Never a silent edit — recorded here and in the test file.
+
+### Added (proofs)
+- `CenterPan_Gain2_ExactlyDoubles` — the hidden −3 dB is gone
+- `BypassBoundary_NoStep` — < 0.01 dB across the unity-bypass threshold, and the law itself contributes exactly nothing (residual equals the 1.001 gain delta alone)
+- `PanSweep_FavoredChannelUnity` (7 positions) and `PanSweep_OppositeTaper_CosineMonotonic` (strictly decreasing, no boost anywhere before user gain)
+
+### Verified
+- 83/83 tests, 282 ms; FR-012 surviving suites: empty diffs end-to-end across the feature; SC-002 audit re-confirmed
 
 ---
 
