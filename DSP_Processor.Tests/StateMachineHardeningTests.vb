@@ -282,6 +282,34 @@ Public Class StateMachineHardeningTests
     End Sub
 
     <TestMethod>
+    Public Sub Coordinator_HasNoDisposalSurface()
+        ' US3 / SC-006: process-lifetime ruling - the coordinator type must not
+        ' implement IDisposable (removal is compile-enforced for callers;
+        ' this reflection check locks the type surface itself)
+        Assert.IsNull(GetType(StateCoordinator).GetInterface("IDisposable"),
+            "StateCoordinator must not implement IDisposable (Architect ruling: process-lifetime)")
+        Assert.IsNull(GetType(StateCoordinator).GetMethod("Dispose"),
+            "StateCoordinator must expose no Dispose method")
+    End Sub
+
+    <TestMethod>
+    Public Sub ErrorStateEntry_StillReachable_AfterScaffoldingDeletion()
+        ' US3 / FR-012: the deleted OnStateEntering scaffolding contained one
+        ' real behavior (error-state entry logging, now inlined in the commit
+        ' path). This locks the observable half: the Error transition still
+        ' performs and the machine reaches Error. (Log emission is suppressed
+        ' under test; the inlined call is review-verified in CommitLocked.)
+        Dim gsm As New GlobalStateMachine()
+        Assert.IsTrue(gsm.TransitionTo(GlobalState.Idle, "setup"))
+        Assert.AreEqual(TransitionOutcome.Performed, gsm.RequestTransition(GlobalState.[Error], "fault injection"))
+        Assert.AreEqual(GlobalState.[Error], gsm.CurrentState)
+
+        ' Recovery path intact
+        Assert.IsTrue(gsm.TransitionTo(GlobalState.Idle, "recovery"))
+        Assert.AreEqual(GlobalState.Idle, gsm.CurrentState)
+    End Sub
+
+    <TestMethod>
     Public Sub Containment_ThrowingSubscriber_OthersStillNotified()
         Dim gsm As New GlobalStateMachine()
         Dim secondSubscriberNotified = False

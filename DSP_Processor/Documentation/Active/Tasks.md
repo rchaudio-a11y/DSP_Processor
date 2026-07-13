@@ -1,8 +1,8 @@
 # Active Tasks - DSP_Processor
 
 **Last Updated:** July 12, 2026  
-**Current Version:** v1.3.4.1 (v1.3.x lineage; SubPhase 3.4 = feature 002-state-machine-hardening; granularity: one tracker task/version per spec-kit USER STORY)  
-**Current Task:** Feature 002-state-machine-hardening — US1 COMPLETE, US2 in progress
+**Current Version:** v1.3.4.3 (v1.3.x lineage; SubPhase 3.4 = feature 002-state-machine-hardening; granularity: one tracker task/version per spec-kit USER STORY)  
+**Current Task:** Feature 002-state-machine-hardening — implementation COMPLETE; manual app smoke pending. Next candidates: 001-float32-pipeline (both prerequisites now met)
 
 ---
 
@@ -14,7 +14,7 @@
 |---------|------------------------------|--------|
 | v1.3.4.1 | US1 - Truthful, Lossless Transition Requests (single-drainer GSM) | ✅ COMPLETE 2026-07-13 |
 | v1.3.4.2 | US2 - Deadlock-Free, Ordered Event Delivery (+ 11-subscriber audit) | ✅ COMPLETE 2026-07-13 (audit: 0 fixes) |
-| v1.3.4.3 | US3 - Process-Lifetime Coordinator | ⏳ In progress |
+| v1.3.4.3 | US3 - Process-Lifetime Coordinator | ✅ COMPLETE 2026-07-13 (manual app smoke pending) |
 
 ---
 

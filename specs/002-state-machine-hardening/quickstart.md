@@ -62,3 +62,5 @@ second-order/SSM-boundary note present.
 | 2026-07-13 | T001 baseline (pre-change, `--no-build` against v1.3.3.3 binaries — app exe was running, source unchanged) | ✅ 55/55, 183 ms, clean tree |
 | 2026-07-13 | US1 gate (T004): single-drainer rewrite + 6 new tests | ✅ 61/61, 211 ms; `GlobalStateMachineTests.vb` diff EMPTY (SC-002); `InternalsVisibleTo` added for the E1 Friend seam |
 | 2026-07-13 | US2 gate (T009): 4 delivery tests + 11-subscriber audit | ✅ 65/65, 212 ms; matrix diff still EMPTY; audit: 0 fixes (8 clean, 2 justified-own-state, 1 justified-live-by-design) |
+| 2026-07-13 | US3 gate (T012): disposal surface removed + 2 tests | ✅ 67/67, 220 ms; SC-006 grep clean (only an explanatory comment mentions the removed names); matrix diff EMPTY end-to-end |
+| 2026-07-13 | T014 end-to-end: build + suite + SC-002 empty-diff + SC-006 grep | ✅ complete. **Manual app smoke PENDING** (record/playback cycle watching State Debugger + log for sequential transition IDs; clean shutdown) — requires GUI |

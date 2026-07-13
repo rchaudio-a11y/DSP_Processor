@@ -73,9 +73,9 @@ Repository-relative. Production changes concentrate in `DSP_Processor/State/` an
 
 **Independent Test**: reflection shows `StateCoordinator` no longer implements `IDisposable`; grep shows zero disposal references; app shutdown still tears subsystems down via their owners
 
-- [ ] T010 [US3] Remove the disposal surface from `DSP_Processor/State/StateCoordinator.vb` per research R6: `Implements IDisposable` (class header), `Dispose()` method (including the 50 ms barrier sleep and SSM null-outs), `CheckDisposed()` method, `_disposed` field, and all ~27 `CheckDisposed()` guard calls; leave `Initialize` and all property/query semantics otherwise untouched; do NOT touch `Managers/MonitoringController.vb` (different class, out of scope)
-- [ ] T011 [US3] Add US3 test group to `DSP_Processor.Tests/StateMachineHardeningTests.vb`: `Coordinator_HasNoDisposalSurface` (assert `GetType(StateCoordinator).GetInterface("IDisposable") Is Nothing`) and `ErrorStateEntry_StillLogged_AfterScaffoldingDeletion` (drive a GSM instance to Error; assert transition performs and machine reaches Error — the FR-012 observability record; log content itself is suppressed in tests)
-- [ ] T012 [US3] Verification pass — run the quickstart SC-006 grep (zero disposal references in production code); full suite green; matrix diff EMPTY; record results in quickstart.md. Manual shutdown smoke (launch app, close it, confirm clean exit with subsystem teardown by owners) flagged for the user if no GUI available
+- [X] T010 [US3] Remove the disposal surface from `DSP_Processor/State/StateCoordinator.vb` per research R6: `Implements IDisposable` (class header), `Dispose()` method (including the 50 ms barrier sleep and SSM null-outs), `CheckDisposed()` method, `_disposed` field, and all ~27 `CheckDisposed()` guard calls; leave `Initialize` and all property/query semantics otherwise untouched; do NOT touch `Managers/MonitoringController.vb` (different class, out of scope)
+- [X] T011 [US3] Add US3 test group to `DSP_Processor.Tests/StateMachineHardeningTests.vb`: `Coordinator_HasNoDisposalSurface` (assert `GetType(StateCoordinator).GetInterface("IDisposable") Is Nothing`) and `ErrorStateEntry_StillLogged_AfterScaffoldingDeletion` (drive a GSM instance to Error; assert transition performs and machine reaches Error — the FR-012 observability record; log content itself is suppressed in tests)
+- [X] T012 [US3] Verification pass — run the quickstart SC-006 grep (zero disposal references in production code); full suite green; matrix diff EMPTY; record results in quickstart.md. Manual shutdown smoke (launch app, close it, confirm clean exit with subsystem teardown by owners) — *FLAGGED FOR USER: requires GUI; code-level checks all ✅ 2026-07-13*
 
 **Checkpoint**: Coordinator is process-lifetime. Version v1.3.4.3
 
@@ -85,8 +85,8 @@ Repository-relative. Production changes concentrate in `DSP_Processor/State/` an
 
 **Purpose**: Constitution VIII bookkeeping and end-to-end validation record
 
-- [ ] T013 [P] Per-story version bookkeeping in `DSP_Processor/Documentation/Active/Tasks.md` and `DSP_Processor/Documentation/Changelog/CURRENT.md` — one entry per story checkpoint on v1.3.4.x (SubPhase 3.4; tracker task = user story), commit + tag per Constitution VIII
-- [ ] T014 Run complete quickstart.md validation end-to-end (build, full suite, SC-002 empty-diff check, SC-006 grep) and record results; list the manual app-level smoke items (record/playback cycle watching State Debugger + log; clean shutdown) for the user
+- [X] T013 [P] Per-story version bookkeeping in `DSP_Processor/Documentation/Active/Tasks.md` and `DSP_Processor/Documentation/Changelog/CURRENT.md` — one entry per story checkpoint on v1.3.4.x (SubPhase 3.4; tracker task = user story), commit + tag per Constitution VIII
+- [X] T014 Run complete quickstart.md validation end-to-end (build, full suite, SC-002 empty-diff check, SC-006 grep) and record results; list the manual app-level smoke items (record/playback cycle watching State Debugger + log; clean shutdown) for the user
 
 ---
 

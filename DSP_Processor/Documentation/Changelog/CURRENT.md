@@ -3,7 +3,25 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.4.2
+**Current Version:** v1.3.4.3
+
+---
+
+## [v1.3.4.3] - 2026-07-13 - Process-Lifetime Coordinator (Feature 002, User Story 3)
+
+**RDF Phase:** Phase 3-6 (Build → Synthesis)  
+**Feature:** `specs/002-state-machine-hardening/` — US3 "Process-Lifetime Coordinator" — **FEATURE 002 COMPLETE**
+
+### Removed
+- **StateCoordinator disposal surface** (Architect ruling: process-lifetime): `Implements IDisposable`, `Dispose()` (incl. the 50 ms shutdown-barrier sleep and the SSM null-outs that created dispose-then-use hazards), `CheckDisposed()`, `_disposed`, and all ~27 guard calls. Grep-verified before removal: zero production callers ever disposed it — the surface was a pure landmine
+- The GSM's empty per-state scaffolding (deleted in v1.3.4.1's rewrite) verified: error-state entry logging preserved inline, Error reachability + recovery locked by test
+
+### Added
+- `Coordinator_HasNoDisposalSurface` (reflection lock on the type surface) and `ErrorStateEntry_StillReachable_AfterScaffoldingDeletion` tests
+
+### Verified
+- 67/67 tests green, 220 ms; SC-006 grep clean; **`GlobalStateMachineTests.vb` diff EMPTY across the entire feature** — the 64-pair matrix contract survived a full transition-engine rewrite untouched
+- **PENDING (manual):** app-level smoke — record/playback cycle watching the State Debugger and log (sequential transition IDs, no `deferred` markers outside cascades), clean shutdown
 
 ---
 

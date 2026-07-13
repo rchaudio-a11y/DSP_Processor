@@ -3,18 +3,17 @@ Imports System.Windows.Forms
 
 ''' <summary>
 ''' State Coordinator - Central coordination point for all state machines
-''' Singleton pattern - single global instance
+''' Singleton pattern - single global instance, PROCESS-LIFETIME by ruling
+''' (feature 002: a globally reachable singleton must never be disposable -
+''' it carries no disposal surface; subsystem teardown belongs to the
+''' subsystems' owners, which it never owned anyway)
 ''' Ownership: Creates and coordinates all state machines, but does NOT own subsystems (RecordingManager, DSPThread, etc.)
 ''' Thread-safe: All operations thread-safe
 ''' </summary>
 Public Class StateCoordinator
-    Implements IDisposable
 
     ' Singleton instance
     Private Shared ReadOnly _instance As New Lazy(Of StateCoordinator)(Function() New StateCoordinator(), LazyThreadSafetyMode.ExecutionAndPublication)
-
-    ' Disposed flag (thread-safe using Interlocked)
-    Private _disposed As Integer = 0
 
     ' State machines (owned by StateCoordinator)
     Private _globalStateMachine As GlobalStateMachine
@@ -61,7 +60,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property GlobalStateMachine As GlobalStateMachine
         Get
-            CheckDisposed()
             Return _globalStateMachine
         End Get
     End Property
@@ -71,7 +69,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property RecordingManagerSSM As RecordingManagerSSM
         Get
-            CheckDisposed()
             Return _recordingManagerSSM
         End Get
     End Property
@@ -81,7 +78,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property DSPThreadSSM As DSPThreadSSM
         Get
-            CheckDisposed()
             Return _dspThreadSSM
         End Get
     End Property
@@ -91,7 +87,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property UIStateMachine As UIStateMachine
         Get
-            CheckDisposed()
             Return _uiStateMachine
         End Get
     End Property
@@ -101,7 +96,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property PlaybackSSM As PlaybackSSM
         Get
-            CheckDisposed()
             Return _playbackSSM
         End Get
     End Property
@@ -111,7 +105,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property AudioDeviceSSM As State.AudioDeviceSSM
         Get
-            CheckDisposed()
             Return _audioDeviceSSM
         End Get
     End Property
@@ -121,7 +114,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property AudioInputSSM As State.AudioInputSSM
         Get
-            CheckDisposed()
             Return _audioInputSSM
         End Get
     End Property
@@ -131,7 +123,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property DSPModeSSM As State.DSPModeSSM
         Get
-            CheckDisposed()
             Return _dspModeSSM
         End Get
     End Property
@@ -141,7 +132,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property AudioRoutingSSM As State.AudioRoutingSSM
         Get
-            CheckDisposed()
             Return _audioRoutingSSM
         End Get
     End Property
@@ -151,7 +141,6 @@ Public Class StateCoordinator
     ''' </summary>
     Public ReadOnly Property GlobalState As GlobalState
         Get
-            CheckDisposed()
             Return _globalStateMachine?.CurrentState
         End Get
     End Property
@@ -184,7 +173,6 @@ Public Class StateCoordinator
                          audioRouter As AudioIO.AudioRouter,
                          mainForm As Form)
 
-        CheckDisposed()
 
         ' Validate required parameters (dspThread can be Nothing)
         If recordingManager Is Nothing Then Throw New ArgumentNullException(NameOf(recordingManager))
@@ -285,7 +273,6 @@ Public Class StateCoordinator
     ''' Thread-safe snapshot
     ''' </summary>
     Public Function GetSystemState() As SystemStateSnapshot
-        CheckDisposed()
 
         If Not IsInitialized Then
             Return New SystemStateSnapshot() ' Return empty snapshot if not initialized
@@ -310,7 +297,6 @@ Public Class StateCoordinator
     ''' Gets the transition history from GlobalStateMachine (for debugging)
     ''' </summary>
     Public Function GetTransitionHistory() As IReadOnlyList(Of StateChangedEventArgs(Of GlobalState))
-        CheckDisposed()
 
         If _globalStateMachine Is Nothing Then
             Dim emptyList As New List(Of StateChangedEventArgs(Of GlobalState))
@@ -324,7 +310,6 @@ Public Class StateCoordinator
     ''' Dumps all state machine states to a formatted string (for logging/debugging)
     ''' </summary>
     Public Function DumpAllStates() As String
-        CheckDisposed()
 
         If Not IsInitialized Then
             Return "StateCoordinator not initialized"
@@ -358,7 +343,6 @@ Public Class StateCoordinator
     ''' For use by State Debugger Panel "Recover" button
     ''' </summary>
     Public Function RecoverFromError() As Boolean
-        CheckDisposed()
 
         If Not IsInitialized Then
             Utils.Logger.Instance.Warning("Cannot recover - StateCoordinator not initialized", "StateCoordinator")
@@ -386,64 +370,10 @@ Public Class StateCoordinator
 
 #End Region
 
-#Region "Disposal"
-
-    ''' <summary>
-    ''' Disposes StateCoordinator and all state machines
-    ''' Implements shutdown barrier pattern (50ms grace period)
-    ''' </summary>
-    Public Sub Dispose() Implements IDisposable.Dispose
-        ' Atomic test-and-set (prevents double disposal)
-        If Interlocked.CompareExchange(_disposed, 1, 0) = 1 Then
-            Return ' Already disposed
-        End If
-
-        Utils.Logger.Instance.Info("StateCoordinator disposing...", "StateCoordinator")
-
-        ' Grace period (50ms) - let any in-flight transitions complete
-        ' This is the shutdown barrier pattern from Thread-Safety-Patterns.md Part 13
-        Thread.Sleep(50)
-
-        ' Dispose state machines in reverse order of creation
-        Try
-            ' UIStateMachine (unsubscribe from GSM)
-            _uiStateMachine = Nothing
-
-            ' PlaybackSSM (unsubscribe from GSM)
-            _playbackSSM = Nothing
-
-            ' DSPThreadSSM (unsubscribe from RecordingManagerSSM)
-            _dspThreadSSM = Nothing
-
-            ' RecordingManagerSSM (unsubscribe from GSM)
-            _recordingManagerSSM = Nothing
-
-            ' GlobalStateMachine (last)
-            _globalStateMachine = Nothing
-
-            Utils.Logger.Instance.Info("StateCoordinator disposed successfully", "StateCoordinator")
-
-        Catch ex As Exception
-            Utils.Logger.Instance.Error("Error during StateCoordinator disposal", ex, "StateCoordinator")
-        End Try
-
-        ' Clear subsystem references (we don't own them, so don't dispose)
-        _recordingManager = Nothing
-        _dspThread = Nothing
-        _audioRouter = Nothing
-        _mainForm = Nothing
-    End Sub
-
-    ''' <summary>
-    ''' Checks if disposed and throws if so (disposal guard pattern)
-    ''' </summary>
-    Private Sub CheckDisposed()
-        If Interlocked.CompareExchange(_disposed, 0, 0) = 1 Then
-            Throw New ObjectDisposedException(NameOf(StateCoordinator))
-        End If
-    End Sub
-
-#End Region
+    ' Feature 002 US3: the disposal surface (IDisposable, Dispose, CheckDisposed,
+    ' _disposed, ~27 guard calls, and the 50ms shutdown-barrier sleep) was
+    ' REMOVED per Architect ruling - the coordinator is process-lifetime.
+    ' Grep-verified before removal: zero production callers ever disposed it.
 
 End Class
 
