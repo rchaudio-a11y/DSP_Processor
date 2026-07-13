@@ -3,7 +3,29 @@
 **Project:** DSP_Processor (Audio Recording & Processing)  
 **Repository:** https://github.com/rchaudio-a11y/DSP_Processor  
 **Branch:** master  
-**Current Version:** v1.3.2.5
+**Current Version:** v1.3.3.1
+
+---
+
+## [v1.3.3.1] - 2026-07-12 - Test Foundation (Feature 003, User Story 1)
+
+**RDF Phase:** Phase 5 (Validation Loop)  
+**Feature:** `specs/003-tap-consolidation/` — US1 "Provably Correct Audio Core"  
+**Versioning note:** tracker task = user story (Constitution VIII granularity ruling, analysis D1); SubPhase 3.3 opened per Architect ruling 2026-07-12
+
+### Added
+- **DSP_Processor.Tests** — first automated test project (MSTest, net10.0-windows), 39 tests, headless, < 1 s:
+  - `RingBufferTests` (FR-010): round-trip, wraparound, accounting, full/empty, Skip/Clear, argument/dispose contracts
+  - `SampleConversionTests` (FR-012): symmetric full-scale mapping, clipping, ≤ 1 LSB round-trip sweep, endianness
+  - `GainProcessorTests` (FR-013): unity bypass bit-identity, clamping, mute floor, constant-power pan (rel 1e-3), width extremes
+  - `GlobalStateMachineTests` (FR-014): exhaustive 8×8 transition matrix (26 valid / 38 invalid), event contract
+- **`Utils.SampleConversion`** — float32→PCM16 extracted from AudioRouter as a testable unit (AudioRouter delegates)
+- **`Utils.Logger.SuppressForTesting`** — null-logger mode; test suite performs zero file I/O
+
+### Verified
+- FR-015 gate: all 39 tests green against unmodified production code BEFORE any behavior change
+- Mutation check: injected off-by-one in RingBuffer wraparound → 6 named failures → reverted → green
+- Locked actual behavior discovered during extraction: −1.0 maps to −32767 (symmetric scaling, −32768 unreachable); stereo path applies constant-power center attenuation (cos π/4) outside unity bypass
 
 ---
 

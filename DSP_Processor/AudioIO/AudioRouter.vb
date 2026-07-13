@@ -766,33 +766,15 @@ Namespace AudioIO
         ''' Convert IEEE Float samples (AudioFileReader format) to 16-bit PCM
         ''' </summary>
         Private Function ConvertFloatToPCM16(floatBuffer As Byte(), byteCount As Integer, channels As Integer) As Byte()
-            ' AudioFileReader provides IEEE Float (32-bit per sample)
-            Dim sampleCount = byteCount \ 4 ' 4 bytes per float sample
-            Dim pcm16Buffer(sampleCount * 2 - 1) As Byte ' 2 bytes per 16-bit sample
-
-            ' Log first conversion for verification
+            ' Extracted to Utils.SampleConversion (feature 003) - this wrapper keeps
+            ' the one-time diagnostic log and the existing call sites unchanged
             Static firstLog As Boolean = True
             If firstLog Then
-                Utils.Logger.Instance.Info($"Float→PCM16: {byteCount} bytes float → {sampleCount} samples → {pcm16Buffer.Length} bytes PCM16", "AudioRouter")
+                Utils.Logger.Instance.Info($"Float->PCM16: {byteCount} bytes float -> {byteCount \ 4} samples -> {(byteCount \ 4) * 2} bytes PCM16", "AudioRouter")
                 firstLog = False
             End If
 
-            For i = 0 To sampleCount - 1
-                ' Read float sample (-1.0 to +1.0)
-                Dim floatSample = BitConverter.ToSingle(floatBuffer, i * 4)
-
-                ' Clamp to valid range
-                floatSample = Math.Max(-1.0F, Math.Min(1.0F, floatSample))
-
-                ' Convert to 16-bit integer (-32768 to 32767)
-                Dim int16Sample = CShort(floatSample * 32767.0F)
-
-                ' Write as little-endian bytes
-                pcm16Buffer(i * 2) = CByte(int16Sample And &HFF)
-                pcm16Buffer(i * 2 + 1) = CByte((int16Sample >> 8) And &HFF)
-            Next
-
-            Return pcm16Buffer
+            Return Utils.SampleConversion.FloatToPcm16(floatBuffer, byteCount, channels)
         End Function
 
         ''' <summary>

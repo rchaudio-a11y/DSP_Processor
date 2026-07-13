@@ -94,12 +94,24 @@ Namespace Utils
         ''' </summary>
         Public Property MaxLogSizeMB As Integer = 10
 
+        ''' <summary>
+        ''' NULL-LOGGER MODE FOR UNIT TESTS (feature 003-tap-consolidation, research R4).
+        ''' Set to True BEFORE the first Instance access (test AssemblyInitialize):
+        ''' the singleton then creates no log directory, opens no file, starts no
+        ''' writer thread, and Log() is a no-op. Never set in production code -
+        ''' when False (default) behavior is unchanged.
+        ''' </summary>
+        Public Shared Property SuppressForTesting As Boolean = False
+
 #End Region
 
 #Region "Constructor"
 
         Private Sub New()
             ' Private constructor for singleton
+            ' Null-logger mode: no directory, no file, no writer thread (tests only)
+            If SuppressForTesting Then Return
+
             EnsureLogDirectoryExists()
             OpenLogFile()
 
@@ -171,6 +183,9 @@ Namespace Utils
 #Region "Private Methods"
 
         Private Sub Log(level As LogLevel, message As String, ex As Exception, context As String)
+            ' Null-logger mode (unit tests): drop everything, no I/O of any kind
+            If SuppressForTesting Then Return
+
             ' PERFORMANCE: Quick exit if logging disabled
             If Not Enabled Then Return
 

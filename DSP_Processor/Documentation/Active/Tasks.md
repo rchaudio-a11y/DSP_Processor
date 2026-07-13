@@ -1,8 +1,20 @@
 # Active Tasks - DSP_Processor
 
 **Last Updated:** July 12, 2026  
-**Current Version:** v1.3.2.5 (Architect ruling 2026-07-12: continue v1.3.x lineage; version Phase digit does NOT track project phase)  
-**Current Task:** Code Review Quick Wins - COMPLETE
+**Current Version:** v1.3.3.1 (Architect rulings 2026-07-12: v1.3.x lineage, version Phase digit does NOT track project phase; SubPhase 3.3 = feature 003-tap-consolidation; granularity: one tracker task/version per spec-kit USER STORY, not per micro-task)  
+**Current Task:** Feature 003-tap-consolidation — US1 COMPLETE, US2 in progress
+
+---
+
+## CURRENT - SubPhase 3.3: Feature 003-tap-consolidation (spec-driven)
+
+**Spec:** `specs/003-tap-consolidation/` (spec, plan, tasks, research, data-model, contracts)
+
+| Version | Tracker task (= user story) | Status |
+|---------|------------------------------|--------|
+| v1.3.3.1 | US1 - Provably Correct Audio Core (test foundation, 39 tests, FR-015 gate) | ✅ COMPLETE 2026-07-12 |
+| v1.3.3.2 | US2 - Detected, Never Silent, Data Loss (monotonic counters, overrun detection) | ⏳ In progress |
+| v1.3.3.3 | US3 - One Way to Monitor (tap API consolidation, legacy removal) | Pending |
 
 ---
 
