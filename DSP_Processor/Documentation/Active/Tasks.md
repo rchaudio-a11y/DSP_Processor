@@ -14,7 +14,12 @@
 |---------|------------------------------|--------|
 | v1.3.5.1 | US1 - One Domain, One Conversion Per Boundary (float32 migration) | ✅ COMPLETE 2026-07-13 |
 | v1.3.5.2 | US2 - Inter-Stage Headroom, Exit-Only Clamping (proofs) | ✅ COMPLETE 2026-07-13 (0-alloc audit green) |
-| v1.3.5.3 | US3 - Balance Pan Law (proofs + supersession record) | ✅ COMPLETE 2026-07-13 — feature CODE-COMPLETE; merge gated on manual listening (T020) |
+| v1.3.5.3 | US3 - Balance Pan Law (proofs + supersession record) | ✅ COMPLETE 2026-07-13 — listening checks CONFIRMED by user; merged to master |
+
+**Manual smoke status:** the 2026-07-13 listening session (user-confirmed) also
+covers the outstanding manual smokes from SubPhase 3.3 (meters/FFT during
+playback+record, SC-006) and SubPhase 3.4 (record/playback cycles through the
+hardened GSM, clean shutdown with the process-lifetime coordinator).
 
 ---
 
