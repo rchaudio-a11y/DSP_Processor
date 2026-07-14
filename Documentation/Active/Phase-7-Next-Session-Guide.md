@@ -1,4 +1,4 @@
-﻿# Phase 7 - Next Session Guide
+# Phase 7 - Next Session Guide
 
 **Version:** v1.4.0-alpha  
 **Date:** 2026-01-19 (Updated: 2026-01-19 02:15 AM)  

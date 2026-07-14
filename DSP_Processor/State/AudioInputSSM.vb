@@ -1,4 +1,4 @@
-Imports DSP_Processor.AudioIO
+﻿Imports DSP_Processor.AudioIO
 Imports System.Management ' For WMI device monitoring
 
 Namespace State
@@ -59,7 +59,7 @@ Namespace State
         Private _currentState As AudioInputState
         Private _initialized As Boolean = False
         Private _currentDeviceIndex As Integer = -1
-        
+
         ' USB device monitoring (WMI-based)
         Private _deviceInsertionWatcher As ManagementEventWatcher
         Private _deviceRemovalWatcher As ManagementEventWatcher
@@ -85,18 +85,18 @@ Namespace State
             Try
                 ' Enumerate devices and select first one
                 Dim devices = AudioInputManager.Instance.GetDevices(AudioInputManager.Instance.CurrentDriver)
-                
+
                 If devices.Count > 0 Then
                     ' Select first device (index 0)
                     Dim success = TransitionTo(AudioInputState.DeviceSelected, "System initialization - default device")
-                    
+
                     If success Then
                         _currentDeviceIndex = 0
                         _initialized = True
-                        
+
                         ' Start USB device monitoring
                         StartUSBMonitoring()
-                        
+
                         Utils.Logger.Instance.Info($"? AudioInput SSM initialized (Device 0) with USB monitoring", "AudioInputSSM")
                     Else
                         Utils.Logger.Instance.Error("? AudioInput SSM initialization failed", Nothing, "AudioInputSSM")
@@ -159,7 +159,7 @@ Namespace State
 
             Catch ex As Exception
                 Utils.Logger.Instance.Error($"Transition failed: {oldState} ? {newState}", ex, "AudioInputSSM")
-                
+
                 ' Try to recover to old state
                 _currentState = oldState
                 Return False
@@ -354,11 +354,11 @@ Namespace State
         Private Sub OnDeviceInserted(sender As Object, e As EventArrivedEventArgs)
             Try
                 Utils.Logger.Instance.Info("USB device inserted detected", "AudioInputSSM")
-                
+
                 ' Re-enumerate devices to see if a new audio device is available
                 ' This runs on WMI event thread, so we need to be careful
                 Dim devices = AudioInputManager.Instance.GetDevices(AudioInputManager.Instance.CurrentDriver)
-                
+
                 ' If we're in DeviceUnavailable state and devices are now available, offer recovery
                 If _currentState = AudioInputState.DeviceUnavailable AndAlso devices.Count > 0 Then
                     Utils.Logger.Instance.Info("Audio input device became available - transitioning to DeviceSelected", "AudioInputSSM")
@@ -376,10 +376,10 @@ Namespace State
         Private Sub OnDeviceRemoved(sender As Object, e As EventArrivedEventArgs)
             Try
                 Utils.Logger.Instance.Warning("USB device removal detected", "AudioInputSSM")
-                
+
                 ' Check if current device is still available
                 Dim devices = AudioInputManager.Instance.GetDevices(AudioInputManager.Instance.CurrentDriver)
-                
+
                 ' If current device index is out of range, device was removed
                 If _currentDeviceIndex >= devices.Count Then
                     Utils.Logger.Instance.Warning($"Current audio device (index {_currentDeviceIndex}) was removed", "AudioInputSSM")

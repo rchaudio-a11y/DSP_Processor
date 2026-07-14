@@ -1,176 +1,147 @@
-# **Cognitive Engine — Recursive Development Framework (RDF)**  
-*A modular narrative‑driven cognitive system built through recursive refinement, early validation, and architectural clarity.*
+# DSP_Processor
+
+*A real-time stereo audio engine for Windows, built on an explicit state-machine architecture.*
 
 ---
 
-## **Overview**
-This project implements a multi‑layer cognitive engine capable of generating, storing, analyzing, and interpreting narrative events across time. It includes:
+## Overview
 
-- A dynamic attention model  
-- Multi‑layer narrative memory  
-- Entity tracking and trajectory analysis  
-- Anomaly detection  
-- Meta‑narrative generation  
-- System health scoring  
-- A recursive development methodology (RDF)
+DSP_Processor is a VB.NET / .NET 10 WinForms application for real-time audio capture, processing, playback, and recording. It handles device input and file playback, runs audio through a dedicated DSP worker thread with lock-free ring buffers, records to WAV, and drives live meters and FFT visualization.
 
-The system is built in VB.NET and structured for clarity, extensibility, and long‑term maintainability.
+What makes it unusual is not the audio path — it's the control system wrapped around it. The application's behavior is governed by an explicit hierarchy of state machines (a `GlobalStateMachine` plus eight subsystem machines), coordinated centrally and catalogued in a State Registry. The result reads less like a typical hobby DAW and more like an industrial control system: every mode is a named state, every transition is validated against an interlock table, and the UI renders state rather than defining it.
+
+The project is developed solo under a formal governance model — a ratified constitution, spec-driven features (SpecKit), and the Recursive Development Framework (RDF) — with a companion test suite that locks behavior before it changes.
 
 ---
 
-## **Core Features**
+## Architecture
 
-### **🧠 ProgramCognition (Phase 6.5)**
-Implements the cognitive engine’s reasoning layer, including:
+### Layers
 
-- Dynamic attention window  
-- Raw and smoothed narrative rates  
-- Importance scoring  
-- Hysteresis‑based voice shifting  
-- Memory distribution analysis  
-- Entity awareness  
-- Meta‑narrative generation  
-- System health evaluation  
-- Anomaly detection  
+Audio I/O, DSP, State, Managers, and UI are real boundaries, not folder decoration. Communication flows in one direction by rule: **upward via events, downward via direct calls**, and no dependency cycles are permitted.
 
-Phase 6.5 is fully implemented and tested.
-
----
-
-### **📚 CognitiveMemory**
-A structured memory layer supporting:
-
-- Entity queries  
-- Spatial queries  
-- Temporal queries  
-- Layer‑based narrative retrieval  
-- Episodic and reassessment narratives  
-- Memory completeness tracking  
-
-This layer provides the factual substrate for ProgramCognition.
-
----
-
-### **🧩 Entity Tracking**
-Entities include:
-
-- Unique IDs  
-- Type and tier  
-- Bounding boxes  
-- Trajectories  
-- Alive/dead state  
-- Importance scores  
-- First/last seen generations  
-
-Entity data feeds into anomaly detection, attention modeling, and meta‑narratives.
-
----
-
-### **📊 Narrative Layers**
-Narratives are categorized into four layers:
-
-- `EventLevel`  
-- `EntityLevel`  
-- `CausalLevel`  
-- `EpisodicLevel`  
-
-These layers allow the system to reason about structure, causality, and long‑term patterns.
-
----
-
-### **⚠️ Anomaly Detection**
-Detects issues such as:
-
-- High collision rates  
-- Rapid memory loss  
-- Missing entity deaths  
-- Unbalanced narrative distribution  
-
-Uses `MetaCognitionAnomalyType` to avoid namespace conflicts with existing enums.
-
----
-
-## **Development Methodology — RDF**
-This project is built using the **Recursive Development Framework**, a methodology emphasizing:
-
-- Recursion as the engine of progress  
-- Early validation  
-- Solving problems before they exist  
-- Architecture‑first design  
-- Documentation as a structural component  
-- Quality over velocity  
-- Coherence as the primary metric  
-
-RDF ensures the system evolves cleanly without accumulating technical debt.
-
----
-
-## **Project Structure**
 ```
-/src
-    /CognitiveMemory
-    /ProgramCognition
-    /Entities
-    /Narratives
-    /Detectors
+UI            WinForms panels — emit events, render state (no business logic)
+Managers      Action coordinators (recording, monitoring) — stateless
+State         GlobalStateMachine + 8 SSMs + StateCoordinator + State Registry
+DSP           DSP worker thread, processor chain, FFT
+AudioIO       AudioRouter, device/file readers, ring buffers, tap points
+```
 
-/docs
-    Phase-6.5-API-Audit.md
-    Architecture.md
-    RDF-Philosophy.md
-    Issues-v0.6.9.md
+### State machines (GSM + SSMs)
 
-/tests
-    CognitiveEngine.Tests
+A single `StateCoordinator` orchestrates nine machines total: the root `GlobalStateMachine` (GSM) and eight Subsystem State Machines (SSMs), each owning exactly one subsystem's state:
+
+| Machine | Owns |
+|---|---|
+| `GlobalStateMachine` | Application-level state; the validation authority |
+| `RecordingManagerSSM` | Recording lifecycle (arm → record → stop) |
+| `PlaybackSSM` | File playback lifecycle |
+| `DSPThreadSSM` | DSP worker thread lifecycle |
+| `DSPModeSSM` | DSP enable/disable mode |
+| `AudioDeviceSSM` | Driver backend (WASAPI today; ASIO/DirectSound states reserved) |
+| `AudioInputSSM` | Physical input device selection + USB hot-plug detection |
+| `AudioRoutingSSM` | Routing topology and tap-point lifecycle |
+| `UIStateMachine` | UI state mapping (marshals via `BeginInvoke`) |
+
+Transitions are explicit, named, validated, and logged with grep-friendly transition IDs. Illegal transitions are rejected by design — the transition table functions as an interlock matrix.
+
+### Signal chain and tap points
+
+Audio flows through four fixed observation points. Meters and FFT are **event-driven consumers** of these taps via named multi-reader ring-buffer cursors — they never receive copies of audio-thread buffers.
+
+```
+Input → [PreDSP] → Input Gain → [PostGain] → DSP → [PostDSP] → Output Gain → [PreOutput] → Output
+```
+
+### Cognitive layer
+
+A self-observation layer (`Cognitive/`) sits on top of the State Registry — prediction, anomaly detection, and adaptive thresholds (the Introspective Engine v2.0 design) — giving the system runtime visibility into its own state behavior. It is an observability/introspection layer, not a general-purpose reasoning engine.
+
+---
+
+## Core principles
+
+Governed by `.specify/memory/constitution.md` (v1.1.0). In brief:
+
+1. **Single ownership per subsystem** — one owner for every piece of state; no shared mutable state.
+2. **State-machine architecture** — all application/subsystem state is modeled as explicit, validated machines; UI is state-driven.
+3. **No circular dependencies** — the dependency graph is acyclic; upward = events, downward = direct calls.
+4. **Real-time audio discipline (non-negotiable)** — zero allocations/locks in hot loops; callbacks < 10 ms; event-driven audio flow, no polling.
+5. **Cross-thread safety by construction** — `Interlocked`/`Volatile` for all shared flags; UI marshals via non-blocking `BeginInvoke`.
+6. **Designer-first UI** — controls declared in the WinForms Designer; code only initializes (two documented carve-outs for owner-paint and explicit dynamic sections).
+7. **RDF methodology** — architecture-first, bugs-as-teachers, documentation-as-synthesis.
+8. **Task-aligned versioning** — `v[Major].[Phase].[SubPhase].[Task]`, synchronized with the task list and changelog.
+
+---
+
+## Tech stack
+
+- **Language / runtime:** VB.NET, .NET 10 (`net10.0-windows`), Windows Forms
+- **Audio:** [NAudio](https://github.com/naudio/NAudio) 2.2.1 (WASAPI / WaveOut)
+- **Device monitoring:** `System.Management` 8.x (WMI-based USB hot-plug)
+- **Serialization:** Newtonsoft.Json 13.0.3
+- **Tests:** MSTest 3.6.3 (`InternalsVisibleTo` grants the suite friend access)
+
+---
+
+## Project structure
+
+```
+DSP_Processor/
+  AudioIO/          AudioRouter, device/file readers, ring buffers, tap points
+  Audio/Routing/    Routing support
+  DSP/              DSP worker thread, processor chain
+  DSP/FFT/          FFT / spectrum
+  State/            GSM, 8 SSMs, StateCoordinator, IStateMachine, registry
+  Managers/         MonitoringController and other action managers
+  Recording/        RecordingEngine, WAV writing
+  Cognitive/        Introspection: prediction, anomaly detection, thresholds
+  Models/           Shared data types (AudioBuffer, etc.)
+  Services/         Service interfaces + implementations
+  UI/, UI/TabPanels/  WinForms panels
+  Utils/            RingBuffer, Logger, helpers
+  Visualization/    Meters, spectrum, waveform controls
+
+DSP_Processor.Tests/   MSTest suite (ring buffers, transition matrix, conversion, gain, float pipeline)
+Documentation/         Architecture, Active, Reference, Archive (see the roadmap below)
+specs/                 SpecKit features (001-float32-pipeline, 002-state-machine-hardening, 003-tap-consolidation)
+.specify/              Constitution, templates, workflows
 ```
 
 ---
 
-## **Phase Status**
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 6.0 | Memory & narrative foundations | Complete |
-| 6.1–6.4 | Entity tracking, trajectories, layers | Complete |
-| **6.5** | **ProgramCognition (attention, anomalies, meta‑narratives)** | **Complete** |
-| 6.6 | Observer voice modulation | Upcoming |
-| 7.x | Higher‑order cognition | Planned |
+## Build and test
 
----
-
-## **Getting Started**
-
-### **Requirements**
-- .NET 8.0 or later  
-- Visual Studio 2022 or JetBrains Rider  
-
-### **Build**
-Clone the repository and build the solution:
+Requires the .NET 10 SDK and Windows (WinForms + WASAPI). Visual Studio 2022+ or `dotnet` CLI.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
-cd YOUR_REPO
-dotnet build
+dotnet build DSP_Processor.slnx
+dotnet test DSP_Processor.slnx
 ```
 
-### **Run Tests**
-```bash
-dotnet test
-```
+The test suite is written as **behavior-locking (characterization) tests** — locking current behavior before a change so refactors like the float-pipeline migration can be verified against an unchanging contract.
 
 ---
 
-## **License**
-Choose a license (MIT recommended for open collaboration).
+## Governance and versioning
+
+Development is spec-driven. Each feature is specified, planned against a **Constitution Check** gate, and implemented against that spec under RDF. Versions follow `v[Major].[Phase].[SubPhase].[Task]` and stay synchronized with the task list and changelog.
+
+**Roles:** the Architect (Rick) holds final authority on structure and decisions; a Design Consultant / Documenter frames options and writes specs and docs; an Implementor writes code against the specs. This separation is deliberate and load-bearing.
 
 ---
 
-## **Contributions**
-Contributions are welcome once the public API stabilizes.  
-Please open an issue before submitting a pull request.
+## Status
+
+Active development. Current line: **v1.3.4.x**, with feature **001-float32-pipeline** in flight — migrating internal DSP to float32 end-to-end, with integer PCM confined to I/O boundaries (the current Int16 pipeline is legacy). Phase 7's state-machine expansion (the four modeful SSMs) is complete.
+
+This README is intentionally high-level and does not track live phase status. For the authoritative current state, the project arc, and the forward roadmap, see:
+
+- **`Documentation/Architecture/Architecture-Roadmap-2026-07-13.md`** — the document index, project eras, and where things are going
+- **`Documentation/Active/`** — current reviews, task lists, and session guides
+- **`.specify/memory/constitution.md`** — the binding principles
 
 ---
 
-## **Acknowledgments**
-This project is built using the Recursive Development Framework (RDF), a methodology emphasizing clarity, recursion, and architectural integrity.
-
-Just tell me the style you want.
+*DSP_Processor is a solo project by Rick Haughton, developed under RCH Automation LLC.*

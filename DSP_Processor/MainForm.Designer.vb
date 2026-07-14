@@ -128,7 +128,7 @@ Partial Class MainForm
         meterRecording.Dock = DockStyle.Fill
         meterRecording.Location = New Point(0, 0)
         meterRecording.Name = "meterRecording"
-        meterRecording.Size = New Size(60, 812)
+        meterRecording.Size = New Size(60, 513)
         meterRecording.TabIndex = 0
         ' 
         ' meterPlayback
@@ -215,7 +215,7 @@ Partial Class MainForm
         ' 
         splitWaveformArea.Panel2.Controls.Add(WaveformDisplayControl1)
         splitWaveformArea.Panel2.Controls.Add(progressPlayback)
-        splitWaveformArea.Size = New Size(1312, 812)
+        splitWaveformArea.Size = New Size(1312, 513)
         splitWaveformArea.SplitterDistance = 60
         splitWaveformArea.TabIndex = 1
         ' 
@@ -225,7 +225,7 @@ Partial Class MainForm
         WaveformDisplayControl1.Dock = DockStyle.Fill
         WaveformDisplayControl1.Location = New Point(0, 30)
         WaveformDisplayControl1.Name = "WaveformDisplayControl1"
-        WaveformDisplayControl1.Size = New Size(1248, 782)
+        WaveformDisplayControl1.Size = New Size(1248, 483)
         WaveformDisplayControl1.TabIndex = 1
         WaveformDisplayControl1.WaveformBackgroundColor = Color.Black
         WaveformDisplayControl1.WaveformForegroundColor = Color.Lime
@@ -246,7 +246,7 @@ Partial Class MainForm
         mainTabs.Multiline = True
         mainTabs.Name = "mainTabs"
         mainTabs.SelectedIndex = 0
-        mainTabs.Size = New Size(454, 851)
+        mainTabs.Size = New Size(454, 552)
         mainTabs.TabIndex = 8
         ' 
         ' tabFiles
@@ -257,7 +257,7 @@ Partial Class MainForm
         tabFiles.Location = New Point(4, 54)
         tabFiles.Name = "tabFiles"
         tabFiles.Padding = New Padding(3)
-        tabFiles.Size = New Size(446, 793)
+        tabFiles.Size = New Size(446, 494)
         tabFiles.TabIndex = 0
         tabFiles.Text = "📁 Files"
         ' 
@@ -493,7 +493,7 @@ Partial Class MainForm
         visualizationTabs.Multiline = True
         visualizationTabs.Name = "visualizationTabs"
         visualizationTabs.SelectedIndex = 0
-        visualizationTabs.Size = New Size(1326, 851)
+        visualizationTabs.Size = New Size(1326, 552)
         visualizationTabs.TabIndex = 9
         ' 
         ' tabWaveform
@@ -503,7 +503,7 @@ Partial Class MainForm
         tabWaveform.Location = New Point(4, 29)
         tabWaveform.Name = "tabWaveform"
         tabWaveform.Padding = New Padding(3)
-        tabWaveform.Size = New Size(1318, 818)
+        tabWaveform.Size = New Size(1318, 519)
         tabWaveform.TabIndex = 0
         tabWaveform.Text = "📈 Waveform"
         ' 
@@ -581,6 +581,7 @@ Partial Class MainForm
         ' 
         ' CognitiveDashboardPanel1
         ' 
+        CognitiveDashboardPanel1.AutoScroll = True
         CognitiveDashboardPanel1.BackColor = Color.FromArgb(CByte(240), CByte(240), CByte(240))
         CognitiveDashboardPanel1.Dock = DockStyle.Fill
         CognitiveDashboardPanel1.Location = New Point(3, 3)
@@ -593,7 +594,7 @@ Partial Class MainForm
         ' 
         AutoScaleDimensions = New SizeF(8F, 20F)
         AutoScaleMode = AutoScaleMode.Font
-        ClientSize = New Size(1782, 1053)
+        ClientSize = New Size(1782, 754)
         Controls.Add(transportControl)
         Controls.Add(visualizationTabs)
         Controls.Add(mainTabs)
